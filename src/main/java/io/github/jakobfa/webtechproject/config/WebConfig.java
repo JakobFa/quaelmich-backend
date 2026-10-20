@@ -22,7 +22,9 @@ public class WebConfig implements WebMvcConfigurer {
 	public void addCorsMappings(CorsRegistry registry) {
 		registry.addMapping("/**")
 				.allowedMethods("GET", "POST", "PUT", "DELETE")
-				.allowedOrigins(allowedOrigins);
+				.allowedOrigins(allowedOrigins)
+				// damit das Frontend beim .fit-Download den Dateinamen lesen darf
+				.exposedHeaders("Content-Disposition");
 	}
 
 }
