@@ -1,77 +1,69 @@
 package io.github.jakobfa.webtechproject.web;
 
+import static io.github.jakobfa.webtechproject.web.TestUsers.athleteJson;
+import static io.github.jakobfa.webtechproject.web.TestUsers.registerNewUser;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import java.time.LocalDate;
 
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
-import org.springframework.test.web.servlet.MvcResult;
-
-import com.jayway.jsonpath.JsonPath;
+import org.springframework.test.web.servlet.ResultActions;
 
 @SpringBootTest
 @AutoConfigureMockMvc
 class AthleteControllerTest {
 
+	private static final LocalDate EVENT = LocalDate.now().plusMonths(6);
+
 	@Autowired
 	private MockMvc mockMvc;
 
-	private static String athleteJson(int ftp, String eventName) {
-		String eventDate = LocalDate.now().plusMonths(6).toString();
-		return """
-				{
-				  "ftp": %d,
-				  "weightKg": 72.5,
-				  "level": "AMBITIOUS",
-				  "event": { "name": "%s", "date": "%s", "distanceKm": 227, "elevationMeters": 5500 },
-				  "availability": { "monday": 0, "tuesday": 1.5, "wednesday": 0, "thursday": 1.5,
-				                    "friday": 0, "saturday": 3, "sunday": 2 }
-				}
-				""".formatted(ftp, eventName, eventDate);
+	private String token;
+
+	@BeforeEach
+	void login() throws Exception {
+		token = registerNewUser(mockMvc);
 	}
 
-	private long createAthlete(String json) throws Exception {
-		MvcResult result = mockMvc.perform(post("/athletes").contentType(MediaType.APPLICATION_JSON).content(json))
-				.andExpect(status().isCreated())
-				.andReturn();
-		return ((Number) JsonPath.read(result.getResponse().getContentAsString(), "$.id")).longValue();
+	private ResultActions save(String json) throws Exception {
+		return mockMvc.perform(put("/me/athlete").header("Authorization", token)
+				.contentType(MediaType.APPLICATION_JSON).content(json));
 	}
 
 	@Test
-	void createsAndLoadsAthlete() throws Exception {
-		long id = createAthlete(athleteJson(250, "Ötztaler Radmarathon"));
+	void newUserHasNoProfileYet() throws Exception {
+		mockMvc.perform(get("/me/athlete").header("Authorization", token)).andExpect(status().isNotFound());
+	}
 
-		mockMvc.perform(get("/athletes/" + id))
+	@Test
+	void createsAndLoadsOwnProfile() throws Exception {
+		save(athleteJson(250, "Ötztaler Radmarathon", EVENT)).andExpect(status().isOk());
+
+		mockMvc.perform(get("/me/athlete").header("Authorization", token))
 				.andExpect(status().isOk())
 				.andExpect(jsonPath("$.ftp").value(250))
 				.andExpect(jsonPath("$.level").value("AMBITIOUS"))
 				.andExpect(jsonPath("$.event.name").value("Ötztaler Radmarathon"))
-				.andExpect(jsonPath("$.availability.saturday").value(3.0));
+				.andExpect(jsonPath("$.availability.saturday").value(3.0))
+				.andExpect(jsonPath("$.owner").doesNotExist());
 	}
 
 	@Test
-	void createReturnsLocationOfNewAthlete() throws Exception {
-		mockMvc.perform(post("/athletes").contentType(MediaType.APPLICATION_JSON).content(athleteJson(200, "Test")))
-				.andExpect(status().isCreated())
-				.andExpect(header().string("Location", org.hamcrest.Matchers.startsWith("/athletes/")));
-	}
+	void savingAgainUpdatesTheSameProfile() throws Exception {
+		String first = save(athleteJson(250, "Ötztaler Radmarathon", EVENT)).andReturn().getResponse()
+				.getContentAsString();
+		long id = ((Number) com.jayway.jsonpath.JsonPath.read(first, "$.id")).longValue();
 
-	@Test
-	void updatesExistingAthlete() throws Exception {
-		long id = createAthlete(athleteJson(250, "Ötztaler Radmarathon"));
-
-		mockMvc.perform(put("/athletes/" + id).contentType(MediaType.APPLICATION_JSON)
-				.content(athleteJson(265, "Maratona dles Dolomites")))
+		save(athleteJson(265, "Maratona dles Dolomites", EVENT))
 				.andExpect(status().isOk())
 				.andExpect(jsonPath("$.id").value(id))
 				.andExpect(jsonPath("$.ftp").value(265))
@@ -79,24 +71,23 @@ class AthleteControllerTest {
 	}
 
 	@Test
+	void eachUserOnlySeesTheirOwnProfile() throws Exception {
+		save(athleteJson(250, "Mein Event", EVENT));
+		String otherUser = registerNewUser(mockMvc);
+
+		mockMvc.perform(get("/me/athlete").header("Authorization", otherUser)).andExpect(status().isNotFound());
+	}
+
+	@Test
 	void rejectsInvalidFtp() throws Exception {
-		mockMvc.perform(post("/athletes").contentType(MediaType.APPLICATION_JSON).content(athleteJson(5000, "Test")))
-				.andExpect(status().isBadRequest());
+		save(athleteJson(5000, "Test", EVENT)).andExpect(status().isBadRequest());
 	}
 
 	@Test
 	void rejectsMissingEvent() throws Exception {
-		String json = """
-				{ "ftp": 250, "weightKg": 72, "level": "HOBBY",
-				  "availability": { "monday": 1 } }
-				""";
-		mockMvc.perform(post("/athletes").contentType(MediaType.APPLICATION_JSON).content(json))
-				.andExpect(status().isBadRequest());
-	}
-
-	@Test
-	void unknownAthleteIsNotFound() throws Exception {
-		mockMvc.perform(get("/athletes/99999")).andExpect(status().isNotFound());
+		save("""
+				{ "ftp": 250, "weightKg": 72, "level": "HOBBY", "availability": { "monday": 1 } }
+				""").andExpect(status().isBadRequest());
 	}
 
 }

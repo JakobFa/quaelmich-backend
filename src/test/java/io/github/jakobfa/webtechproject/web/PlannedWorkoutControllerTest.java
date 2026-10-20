@@ -1,5 +1,7 @@
 package io.github.jakobfa.webtechproject.web;
 
+import static io.github.jakobfa.webtechproject.web.TestUsers.registerWithProfile;
+import static org.hamcrest.Matchers.endsWith;
 import static org.hamcrest.Matchers.nullValue;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -8,8 +10,6 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-import java.time.LocalDate;
-
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -17,6 +17,7 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.web.servlet.ResultActions;
 
 import com.jayway.jsonpath.JsonPath;
 
@@ -27,33 +28,27 @@ class PlannedWorkoutControllerTest {
 	@Autowired
 	private MockMvc mockMvc;
 
+	private String token;
 	private long plannedId;
 
 	@BeforeEach
 	void createPlan() throws Exception {
-		String athlete = """
-				{
-				  "ftp": 240, "weightKg": 70, "level": "HOBBY",
-				  "event": { "name": "Test", "date": "%s", "distanceKm": 100, "elevationMeters": 500 },
-				  "availability": { "tuesday": 1.5, "saturday": 3 }
-				}
-				""".formatted(LocalDate.now().plusWeeks(8));
-		String created = mockMvc.perform(post("/athletes").contentType(MediaType.APPLICATION_JSON).content(athlete))
-				.andReturn().getResponse().getContentAsString();
-		long athleteId = ((Number) JsonPath.read(created, "$.id")).longValue();
-
-		String plan = mockMvc.perform(post("/athletes/" + athleteId + "/plan")).andReturn().getResponse()
+		token = registerWithProfile(mockMvc);
+		String plan = mockMvc.perform(post("/me/plan").header("Authorization", token)).andReturn().getResponse()
 				.getContentAsString();
 		plannedId = ((Number) JsonPath.read(plan, "$.workouts[0].id")).longValue();
 	}
 
-	private String progress(boolean completed, Integer rating) {
-		return "{ \"completed\": %s, \"rating\": %s }".formatted(completed, rating);
+	private ResultActions saveProgress(String authorization, boolean completed, Integer rating) throws Exception {
+		return mockMvc.perform(put("/planned-workouts/" + plannedId + "/progress")
+				.header("Authorization", authorization)
+				.contentType(MediaType.APPLICATION_JSON)
+				.content("{ \"completed\": %s, \"rating\": %s }".formatted(completed, rating)));
 	}
 
 	@Test
 	void loadsPlannedWorkoutWithWorkoutDetails() throws Exception {
-		mockMvc.perform(get("/planned-workouts/" + plannedId))
+		mockMvc.perform(get("/planned-workouts/" + plannedId).header("Authorization", token))
 				.andExpect(status().isOk())
 				.andExpect(jsonPath("$.id").value(plannedId))
 				.andExpect(jsonPath("$.completed").value(false))
@@ -62,24 +57,21 @@ class PlannedWorkoutControllerTest {
 
 	@Test
 	void marksWorkoutAsCompletedWithRating() throws Exception {
-		mockMvc.perform(put("/planned-workouts/" + plannedId + "/progress")
-				.contentType(MediaType.APPLICATION_JSON).content(progress(true, 7)))
+		saveProgress(token, true, 7)
 				.andExpect(status().isOk())
 				.andExpect(jsonPath("$.completed").value(true))
 				.andExpect(jsonPath("$.rating").value(7));
 
-		mockMvc.perform(get("/planned-workouts/" + plannedId))
+		mockMvc.perform(get("/planned-workouts/" + plannedId).header("Authorization", token))
 				.andExpect(jsonPath("$.completed").value(true))
 				.andExpect(jsonPath("$.rating").value(7));
 	}
 
 	@Test
 	void uncheckingRemovesTheRating() throws Exception {
-		mockMvc.perform(put("/planned-workouts/" + plannedId + "/progress")
-				.contentType(MediaType.APPLICATION_JSON).content(progress(true, 7)));
+		saveProgress(token, true, 7);
 
-		mockMvc.perform(put("/planned-workouts/" + plannedId + "/progress")
-				.contentType(MediaType.APPLICATION_JSON).content(progress(false, 7)))
+		saveProgress(token, false, 7)
 				.andExpect(status().isOk())
 				.andExpect(jsonPath("$.completed").value(false))
 				.andExpect(jsonPath("$.rating").value(nullValue()));
@@ -87,25 +79,41 @@ class PlannedWorkoutControllerTest {
 
 	@Test
 	void rejectsRatingOutsideOneToTen() throws Exception {
-		mockMvc.perform(put("/planned-workouts/" + plannedId + "/progress")
-				.contentType(MediaType.APPLICATION_JSON).content(progress(true, 11)))
-				.andExpect(status().isBadRequest());
+		saveProgress(token, true, 11).andExpect(status().isBadRequest());
 	}
 
 	@Test
 	void downloadsPlannedWorkoutAsFitFile() throws Exception {
-		mockMvc.perform(get("/planned-workouts/" + plannedId + "/fit"))
+		mockMvc.perform(get("/planned-workouts/" + plannedId + "/fit").header("Authorization", token))
 				.andExpect(status().isOk())
 				.andExpect(header().string("Content-Type", "application/octet-stream"))
-				.andExpect(header().string("Content-Disposition", org.hamcrest.Matchers.endsWith(".fit\"")));
+				.andExpect(header().string("Content-Disposition", endsWith(".fit\"")));
+	}
+
+	@Test
+	void otherUsersCannotSeeOrChangeTheWorkout() throws Exception {
+		String otherUser = registerWithProfile(mockMvc);
+
+		mockMvc.perform(get("/planned-workouts/" + plannedId).header("Authorization", otherUser))
+				.andExpect(status().isNotFound());
+		saveProgress(otherUser, true, 3).andExpect(status().isNotFound());
+		mockMvc.perform(get("/planned-workouts/" + plannedId + "/fit").header("Authorization", otherUser))
+				.andExpect(status().isNotFound());
+
+		// unverändert für den Besitzer
+		mockMvc.perform(get("/planned-workouts/" + plannedId).header("Authorization", token))
+				.andExpect(jsonPath("$.completed").value(false));
 	}
 
 	@Test
 	void unknownPlannedWorkoutIsNotFound() throws Exception {
-		mockMvc.perform(get("/planned-workouts/99999")).andExpect(status().isNotFound());
-		mockMvc.perform(put("/planned-workouts/99999/progress")
-				.contentType(MediaType.APPLICATION_JSON).content(progress(true, 5)))
+		mockMvc.perform(get("/planned-workouts/99999").header("Authorization", token))
 				.andExpect(status().isNotFound());
+	}
+
+	@Test
+	void needsLogin() throws Exception {
+		mockMvc.perform(get("/planned-workouts/" + plannedId)).andExpect(status().isUnauthorized());
 	}
 
 }

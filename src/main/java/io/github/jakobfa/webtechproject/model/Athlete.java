@@ -7,6 +7,7 @@ import jakarta.persistence.EnumType;
 import jakarta.persistence.Enumerated;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.Id;
+import jakarta.persistence.JoinColumn;
 import jakarta.persistence.OneToOne;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.DecimalMax;
@@ -14,6 +15,8 @@ import jakarta.validation.constraints.DecimalMin;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotNull;
+import com.fasterxml.jackson.annotation.JsonIgnore;
+
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
@@ -31,6 +34,12 @@ public class Athlete {
 	@Id
 	@GeneratedValue
 	private Long id;
+
+	/** Der Nutzer, dem dieses Profil gehört (wird nie ans Frontend geschickt) */
+	@JsonIgnore
+	@OneToOne
+	@JoinColumn(unique = true)
+	private AppUser owner;
 
 	/** Functional Threshold Power in Watt */
 	@NotNull

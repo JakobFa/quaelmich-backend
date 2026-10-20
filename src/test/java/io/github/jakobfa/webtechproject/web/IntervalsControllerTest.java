@@ -1,5 +1,6 @@
 package io.github.jakobfa.webtechproject.web;
 
+import static io.github.jakobfa.webtechproject.web.TestUsers.registerWithProfile;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -23,14 +24,24 @@ class IntervalsControllerTest {
 
 	@Test
 	void isNotAvailableWithoutApiKey() throws Exception {
-		mockMvc.perform(get("/athletes/1/intervals"))
+		String token = registerWithProfile(mockMvc);
+
+		mockMvc.perform(get("/me/intervals").header("Authorization", token))
 				.andExpect(status().isOk())
 				.andExpect(jsonPath("$.available").value(false));
 	}
 
 	@Test
 	void refusesSyncWithoutApiKey() throws Exception {
-		mockMvc.perform(post("/athletes/1/intervals/sync")).andExpect(status().isForbidden());
+		String token = registerWithProfile(mockMvc);
+
+		mockMvc.perform(post("/me/intervals/sync").header("Authorization", token))
+				.andExpect(status().isForbidden());
+	}
+
+	@Test
+	void needsLogin() throws Exception {
+		mockMvc.perform(post("/me/intervals/sync")).andExpect(status().isUnauthorized());
 	}
 
 }

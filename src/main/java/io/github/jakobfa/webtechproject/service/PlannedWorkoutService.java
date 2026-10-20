@@ -17,19 +17,25 @@ public class PlannedWorkoutService {
 		this.repository = repository;
 	}
 
-	public Optional<PlannedWorkout> findById(Long id) {
-		return repository.findById(id);
+	/** Nur Workouts aus dem eigenen Plan – fremde gelten als "nicht gefunden". */
+	public Optional<PlannedWorkout> findOwned(Long id, Long userId) {
+		return repository.findById(id).filter(planned -> isOwnedBy(planned, userId));
 	}
 
 	/** Hakt ein Workout ab (oder nimmt das Häkchen zurück) und speichert die Bewertung. */
 	@Transactional
-	public Optional<PlannedWorkout> updateProgress(Long id, boolean completed, Integer rating) {
-		return repository.findById(id).map(planned -> {
+	public Optional<PlannedWorkout> updateProgress(Long id, Long userId, boolean completed, Integer rating) {
+		return findOwned(id, userId).map(planned -> {
 			planned.setCompleted(completed);
 			// Ohne Häkchen gibt es auch keine Bewertung
 			planned.setRating(completed ? rating : null);
 			return repository.save(planned);
 		});
+	}
+
+	private static boolean isOwnedBy(PlannedWorkout planned, Long userId) {
+		var owner = planned.getPlan().getAthlete().getOwner();
+		return owner != null && owner.getId().equals(userId);
 	}
 
 }

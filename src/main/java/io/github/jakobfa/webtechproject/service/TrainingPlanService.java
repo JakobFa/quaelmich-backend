@@ -7,7 +7,6 @@ import java.util.Optional;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import io.github.jakobfa.webtechproject.model.Athlete;
 import io.github.jakobfa.webtechproject.model.TrainingPlan;
 import io.github.jakobfa.webtechproject.repository.AthleteRepository;
 import io.github.jakobfa.webtechproject.repository.TrainingPlanRepository;
@@ -50,10 +49,6 @@ public class TrainingPlanService {
 			plan.getWorkouts().size(); // Workouts innerhalb der Transaktion laden
 			return plan;
 		});
-	}
-
-	public Optional<Athlete> findAthlete(Long athleteId) {
-		return athleteRepository.findById(athleteId);
 	}
 
 }

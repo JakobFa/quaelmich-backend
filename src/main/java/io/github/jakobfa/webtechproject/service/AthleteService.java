@@ -6,44 +6,53 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import io.github.jakobfa.webtechproject.model.Athlete;
+import io.github.jakobfa.webtechproject.repository.AppUserRepository;
 import io.github.jakobfa.webtechproject.repository.AthleteRepository;
 
 @Service
 public class AthleteService {
 
 	private final AthleteRepository athleteRepository;
+	private final AppUserRepository userRepository;
 
-	public AthleteService(AthleteRepository athleteRepository) {
+	public AthleteService(AthleteRepository athleteRepository, AppUserRepository userRepository) {
 		this.athleteRepository = athleteRepository;
+		this.userRepository = userRepository;
 	}
 
-	public Athlete create(Athlete athlete) {
+	public Optional<Athlete> findByOwner(Long userId) {
+		return athleteRepository.findByOwnerId(userId);
+	}
+
+	/** Legt das Profil des Nutzers an oder aktualisiert es, falls es schon existiert. */
+	@Transactional
+	public Athlete saveForOwner(Long userId, Athlete changes) {
+		return athleteRepository.findByOwnerId(userId)
+				.map(existing -> update(existing, changes))
+				.orElseGet(() -> create(userId, changes));
+	}
+
+	private Athlete create(Long userId, Athlete athlete) {
 		// IDs vergibt die Datenbank, mitgeschickte Werte werden ignoriert
 		athlete.setId(null);
 		athlete.getEvent().setId(null);
+		athlete.setOwner(userRepository.getReferenceById(userId));
 		return athleteRepository.save(athlete);
 	}
 
-	public Optional<Athlete> findById(Long id) {
-		return athleteRepository.findById(id);
-	}
+	private Athlete update(Athlete existing, Athlete changes) {
+		existing.setFtp(changes.getFtp());
+		existing.setWeightKg(changes.getWeightKg());
+		existing.setLevel(changes.getLevel());
+		existing.setAvailability(changes.getAvailability());
 
-	@Transactional
-	public Optional<Athlete> update(Long id, Athlete changes) {
-		return athleteRepository.findById(id).map(existing -> {
-			existing.setFtp(changes.getFtp());
-			existing.setWeightKg(changes.getWeightKg());
-			existing.setLevel(changes.getLevel());
-			existing.setAvailability(changes.getAvailability());
+		var event = existing.getEvent();
+		event.setName(changes.getEvent().getName());
+		event.setDate(changes.getEvent().getDate());
+		event.setDistanceKm(changes.getEvent().getDistanceKm());
+		event.setElevationMeters(changes.getEvent().getElevationMeters());
 
-			var event = existing.getEvent();
-			event.setName(changes.getEvent().getName());
-			event.setDate(changes.getEvent().getDate());
-			event.setDistanceKm(changes.getEvent().getDistanceKm());
-			event.setElevationMeters(changes.getEvent().getElevationMeters());
-
-			return athleteRepository.save(existing);
-		});
+		return athleteRepository.save(existing);
 	}
 
 }

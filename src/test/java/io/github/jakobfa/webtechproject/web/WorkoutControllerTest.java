@@ -7,16 +7,14 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
-import org.springframework.context.annotation.Import;
+import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.test.web.servlet.MockMvc;
 
-import io.github.jakobfa.webtechproject.config.ClockConfig;
-import io.github.jakobfa.webtechproject.service.FitWorkoutExporter;
-import io.github.jakobfa.webtechproject.service.WorkoutLibrary;
 
-@WebMvcTest(WorkoutController.class)
-@Import({ WorkoutLibrary.class, FitWorkoutExporter.class, ClockConfig.class })
+/** Die Bibliothek ist öffentlich – deshalb ohne Login. */
+@SpringBootTest
+@AutoConfigureMockMvc
 class WorkoutControllerTest {
 
 	@Autowired

@@ -1,19 +1,21 @@
 package io.github.jakobfa.webtechproject.web;
 
-import java.net.URI;
-
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.PathVariable;
-import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RestController;
 
+import io.github.jakobfa.webtechproject.auth.CurrentUser;
 import io.github.jakobfa.webtechproject.model.Athlete;
 import io.github.jakobfa.webtechproject.service.AthleteService;
 import jakarta.validation.Valid;
 
+/**
+ * Das Profil des angemeldeten Nutzers. Über "/me" gibt es keine Möglichkeit, fremde Profile anzusprechen.
+ */
 @RestController
 public class AthleteController {
 
@@ -23,24 +25,18 @@ public class AthleteController {
 		this.athleteService = athleteService;
 	}
 
-	@PostMapping(path = "/athletes")
-	public ResponseEntity<Athlete> createAthlete(@Valid @RequestBody Athlete athlete) {
-		Athlete created = athleteService.create(athlete);
-		return ResponseEntity.created(URI.create("/athletes/" + created.getId())).body(created);
-	}
-
-	@GetMapping(path = "/athletes/{id}")
-	public ResponseEntity<Athlete> getAthlete(@PathVariable Long id) {
-		return athleteService.findById(id)
+	@GetMapping(path = "/me/athlete")
+	public ResponseEntity<Athlete> getMyAthlete(@AuthenticationPrincipal Jwt jwt) {
+		return athleteService.findByOwner(CurrentUser.id(jwt))
 				.map(ResponseEntity::ok)
 				.orElse(ResponseEntity.notFound().build());
 	}
 
-	@PutMapping(path = "/athletes/{id}")
-	public ResponseEntity<Athlete> updateAthlete(@PathVariable Long id, @Valid @RequestBody Athlete athlete) {
-		return athleteService.update(id, athlete)
-				.map(ResponseEntity::ok)
-				.orElse(ResponseEntity.notFound().build());
+	/** Legt das Profil an oder ändert es. */
+	@PutMapping(path = "/me/athlete")
+	public ResponseEntity<Athlete> saveMyAthlete(@AuthenticationPrincipal Jwt jwt,
+			@Valid @RequestBody Athlete athlete) {
+		return ResponseEntity.ok(athleteService.saveForOwner(CurrentUser.id(jwt), athlete));
 	}
 
 }
