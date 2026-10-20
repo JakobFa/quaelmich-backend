@@ -48,6 +48,18 @@ public class PlannedWorkout {
 	@Max(10)
 	private Integer rating;
 
+	// ---------- Tatsächlich gefahren (aus intervals.icu, z. B. von Wahoo oder Garmin) ----------
+
+	/** ID der Aktivität in intervals.icu; gesetzt = automatisch mit einer echten Fahrt verknüpft */
+	private String activityId;
+
+	private Integer actualDurationMinutes;
+
+	private Double actualDistanceKm;
+
+	/** Trainingslast laut intervals.icu (entspricht dem TSS) */
+	private Integer actualTss;
+
 	public PlannedWorkout(LocalDate date, Workout workout, Integer durationMinutes, Phase phase) {
 		this.date = date;
 		this.workoutId = workout.getId();

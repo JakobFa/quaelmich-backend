@@ -28,8 +28,11 @@ public class PlanResponseMapper {
 
 	public PlannedWorkoutResponse toResponse(PlannedWorkout planned) {
 		var workout = workoutLibrary.resolve(planned.getWorkoutId(), planned.getDurationMinutes()).orElseThrow();
+		var actual = planned.getActivityId() == null ? null
+				: new PlannedWorkoutResponse.Actual(planned.getActualDurationMinutes(), planned.getActualDistanceKm(),
+						planned.getActualTss());
 		return new PlannedWorkoutResponse(planned.getId(), planned.getDate(), planned.getPhase(),
-				planned.isCompleted(), planned.getRating(), workout);
+				planned.isCompleted(), planned.getRating(), workout, actual);
 	}
 
 }

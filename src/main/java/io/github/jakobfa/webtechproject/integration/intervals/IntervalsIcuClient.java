@@ -1,10 +1,12 @@
 package io.github.jakobfa.webtechproject.integration.intervals;
 
 import java.nio.charset.StandardCharsets;
+import java.time.LocalDate;
 import java.util.Base64;
 import java.util.List;
 
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.core.ParameterizedTypeReference;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
@@ -63,6 +65,18 @@ public class IntervalsIcuClient {
 				.body(events)
 				.retrieve()
 				.toBodilessEntity();
+	}
+
+	/** Aktivitäten im Zeitraum (beide Tage eingeschlossen) */
+	public List<IntervalsActivity> listActivities(IntervalsCredentials credentials, LocalDate oldest, LocalDate newest) {
+		List<IntervalsActivity> activities = restClient.get()
+				.uri("/api/v1/athlete/{athleteId}/activities?oldest={oldest}&newest={newest}", credentials.athleteId(),
+						oldest, newest)
+				.header(HttpHeaders.AUTHORIZATION, basicAuth(credentials))
+				.retrieve()
+				.body(new ParameterizedTypeReference<List<IntervalsActivity>>() {
+				});
+		return activities == null ? List.of() : activities;
 	}
 
 	private static String basicAuth(IntervalsCredentials credentials) {

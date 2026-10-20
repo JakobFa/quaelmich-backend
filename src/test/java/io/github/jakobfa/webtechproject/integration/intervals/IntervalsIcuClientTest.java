@@ -10,6 +10,7 @@ import static org.springframework.test.web.client.match.MockRestRequestMatchers.
 import static org.springframework.test.web.client.response.MockRestResponseCreators.withStatus;
 import static org.springframework.test.web.client.response.MockRestResponseCreators.withSuccess;
 
+import java.time.LocalDate;
 import java.util.List;
 
 import org.junit.jupiter.api.BeforeEach;
@@ -75,6 +76,32 @@ class IntervalsIcuClientTest {
 		server.expect(requestTo("https://intervals.icu/api/v1/athlete/i42")).andRespond(withStatus(HttpStatus.UNAUTHORIZED));
 
 		assertThat(client.verify(CREDENTIALS)).isFalse();
+	}
+
+	@Test
+	void listsActivitiesAndIgnoresUnknownFields() {
+		server.expect(requestTo("https://intervals.icu/api/v1/athlete/i42/activities?oldest=2026-10-07&newest=2026-10-21"))
+				.andExpect(method(HttpMethod.GET))
+				.andExpect(header("Authorization", AUTH_HEADER))
+				.andRespond(withSuccess("""
+						[
+						  { "id": "i1001", "start_date_local": "2026-10-20T17:30:00", "type": "Ride",
+						    "moving_time": 5400, "distance": 45210.5, "icu_training_load": 68, "source": "WAHOO",
+						    "icu_ftp": 245, "average_watts": 172 },
+						  { "id": "s99", "source": "STRAVA", "_note": "STRAVA activities are not available via the API" }
+						]
+						""", MediaType.APPLICATION_JSON));
+
+		List<IntervalsActivity> activities = client.listActivities(CREDENTIALS, LocalDate.of(2026, 10, 7),
+				LocalDate.of(2026, 10, 21));
+
+		assertThat(activities).hasSize(2);
+		IntervalsActivity ride = activities.getFirst();
+		assertThat(ride.isUsableRide()).isTrue();
+		assertThat(ride.date()).isEqualTo(LocalDate.of(2026, 10, 20));
+		assertThat(ride.movingTimeSeconds()).isEqualTo(5400);
+		assertThat(ride.trainingLoad()).isEqualTo(68);
+		assertThat(activities.get(1).isUsableRide()).as("Strava-Platzhalter").isFalse();
 	}
 
 	@Test

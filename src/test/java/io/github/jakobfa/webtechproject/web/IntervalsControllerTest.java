@@ -153,6 +153,24 @@ class IntervalsControllerTest {
 	}
 
 	@Test
+	void importsActivitiesForConnectedUsers() throws Exception {
+		when(client.verify(any())).thenReturn(true);
+		String token = registerWithProfile(mockMvc);
+		connect(token, "import-schluessel");
+
+		mockMvc.perform(post("/me/intervals/import").header("Authorization", token))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.activities").value(0))
+				.andExpect(jsonPath("$.matched").value(0));
+	}
+
+	@Test
+	void importWithoutConnectionIsRefused() throws Exception {
+		mockMvc.perform(post("/me/intervals/import").header("Authorization", registerWithProfile(mockMvc)))
+				.andExpect(status().isConflict());
+	}
+
+	@Test
 	void syncWithoutConnectionIsRefused() throws Exception {
 		mockMvc.perform(post("/me/intervals/sync").header("Authorization", registerWithProfile(mockMvc)))
 				.andExpect(status().isConflict());
