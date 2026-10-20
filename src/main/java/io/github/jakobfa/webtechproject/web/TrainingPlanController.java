@@ -8,48 +8,33 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RestController;
 
-import io.github.jakobfa.webtechproject.model.PlannedWorkout;
-import io.github.jakobfa.webtechproject.model.TrainingPlan;
 import io.github.jakobfa.webtechproject.service.TrainingPlanService;
-import io.github.jakobfa.webtechproject.service.WorkoutLibrary;
-import io.github.jakobfa.webtechproject.web.dto.PlannedWorkoutResponse;
 import io.github.jakobfa.webtechproject.web.dto.TrainingPlanResponse;
 
 @RestController
 public class TrainingPlanController {
 
 	private final TrainingPlanService planService;
-	private final WorkoutLibrary workoutLibrary;
+	private final PlanResponseMapper mapper;
 
-	public TrainingPlanController(TrainingPlanService planService, WorkoutLibrary workoutLibrary) {
+	public TrainingPlanController(TrainingPlanService planService, PlanResponseMapper mapper) {
 		this.planService = planService;
-		this.workoutLibrary = workoutLibrary;
+		this.mapper = mapper;
 	}
 
 	@PostMapping(path = "/athletes/{athleteId}/plan")
 	public ResponseEntity<TrainingPlanResponse> generatePlan(@PathVariable Long athleteId) {
 		return planService.generate(athleteId)
-				.map(plan -> ResponseEntity.created(URI.create("/athletes/" + athleteId + "/plan")).body(toResponse(plan)))
+				.map(plan -> ResponseEntity.created(URI.create("/athletes/" + athleteId + "/plan"))
+						.body(mapper.toResponse(plan)))
 				.orElse(ResponseEntity.notFound().build());
 	}
 
 	@GetMapping(path = "/athletes/{athleteId}/plan")
 	public ResponseEntity<TrainingPlanResponse> getPlan(@PathVariable Long athleteId) {
 		return planService.findByAthlete(athleteId)
-				.map(plan -> ResponseEntity.ok(toResponse(plan)))
+				.map(plan -> ResponseEntity.ok(mapper.toResponse(plan)))
 				.orElse(ResponseEntity.notFound().build());
-	}
-
-	private TrainingPlanResponse toResponse(TrainingPlan plan) {
-		var event = plan.getAthlete().getEvent();
-		return new TrainingPlanResponse(plan.getId(), plan.getStartDate(), event.getName(), event.getDate(),
-				plan.getWorkouts().stream().map(this::toResponse).toList());
-	}
-
-	private PlannedWorkoutResponse toResponse(PlannedWorkout planned) {
-		var workout = workoutLibrary.resolve(planned.getWorkoutId(), planned.getDurationMinutes()).orElseThrow();
-		return new PlannedWorkoutResponse(planned.getId(), planned.getDate(), planned.getPhase(),
-				planned.isCompleted(), planned.getRating(), workout);
 	}
 
 }
