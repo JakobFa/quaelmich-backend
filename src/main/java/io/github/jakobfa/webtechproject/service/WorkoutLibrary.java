@@ -1,0 +1,128 @@
+package io.github.jakobfa.webtechproject.service;
+
+import static io.github.jakobfa.webtechproject.model.StepKind.COOLDOWN;
+import static io.github.jakobfa.webtechproject.model.StepKind.INTERVAL;
+import static io.github.jakobfa.webtechproject.model.StepKind.RECOVERY;
+import static io.github.jakobfa.webtechproject.model.StepKind.STEADY;
+import static io.github.jakobfa.webtechproject.model.StepKind.WARMUP;
+import static io.github.jakobfa.webtechproject.model.WorkoutStep.ramp;
+import static io.github.jakobfa.webtechproject.model.WorkoutStep.steady;
+
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Optional;
+
+import org.springframework.stereotype.Service;
+
+import io.github.jakobfa.webtechproject.model.Workout;
+import io.github.jakobfa.webtechproject.model.WorkoutStep;
+import io.github.jakobfa.webtechproject.model.WorkoutType;
+
+/**
+ * Bibliothek klassischer Rad-Workouts. Leistungsangaben in Prozent der FTP.
+ */
+@Service
+public class WorkoutLibrary {
+
+	private final List<Workout> workouts = List.of(
+			new Workout(1L, "Lockeres Ausrollen", WorkoutType.RECOVERY,
+					"Ganz locker treten, damit sich die Beine von harten Tagen erholen.",
+					steps(steady(STEADY, min(45), 50))),
+
+			new Workout(2L, "Grundlage 90", WorkoutType.ENDURANCE,
+					"Gleichmäßige Fahrt in Zone 2. Baut Ausdauer und Fettstoffwechsel auf.",
+					steps(warmup(), steady(STEADY, min(70), 68), cooldown())),
+
+			new Workout(3L, "Lange Ausfahrt 3 h", WorkoutType.LONG_RIDE,
+					"Drei Stunden Grundlage – gewöhnt den Körper an lange Event-Distanzen.",
+					steps(ramp(WARMUP, min(15), 50, 68), steady(STEADY, min(150), 68),
+							ramp(COOLDOWN, min(15), 65, 50))),
+
+			new Workout(4L, "Tempo 2 × 20", WorkoutType.TEMPO,
+					"Zwei lange Blöcke knapp unter der Schwelle für muskuläre Ausdauer.",
+					steps(warmup(), repeat(2, steady(INTERVAL, min(20), 83), steady(RECOVERY, min(5), 55)),
+							cooldown())),
+
+			new Workout(5L, "Sweet Spot 3 × 12", WorkoutType.SWEET_SPOT,
+					"Viel Trainingswirkung bei überschaubarer Ermüdung – der Klassiker für wenig Zeit.",
+					steps(warmup(), repeat(3, steady(INTERVAL, min(12), 90), steady(RECOVERY, min(5), 55)),
+							cooldown())),
+
+			new Workout(6L, "Schwelle 2 × 20", WorkoutType.THRESHOLD,
+					"Zwei Blöcke an der FTP. Hart, aber genau das hebt die Schwelle an.",
+					steps(warmup(), repeat(2, steady(INTERVAL, min(20), 97), steady(RECOVERY, min(8), 55)),
+							cooldown())),
+
+			new Workout(7L, "Over-Unders 3 × 12", WorkoutType.OVER_UNDER,
+					"Wechsel knapp unter und über der Schwelle – trainiert das Abbauen von Laktat.",
+					steps(warmup(),
+							repeat(3, repeat(4, steady(INTERVAL, min(2), 95), steady(INTERVAL, min(1), 105)),
+									steady(RECOVERY, min(5), 55)),
+							cooldown())),
+
+			new Workout(8L, "VO2max 5 × 4", WorkoutType.VO2MAX,
+					"Kurze, sehr harte Intervalle für mehr Sauerstoffaufnahme.",
+					steps(warmup(), repeat(5, steady(INTERVAL, min(4), 115), steady(RECOVERY, min(4), 50)),
+							cooldown())),
+
+			new Workout(9L, "Anaerob 8 × 1", WorkoutType.ANAEROBIC,
+					"Einminütige Attacken weit über der Schwelle – für Antritte und kurze Anstiege.",
+					steps(warmup(), repeat(8, steady(INTERVAL, min(1), 130), steady(RECOVERY, min(2), 50)),
+							cooldown())),
+
+			new Workout(10L, "Sprints 6 × 15 s", WorkoutType.SPRINT,
+					"Maximale Sprints, eingebettet in eine lockere Grundlage.",
+					steps(warmup(), steady(STEADY, min(20), 65),
+							repeat(6, steady(INTERVAL, 15, 170), steady(RECOVERY, min(4) + 45, 55)), cooldown())),
+
+			new Workout(11L, "FTP-Test 20 min", WorkoutType.FTP_TEST,
+					"20 Minuten so hart wie möglich, aber gleichmäßig. 95 % des Durchschnitts ergeben deine FTP.",
+					steps(ramp(WARMUP, min(15), 50, 75), steady(INTERVAL, min(5), 110), steady(RECOVERY, min(10), 50),
+							steady(INTERVAL, min(20), 100), ramp(COOLDOWN, min(15), 60, 45))));
+
+	public List<Workout> findAll() {
+		return workouts;
+	}
+
+	public Optional<Workout> findById(Long id) {
+		return workouts.stream().filter(workout -> workout.getId().equals(id)).findFirst();
+	}
+
+	// ---------- Hilfsmethoden zum Zusammenbauen der Workouts ----------
+
+	private static int min(int minutes) {
+		return minutes * 60;
+	}
+
+	private static WorkoutStep warmup() {
+		return ramp(WARMUP, min(10), 50, 75);
+	}
+
+	private static WorkoutStep cooldown() {
+		return ramp(COOLDOWN, min(10), 60, 45);
+	}
+
+	/** Fügt einzelne Abschnitte und bereits wiederholte Blöcke zu einer flachen Liste zusammen. */
+	private static List<WorkoutStep> steps(Object... parts) {
+		List<WorkoutStep> result = new ArrayList<>();
+		for (Object part : parts) {
+			if (part instanceof WorkoutStep step) {
+				result.add(step);
+			} else if (part instanceof List<?> block) {
+				block.forEach(step -> result.add((WorkoutStep) step));
+			}
+		}
+		return List.copyOf(result);
+	}
+
+	/** Wiederholt einen Block aus Abschnitten n-mal. */
+	private static List<WorkoutStep> repeat(int times, Object... parts) {
+		List<WorkoutStep> block = steps(parts);
+		List<WorkoutStep> result = new ArrayList<>();
+		for (int i = 0; i < times; i++) {
+			result.addAll(block);
+		}
+		return result;
+	}
+
+}

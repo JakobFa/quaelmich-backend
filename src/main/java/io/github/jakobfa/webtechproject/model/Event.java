@@ -1,0 +1,47 @@
+package io.github.jakobfa.webtechproject.model;
+
+import java.time.LocalDate;
+
+import jakarta.persistence.Entity;
+import jakarta.persistence.GeneratedValue;
+import jakarta.persistence.Id;
+import jakarta.persistence.Table;
+import jakarta.validation.constraints.FutureOrPresent;
+import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Positive;
+import jakarta.validation.constraints.PositiveOrZero;
+import lombok.Getter;
+import lombok.NoArgsConstructor;
+import lombok.Setter;
+
+/**
+ * Das Ziel-Event, auf das hintrainiert wird (z. B. ein Radmarathon).
+ */
+@Entity
+@Table(name = "target_event")
+@Getter
+@Setter
+@NoArgsConstructor
+public class Event {
+
+	@Id
+	@GeneratedValue
+	private Long id;
+
+	@NotBlank
+	private String name;
+
+	@NotNull
+	@FutureOrPresent
+	private LocalDate date;
+
+	@NotNull
+	@Positive
+	private Double distanceKm;
+
+	@NotNull
+	@PositiveOrZero
+	private Integer elevationMeters;
+
+}
