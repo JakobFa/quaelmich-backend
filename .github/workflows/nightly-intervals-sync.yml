@@ -1,0 +1,31 @@
+# Sendet jede Nacht die Workouts der nächsten 14 Tage aller Nutzer mit Auto-Sync an intervals.icu.
+# Läuft hier statt im Backend, weil das kostenlose Render-Backend nachts schläft – der Aufruf weckt es auf.
+#
+# Benötigt das Repository-Secret INTERVALS_SYNC_TOKEN (gleicher Wert wie die Render-Umgebungsvariable).
+name: Nächtlicher intervals.icu-Sync
+
+on:
+  schedule:
+    - cron: '0 3 * * *' # täglich 03:00 UTC (= 04:00 bzw. 05:00 Uhr in Berlin)
+  workflow_dispatch: # zusätzlich per Hand startbar (Tab "Actions" → "Run workflow")
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Backend aufwecken und Sync auslösen
+        env:
+          SYNC_TOKEN: ${{ secrets.INTERVALS_SYNC_TOKEN }}
+        run: |
+          if [ -z "$SYNC_TOKEN" ]; then
+            echo "Secret INTERVALS_SYNC_TOKEN fehlt – nichts zu tun."
+            exit 1
+          fi
+          # Das Aufwachen kann bis zu einer Minute dauern, deshalb großzügige Wartezeit und Wiederholungen
+          curl --fail --silent --show-error \
+               --retry 4 --retry-delay 30 --retry-all-errors \
+               --max-time 180 \
+               -X POST \
+               -H "X-Sync-Token: $SYNC_TOKEN" \
+               https://quaelmich-backend.onrender.com/internal/intervals/sync-all
+          echo

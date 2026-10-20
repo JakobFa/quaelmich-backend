@@ -40,7 +40,7 @@ class IntervalsIcuClientTest {
 	void setUp() {
 		RestClient.Builder builder = RestClient.builder();
 		server = MockRestServiceServer.bindTo(builder).build();
-		client = new IntervalsIcuClient(new IntervalsProperties("https://intervals.icu", null), builder);
+		client = new IntervalsIcuClient(new IntervalsProperties("https://intervals.icu", null, null), builder);
 	}
 
 	@Test

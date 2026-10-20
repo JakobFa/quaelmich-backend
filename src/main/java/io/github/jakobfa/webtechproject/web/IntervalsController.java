@@ -41,14 +41,19 @@ public class IntervalsController {
 			@Pattern(regexp = "^$|^0$|^i?\\d{1,12}$") String athleteId) {
 	}
 
-	public record StatusResponse(boolean connected, String intervalsAthleteId, Instant connectedAt) {
+	public record SettingsRequest(boolean autoSync) {
+	}
+
+	public record StatusResponse(boolean connected, String intervalsAthleteId, Instant connectedAt, boolean autoSync,
+			Instant lastSyncedAt) {
 
 		static StatusResponse of(IntervalsConnection connection) {
-			return new StatusResponse(true, connection.getIntervalsAthleteId(), connection.getConnectedAt());
+			return new StatusResponse(true, connection.getIntervalsAthleteId(), connection.getConnectedAt(),
+					connection.isAutoSync(), connection.getLastSyncedAt());
 		}
 
 		static StatusResponse disconnected() {
-			return new StatusResponse(false, null, null);
+			return new StatusResponse(false, null, null, false, null);
 		}
 	}
 
@@ -85,6 +90,15 @@ public class IntervalsController {
 		}
 	}
 
+	/** Automatischen Sync ein- oder ausschalten. 404, wenn noch nicht verbunden. */
+	@PutMapping(path = "/me/intervals/settings")
+	public ResponseEntity<StatusResponse> updateSettings(@AuthenticationPrincipal Jwt jwt,
+			@RequestBody SettingsRequest request) {
+		return connectionService.setAutoSync(CurrentUser.id(jwt), request.autoSync())
+				.map(connection -> ResponseEntity.ok(StatusResponse.of(connection)))
+				.orElse(ResponseEntity.notFound().build());
+	}
+
 	@DeleteMapping(path = "/me/intervals")
 	public ResponseEntity<Void> disconnect(@AuthenticationPrincipal Jwt jwt) {
 		connectionService.disconnect(CurrentUser.id(jwt));
@@ -107,9 +121,9 @@ public class IntervalsController {
 			return ResponseEntity.notFound().build();
 		}
 		try {
-			return syncService.syncUpcoming(credentials.get(), athleteId.get(), days)
-					.map(ResponseEntity::ok)
-					.orElse(ResponseEntity.notFound().build());
+			var result = syncService.syncUpcoming(credentials.get(), athleteId.get(), days);
+			result.ifPresent(r -> connectionService.markSynced(userId));
+			return result.map(ResponseEntity::ok).orElse(ResponseEntity.notFound().build());
 		} catch (RestClientException e) {
 			// intervals.icu nicht erreichbar oder Schlüssel inzwischen ungültig
 			return ResponseEntity.status(HttpStatus.BAD_GATEWAY).build();

@@ -1,6 +1,7 @@
 package io.github.jakobfa.webtechproject.integration.intervals;
 
 import java.time.Clock;
+import java.util.List;
 import java.util.Optional;
 
 import org.springframework.stereotype.Service;
@@ -56,6 +57,27 @@ public class IntervalsConnectionService {
 		connection.setIntervalsAthleteId(normalizedId);
 		connection.setConnectedAt(clock.instant());
 		return repository.save(connection);
+	}
+
+	@Transactional
+	public Optional<IntervalsConnection> setAutoSync(Long userId, boolean autoSync) {
+		return repository.findByOwnerId(userId).map(connection -> {
+			connection.setAutoSync(autoSync);
+			return repository.save(connection);
+		});
+	}
+
+	@Transactional
+	public void markSynced(Long userId) {
+		repository.findByOwnerId(userId).ifPresent(connection -> {
+			connection.setLastSyncedAt(clock.instant());
+			repository.save(connection);
+		});
+	}
+
+	/** IDs aller Nutzer, deren Workouts automatisch gesendet werden sollen */
+	public List<Long> usersWithAutoSync() {
+		return repository.findByAutoSyncTrue().stream().map(connection -> connection.getOwner().getId()).toList();
 	}
 
 	@Transactional

@@ -6,6 +6,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.clearInvocations;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
@@ -105,6 +107,49 @@ class IntervalsControllerTest {
 
 		verify(client).upsertEvents(eq(new IntervalsCredentials("schluessel-von-lina", "i42")),
 				argThat(events -> !events.isEmpty()));
+	}
+
+	@Test
+	void autoSyncIsOnByDefaultAndNewPlansAreSentAutomatically() throws Exception {
+		when(client.verify(any())).thenReturn(true);
+		String token = registerWithProfile(mockMvc);
+		connect(token, "auto-schluessel").andExpect(jsonPath("$.autoSync").value(true));
+		clearInvocations(client);
+
+		mockMvc.perform(post("/me/plan").header("Authorization", token)).andExpect(status().isCreated());
+
+		verify(client).upsertEvents(eq(new IntervalsCredentials("auto-schluessel", "i42")),
+				argThat(events -> !events.isEmpty()));
+		mockMvc.perform(get("/me/intervals").header("Authorization", token))
+				.andExpect(jsonPath("$.lastSyncedAt").isString());
+	}
+
+	@Test
+	void autoSyncCanBeSwitchedOff() throws Exception {
+		when(client.verify(any())).thenReturn(true);
+		String token = registerWithProfile(mockMvc);
+		connect(token, "aus-schluessel");
+
+		mockMvc.perform(put("/me/intervals/settings").header("Authorization", token)
+				.contentType(MediaType.APPLICATION_JSON).content("{ \"autoSync\": false }"))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.autoSync").value(false));
+		clearInvocations(client);
+
+		mockMvc.perform(post("/me/plan").header("Authorization", token)).andExpect(status().isCreated());
+
+		verify(client, never()).upsertEvents(any(), any());
+	}
+
+	@Test
+	void planCreationStillWorksWhenIntervalsFails() throws Exception {
+		when(client.verify(any())).thenReturn(true);
+		org.mockito.Mockito.doThrow(new org.springframework.web.client.ResourceAccessException("offline"))
+				.when(client).upsertEvents(any(), any());
+		String token = registerWithProfile(mockMvc);
+		connect(token, "schluessel");
+
+		mockMvc.perform(post("/me/plan").header("Authorization", token)).andExpect(status().isCreated());
 	}
 
 	@Test

@@ -48,6 +48,8 @@ public class SecurityConfig {
 				.authorizeHttpRequests(auth -> auth
 						.requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
 						.requestMatchers(HttpMethod.POST, "/auth/register", "/auth/login").permitAll()
+						// prüft selbst ein eigenes Geheimnis (X-Sync-Token), siehe InternalSyncController
+						.requestMatchers(HttpMethod.POST, "/internal/intervals/sync-all").permitAll()
 						.requestMatchers(HttpMethod.GET, "/workouts", "/workouts/**").permitAll()
 						.requestMatchers("/error").permitAll()
 						.anyRequest().authenticated())

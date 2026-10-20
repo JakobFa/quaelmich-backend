@@ -2,6 +2,8 @@ package io.github.jakobfa.webtechproject.integration.intervals;
 
 import java.time.Instant;
 
+import org.hibernate.annotations.ColumnDefault;
+
 import io.github.jakobfa.webtechproject.model.AppUser;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -39,5 +41,12 @@ public class IntervalsConnection {
 	private String intervalsAthleteId;
 
 	private Instant connectedAt;
+
+	/** Workouts automatisch senden: nach "Plan erstellen" und jede Nacht für die nächsten 14 Tage */
+	@Column(nullable = false)
+	@ColumnDefault("true")
+	private boolean autoSync = true;
+
+	private Instant lastSyncedAt;
 
 }
