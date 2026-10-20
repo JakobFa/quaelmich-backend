@@ -33,6 +33,23 @@ public class PlannedWorkoutService {
 		});
 	}
 
+	/**
+	 * Bestätigt oder verwirft die automatisch erkannte Fahrt.
+	 * "Nein" heißt: anderes Training – das geplante Workout gilt dann als nicht absolviert.
+	 * Die Fahrt bleibt gespeichert, denn die Belastung war trotzdem da.
+	 */
+	@Transactional
+	public Optional<PlannedWorkout> confirmActivity(Long id, Long userId, boolean matchesPlan) {
+		return findOwned(id, userId).filter(planned -> planned.getActivityId() != null).map(planned -> {
+			planned.setActivityConfirmed(matchesPlan);
+			planned.setCompleted(matchesPlan);
+			if (!matchesPlan) {
+				planned.setRating(null);
+			}
+			return repository.save(planned);
+		});
+	}
+
 	private static boolean isOwnedBy(PlannedWorkout planned, Long userId) {
 		var owner = planned.getPlan().getAthlete().getOwner();
 		return owner != null && owner.getId().equals(userId);

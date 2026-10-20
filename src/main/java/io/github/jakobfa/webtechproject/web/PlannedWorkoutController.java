@@ -46,6 +46,18 @@ public class PlannedWorkoutController {
 				.orElse(ResponseEntity.notFound().build());
 	}
 
+	public record ActivityConfirmation(boolean matchesPlan) {
+	}
+
+	/** "War das das geplante Training?" – 404, wenn keine Fahrt verknüpft ist oder das Workout fremd ist */
+	@PutMapping(path = "/planned-workouts/{id}/activity-confirmation")
+	public ResponseEntity<PlannedWorkoutResponse> confirmActivity(@AuthenticationPrincipal Jwt jwt,
+			@PathVariable Long id, @RequestBody ActivityConfirmation confirmation) {
+		return plannedWorkoutService.confirmActivity(id, CurrentUser.id(jwt), confirmation.matchesPlan())
+				.map(planned -> ResponseEntity.ok(mapper.toResponse(planned)))
+				.orElse(ResponseEntity.notFound().build());
+	}
+
 	/** .fit-Datei mit der im Plan angepassten Dauer (z. B. "Grundlage 75 min") */
 	@GetMapping(path = "/planned-workouts/{id}/fit")
 	public ResponseEntity<byte[]> downloadFit(@AuthenticationPrincipal Jwt jwt, @PathVariable Long id) {

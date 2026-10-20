@@ -15,6 +15,7 @@ import io.github.jakobfa.webtechproject.model.Athlete;
 import io.github.jakobfa.webtechproject.model.PlannedWorkout;
 import io.github.jakobfa.webtechproject.repository.PlannedWorkoutRepository;
 import io.github.jakobfa.webtechproject.service.AthleteService;
+import io.github.jakobfa.webtechproject.service.PlanAdaptationService;
 
 /**
  * Holt gefahrene Einheiten aus intervals.icu (z. B. vom Wahoo oder Garmin) und verknüpft sie mit dem Plan:
@@ -27,21 +28,24 @@ public class ActivityImportService {
 
 	public static final int DAYS_BACK = 14;
 
-	public record ImportResult(int activities, int matched) {
+	public record ImportResult(int activities, int matched, int adjusted) {
 	}
 
 	private final IntervalsConnectionService connectionService;
 	private final IntervalsIcuClient client;
 	private final AthleteService athleteService;
 	private final PlannedWorkoutRepository plannedWorkoutRepository;
+	private final PlanAdaptationService adaptation;
 	private final Clock clock;
 
 	public ActivityImportService(IntervalsConnectionService connectionService, IntervalsIcuClient client,
-			AthleteService athleteService, PlannedWorkoutRepository plannedWorkoutRepository, Clock clock) {
+			AthleteService athleteService, PlannedWorkoutRepository plannedWorkoutRepository,
+			PlanAdaptationService adaptation, Clock clock) {
 		this.connectionService = connectionService;
 		this.client = client;
 		this.athleteService = athleteService;
 		this.plannedWorkoutRepository = plannedWorkoutRepository;
+		this.adaptation = adaptation;
 		this.clock = clock;
 	}
 
@@ -65,21 +69,30 @@ public class ActivityImportService {
 				IntervalsActivity::date, Function.identity(),
 				(a, b) -> a.movingTimeSeconds() >= b.movingTimeSeconds() ? a : b));
 
+		// Workouts bis übermorgen laden: die vergangenen zum Zuordnen, die kommenden zum Anpassen
+		List<PlannedWorkout> window = plannedWorkoutRepository.findByPlanAthleteIdAndDateBetween(athleteId.get(), from,
+				today.plusDays(2));
+
 		int matched = 0;
-		for (PlannedWorkout planned : plannedWorkoutRepository.findByPlanAthleteIdAndDateBetween(athleteId.get(), from,
-				today)) {
+		int adjusted = 0;
+		for (PlannedWorkout planned : window) {
 			IntervalsActivity ride = longestRidePerDay.get(planned.getDate());
 			if (ride != null && !ride.id().equals(planned.getActivityId())) {
 				apply(planned, ride);
 				matched++;
+				if (adaptation.adaptAfter(planned, window).isPresent()) {
+					adjusted++;
+				}
 			}
 		}
-		return Optional.of(new ImportResult(rides.size(), matched));
+		return Optional.of(new ImportResult(rides.size(), matched, adjusted));
 	}
 
 	static void apply(PlannedWorkout planned, IntervalsActivity ride) {
 		planned.setCompleted(true);
 		planned.setActivityId(ride.id());
+		planned.setActivityConfirmed(null); // neue Fahrt → neu nachfragen
+		planned.setAdaptationApplied(false);
 		planned.setActualDurationMinutes(Math.round(ride.movingTimeSeconds() / 60f));
 		planned.setActualDistanceKm(ride.distance() == null ? null : Math.round(ride.distance() / 100.0) / 10.0);
 		planned.setActualTss(ride.trainingLoad());

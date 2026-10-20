@@ -23,6 +23,7 @@ import io.github.jakobfa.webtechproject.model.Phase;
 import io.github.jakobfa.webtechproject.model.PlannedWorkout;
 import io.github.jakobfa.webtechproject.repository.PlannedWorkoutRepository;
 import io.github.jakobfa.webtechproject.service.AthleteService;
+import io.github.jakobfa.webtechproject.service.PlanAdaptationService;
 import io.github.jakobfa.webtechproject.service.WorkoutLibrary;
 
 /**
@@ -38,10 +39,9 @@ class ActivityImportServiceTest {
 	private final IntervalsIcuClient client = mock(IntervalsIcuClient.class);
 	private final AthleteService athleteService = mock(AthleteService.class);
 	private final PlannedWorkoutRepository repository = mock(PlannedWorkoutRepository.class);
-	private final ActivityImportService service = new ActivityImportService(connectionService, client,
-			athleteService, repository, CLOCK);
-
 	private final WorkoutLibrary library = new WorkoutLibrary();
+	private final ActivityImportService service = new ActivityImportService(connectionService, client,
+			athleteService, repository, new PlanAdaptationService(library), CLOCK);
 
 	@BeforeEach
 	void connectedUserWithProfile() {

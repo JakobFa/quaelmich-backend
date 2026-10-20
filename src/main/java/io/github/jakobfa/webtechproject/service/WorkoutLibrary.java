@@ -164,6 +164,13 @@ public class WorkoutLibrary {
 		return workouts.stream().filter(workout -> workout.getType() == type).toList();
 	}
 
+	/** Die nächstleichtere Variante derselben Trainingsart, leer wenn es schon die leichteste ist */
+	public Optional<Workout> easierVariant(Workout workout) {
+		List<Workout> variants = variantsOf(workout.getType());
+		int index = variants.indexOf(findById(workout.getId()).orElse(workout));
+		return index > 0 ? Optional.of(variants.get(index - 1)) : Optional.empty();
+	}
+
 	/** Variante einer Trainingsart nach Steigerungsstufe (0 = leichteste); zu hohe Stufen ergeben die schwerste. */
 	public Workout variant(WorkoutType type, int step) {
 		List<Workout> variants = variantsOf(type);

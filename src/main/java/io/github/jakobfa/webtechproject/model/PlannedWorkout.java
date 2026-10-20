@@ -2,6 +2,9 @@ package io.github.jakobfa.webtechproject.model;
 
 import java.time.LocalDate;
 
+import org.hibernate.annotations.ColumnDefault;
+
+import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
 import jakarta.persistence.Enumerated;
@@ -59,6 +62,22 @@ public class PlannedWorkout {
 
 	/** Trainingslast laut intervals.icu (entspricht dem TSS) */
 	private Integer actualTss;
+
+	/** Vom Nutzer bestätigt, dass die erkannte Fahrt das geplante Training war (null = noch nicht gefragt) */
+	private Boolean activityConfirmed;
+
+	/** Wurde der Plan wegen dieser Fahrt schon angepasst? (verhindert doppelte Anpassung) */
+	@Column(nullable = false)
+	@ColumnDefault("false")
+	private boolean adaptationApplied;
+
+	// ---------- Anpassung (wenn quaelmich dieses Workout nachträglich ersetzt hat) ----------
+
+	/** Begründung, z. B. "Angepasst: Am Di, 20.10. bist du 140 TSS statt 64 gefahren." */
+	private String adjustmentNote;
+
+	/** ursprünglich geplantes Workout (Titel), falls ersetzt */
+	private String originalTitle;
 
 	public PlannedWorkout(LocalDate date, Workout workout, Integer durationMinutes, Phase phase) {
 		this.date = date;

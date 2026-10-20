@@ -21,12 +21,18 @@ import org.springframework.test.web.servlet.ResultActions;
 
 import com.jayway.jsonpath.JsonPath;
 
+import io.github.jakobfa.webtechproject.model.PlannedWorkout;
+import io.github.jakobfa.webtechproject.repository.PlannedWorkoutRepository;
+
 @SpringBootTest
 @AutoConfigureMockMvc
 class PlannedWorkoutControllerTest {
 
 	@Autowired
 	private MockMvc mockMvc;
+
+	@Autowired
+	private PlannedWorkoutRepository repository;
 
 	private String token;
 	private long plannedId;
@@ -109,6 +115,61 @@ class PlannedWorkoutControllerTest {
 	void unknownPlannedWorkoutIsNotFound() throws Exception {
 		mockMvc.perform(get("/planned-workouts/99999").header("Authorization", token))
 				.andExpect(status().isNotFound());
+	}
+
+	private ResultActions confirm(String authorization, boolean matchesPlan) throws Exception {
+		return mockMvc.perform(put("/planned-workouts/" + plannedId + "/activity-confirmation")
+				.header("Authorization", authorization)
+				.contentType(MediaType.APPLICATION_JSON)
+				.content("{ \"matchesPlan\": %s }".formatted(matchesPlan)));
+	}
+
+	/** Simuliert eine von intervals.icu importierte Fahrt */
+	private void linkRide() {
+		PlannedWorkout planned = repository.findById(plannedId).orElseThrow();
+		planned.setActivityId("i1");
+		planned.setCompleted(true);
+		planned.setActualDurationMinutes(60);
+		planned.setActualTss(500);
+		repository.save(planned);
+	}
+
+	@Test
+	void showsAssessmentOfTheImportedRide() throws Exception {
+		linkRide();
+
+		mockMvc.perform(get("/planned-workouts/" + plannedId).header("Authorization", token))
+				.andExpect(jsonPath("$.actual.assessment").value("MUCH_HARDER"))
+				.andExpect(jsonPath("$.actual.confirmed").value(nullValue()));
+	}
+
+	@Test
+	void confirmingKeepsTheWorkoutCompleted() throws Exception {
+		linkRide();
+
+		confirm(token, true)
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.completed").value(true))
+				.andExpect(jsonPath("$.actual.confirmed").value(true));
+	}
+
+	@Test
+	void otherTrainingKeepsTheRideButUnchecksTheWorkout() throws Exception {
+		linkRide();
+
+		confirm(token, false)
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.completed").value(false))
+				.andExpect(jsonPath("$.actual.confirmed").value(false))
+				.andExpect(jsonPath("$.actual.tss").value(500));
+	}
+
+	@Test
+	void confirmationNeedsALinkedRideAndTheOwner() throws Exception {
+		confirm(token, true).andExpect(status().isNotFound());
+
+		linkRide();
+		confirm(registerWithProfile(mockMvc), false).andExpect(status().isNotFound());
 	}
 
 	@Test
