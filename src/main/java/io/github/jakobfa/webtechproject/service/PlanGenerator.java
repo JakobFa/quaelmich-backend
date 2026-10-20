@@ -7,6 +7,7 @@ import java.time.LocalDate;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.EnumMap;
 import java.util.List;
 import java.util.Map;
 
@@ -29,6 +30,7 @@ import io.github.jakobfa.webtechproject.model.WorkoutType;
  * - Der Tag mit der meisten Zeit wird die lange Ausfahrt.
  * - Harte Einheiten je nach Level und Phase, nie an zwei Tagen hintereinander
  *   und nie direkt vor oder nach der langen Ausfahrt.
+ * - Harte Workouts werden innerhalb einer Phase alle zwei Wochen eine Stufe schwerer.
  * - Alle anderen Tage werden Grundlage bzw. Regeneration, so lang wie Zeit vorhanden ist.
  */
 @Component
@@ -57,6 +59,8 @@ public class PlanGenerator {
 		long weeks = Math.min(ChronoUnit.WEEKS.between(firstMonday, eventMonday) + 1, MAX_WEEKS);
 
 		List<PlannedWorkout> plan = new ArrayList<>();
+		// Zählt die Wochen je Phase, damit die harten Workouts innerhalb einer Phase schwerer werden
+		Map<Phase, Integer> weeksInPhase = new EnumMap<>(Phase.class);
 		for (int weekIndex = 0; weekIndex < weeks; weekIndex++) {
 			LocalDate monday = firstMonday.plusWeeks(weekIndex);
 			long weeksUntilEvent = ChronoUnit.WEEKS.between(monday, eventMonday);
@@ -67,7 +71,10 @@ public class PlanGenerator {
 					.filter(day -> availableMinutes(athlete, day) > 0)
 					.toList();
 
-			plan.addAll(planWeek(athlete, trainingDays, phase, weekIndex, weeks, weeksUntilEvent));
+			int step = progressionStep(athlete.getLevel(), phase, weeksInPhase.getOrDefault(phase, 0));
+			weeksInPhase.merge(phase, 1, Integer::sum);
+
+			plan.addAll(planWeek(athlete, trainingDays, phase, weekIndex, weeks, weeksUntilEvent, step));
 		}
 		return plan;
 	}
@@ -83,8 +90,27 @@ public class PlanGenerator {
 		return weekIndex % 4 == 3 ? Phase.RECOVERY : phase;
 	}
 
+	/**
+	 * Steigerungsstufe der harten Workouts: alle zwei Wochen einer Phase eine Stufe schwerer.
+	 * Die Spitze startet auf mittlerer Stufe, im Tapering bleibt es moderat.
+	 * Einsteiger und Hobbyfahrer bleiben auf den leichteren Stufen.
+	 */
+	static int progressionStep(Level level, Phase phase, int weekInPhase) {
+		int step = switch (phase) {
+			case PEAK -> 1 + weekInPhase / 2;
+			case TAPER -> 1;
+			default -> weekInPhase / 2;
+		};
+		int maxStep = switch (level) {
+			case BEGINNER -> 1;
+			case HOBBY -> 2;
+			default -> 3;
+		};
+		return Math.min(step, maxStep);
+	}
+
 	private List<PlannedWorkout> planWeek(Athlete athlete, List<LocalDate> days, Phase phase, int weekIndex,
-			long totalWeeks, long weeksUntilEvent) {
+			long totalWeeks, long weeksUntilEvent, int step) {
 		if (days.isEmpty()) {
 			return List.of();
 		}
@@ -106,7 +132,7 @@ public class PlanGenerator {
 		List<LocalDate> hardDays = new ArrayList<>();
 
 		for (WorkoutType type : hardWorkoutsFor(athlete.getLevel(), phase, weekIndex, totalWeeks, weeksUntilEvent)) {
-			Workout workout = library.findByType(type);
+			Workout workout = library.variant(type, step);
 			candidates.stream()
 					.filter(day -> !hardDays.contains(day))
 					.filter(day -> hardDays.stream().noneMatch(hard -> Math.abs(ChronoUnit.DAYS.between(hard, day)) == 1))

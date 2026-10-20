@@ -12,10 +12,29 @@ class WorkoutLibraryTest {
 	private final WorkoutLibrary library = new WorkoutLibrary();
 
 	@Test
-	void containsOneWorkoutPerType() {
+	void containsEveryWorkoutType() {
 		assertThat(library.findAll())
 				.extracting(Workout::getType)
-				.containsExactlyInAnyOrder(WorkoutType.values());
+				.contains(WorkoutType.values());
+	}
+
+	@Test
+	void variantsGetHarderStepByStep() {
+		for (WorkoutType type : WorkoutType.values()) {
+			var variants = library.variantsOf(type);
+			for (int i = 1; i < variants.size(); i++) {
+				assertThat(variants.get(i).getTss())
+						.as("%s: %s sollte härter sein als %s", type, variants.get(i).getTitle(),
+								variants.get(i - 1).getTitle())
+						.isGreaterThan(variants.get(i - 1).getTss());
+			}
+		}
+	}
+
+	@Test
+	void tooHighStepGivesHardestVariant() {
+		assertThat(library.variant(WorkoutType.SWEET_SPOT, 0).getTitle()).isEqualTo("Sweet Spot 3 × 10");
+		assertThat(library.variant(WorkoutType.SWEET_SPOT, 99).getTitle()).isEqualTo("Sweet Spot 3 × 15");
 	}
 
 	@Test

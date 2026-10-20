@@ -157,6 +157,26 @@ class PlanGeneratorTest {
 	}
 
 	@Test
+	void hardWorkoutsGetHarderWithinAPhase() {
+		List<PlannedWorkout> plan = generator.generate(athlete(Level.AMBITIOUS, MONDAY.plusWeeks(30)), MONDAY);
+
+		List<Integer> sweetSpotTss = plan.stream()
+				.map(this::workoutOf)
+				.filter(w -> w.getType() == WorkoutType.SWEET_SPOT)
+				.map(Workout::getTss)
+				.toList();
+		assertThat(sweetSpotTss).hasSizeGreaterThan(2);
+		assertThat(sweetSpotTss.getLast()).isGreaterThan(sweetSpotTss.getFirst());
+	}
+
+	@Test
+	void beginnersStayOnEasierVariants() {
+		assertThat(PlanGenerator.progressionStep(Level.BEGINNER, Phase.BASE, 10)).isEqualTo(1);
+		assertThat(PlanGenerator.progressionStep(Level.PERFORMANCE, Phase.BASE, 10)).isEqualTo(3);
+		assertThat(PlanGenerator.progressionStep(Level.HOBBY, Phase.BUILD, 0)).isZero();
+	}
+
+	@Test
 	void taperWeeksHaveLessVolumeThanBuildWeeks() {
 		LocalDate eventSunday = MONDAY.plusWeeks(15).plusDays(6);
 		List<PlannedWorkout> plan = generator.generate(athlete(Level.HOBBY, eventSunday), MONDAY);
