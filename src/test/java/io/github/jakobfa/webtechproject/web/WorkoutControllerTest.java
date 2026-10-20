@@ -1,6 +1,7 @@
 package io.github.jakobfa.webtechproject.web;
 
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -10,10 +11,12 @@ import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
 import org.springframework.context.annotation.Import;
 import org.springframework.test.web.servlet.MockMvc;
 
+import io.github.jakobfa.webtechproject.config.ClockConfig;
+import io.github.jakobfa.webtechproject.service.FitWorkoutExporter;
 import io.github.jakobfa.webtechproject.service.WorkoutLibrary;
 
 @WebMvcTest(WorkoutController.class)
-@Import(WorkoutLibrary.class)
+@Import({ WorkoutLibrary.class, FitWorkoutExporter.class, ClockConfig.class })
 class WorkoutControllerTest {
 
 	@Autowired
@@ -40,6 +43,20 @@ class WorkoutControllerTest {
 	@Test
 	void unknownWorkoutIsNotFound() throws Exception {
 		mockMvc.perform(get("/workouts/999")).andExpect(status().isNotFound());
+	}
+
+
+	@Test
+	void downloadsWorkoutAsFitFile() throws Exception {
+		mockMvc.perform(get("/workouts/5/fit"))
+				.andExpect(status().isOk())
+				.andExpect(header().string("Content-Type", "application/octet-stream"))
+				.andExpect(header().string("Content-Disposition", "attachment; filename=\"sweet-spot-3x12.fit\""));
+	}
+
+	@Test
+	void downloadOfUnknownWorkoutIsNotFound() throws Exception {
+		mockMvc.perform(get("/workouts/999/fit")).andExpect(status().isNotFound());
 	}
 
 }

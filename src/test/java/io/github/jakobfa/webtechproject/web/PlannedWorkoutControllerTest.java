@@ -4,6 +4,7 @@ import static org.hamcrest.Matchers.nullValue;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -89,6 +90,14 @@ class PlannedWorkoutControllerTest {
 		mockMvc.perform(put("/planned-workouts/" + plannedId + "/progress")
 				.contentType(MediaType.APPLICATION_JSON).content(progress(true, 11)))
 				.andExpect(status().isBadRequest());
+	}
+
+	@Test
+	void downloadsPlannedWorkoutAsFitFile() throws Exception {
+		mockMvc.perform(get("/planned-workouts/" + plannedId + "/fit"))
+				.andExpect(status().isOk())
+				.andExpect(header().string("Content-Type", "application/octet-stream"))
+				.andExpect(header().string("Content-Disposition", org.hamcrest.Matchers.endsWith(".fit\"")));
 	}
 
 	@Test

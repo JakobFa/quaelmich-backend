@@ -7,6 +7,7 @@ import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RestController;
 
+import io.github.jakobfa.webtechproject.service.FitWorkoutExporter;
 import io.github.jakobfa.webtechproject.service.PlannedWorkoutService;
 import io.github.jakobfa.webtechproject.web.dto.PlannedWorkoutResponse;
 import io.github.jakobfa.webtechproject.web.dto.WorkoutProgressRequest;
@@ -17,10 +18,13 @@ public class PlannedWorkoutController {
 
 	private final PlannedWorkoutService plannedWorkoutService;
 	private final PlanResponseMapper mapper;
+	private final FitWorkoutExporter fitExporter;
 
-	public PlannedWorkoutController(PlannedWorkoutService plannedWorkoutService, PlanResponseMapper mapper) {
+	public PlannedWorkoutController(PlannedWorkoutService plannedWorkoutService, PlanResponseMapper mapper,
+			FitWorkoutExporter fitExporter) {
 		this.plannedWorkoutService = plannedWorkoutService;
 		this.mapper = mapper;
+		this.fitExporter = fitExporter;
 	}
 
 	@GetMapping(path = "/planned-workouts/{id}")
@@ -35,6 +39,14 @@ public class PlannedWorkoutController {
 			@Valid @RequestBody WorkoutProgressRequest progress) {
 		return plannedWorkoutService.updateProgress(id, progress.completed(), progress.rating())
 				.map(planned -> ResponseEntity.ok(mapper.toResponse(planned)))
+				.orElse(ResponseEntity.notFound().build());
+	}
+
+	/** .fit-Datei mit der im Plan angepassten Dauer (z. B. "Grundlage 75 min") */
+	@GetMapping(path = "/planned-workouts/{id}/fit")
+	public ResponseEntity<byte[]> downloadFit(@PathVariable Long id) {
+		return plannedWorkoutService.findById(id)
+				.map(planned -> FitDownload.of(mapper.toResponse(planned).workout(), fitExporter))
 				.orElse(ResponseEntity.notFound().build());
 	}
 
