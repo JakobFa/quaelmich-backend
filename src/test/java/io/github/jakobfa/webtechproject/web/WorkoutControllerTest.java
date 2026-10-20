@@ -24,7 +24,7 @@ class WorkoutControllerTest {
 		mockMvc.perform(get("/workouts"))
 				.andExpect(status().isOk())
 				.andExpect(jsonPath("$.length()").value(11))
-				.andExpect(jsonPath("$[0].title").value("Lockeres Ausrollen"));
+				.andExpect(jsonPath("$[0].title").value("Lockeres Ausrollen 45 min"));
 	}
 
 	@Test

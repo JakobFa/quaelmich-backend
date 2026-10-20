@@ -25,18 +25,11 @@ import io.github.jakobfa.webtechproject.model.WorkoutType;
 public class WorkoutLibrary {
 
 	private final List<Workout> workouts = List.of(
-			new Workout(1L, "Lockeres Ausrollen", WorkoutType.RECOVERY,
-					"Ganz locker treten, damit sich die Beine von harten Tagen erholen.",
-					steps(steady(STEADY, min(45), 50))),
+			recovery(45),
 
-			new Workout(2L, "Grundlage 90", WorkoutType.ENDURANCE,
-					"Gleichmäßige Fahrt in Zone 2. Baut Ausdauer und Fettstoffwechsel auf.",
-					steps(warmup(), steady(STEADY, min(70), 68), cooldown())),
+			endurance(90),
 
-			new Workout(3L, "Lange Ausfahrt 3 h", WorkoutType.LONG_RIDE,
-					"Drei Stunden Grundlage – gewöhnt den Körper an lange Event-Distanzen.",
-					steps(ramp(WARMUP, min(15), 50, 68), steady(STEADY, min(150), 68),
-							ramp(COOLDOWN, min(15), 65, 50))),
+			longRide(180),
 
 			new Workout(4L, "Tempo 2 × 20", WorkoutType.TEMPO,
 					"Zwei lange Blöcke knapp unter der Schwelle für muskuläre Ausdauer.",
@@ -86,6 +79,57 @@ public class WorkoutLibrary {
 
 	public Optional<Workout> findById(Long id) {
 		return workouts.stream().filter(workout -> workout.getId().equals(id)).findFirst();
+	}
+
+	public Workout findByType(WorkoutType type) {
+		return workouts.stream().filter(workout -> workout.getType() == type).findFirst().orElseThrow();
+	}
+
+	/**
+	 * Liefert ein Workout aus der Bibliothek. Für Regeneration, Grundlage und lange Ausfahrt kann eine
+	 * abweichende Dauer angegeben werden, dann wird das Workout passend zur verfügbaren Zeit erzeugt.
+	 */
+	public Optional<Workout> resolve(Long id, Integer durationMinutes) {
+		if (durationMinutes == null) {
+			return findById(id);
+		}
+		return switch (id.intValue()) {
+			case 1 -> Optional.of(recovery(durationMinutes));
+			case 2 -> Optional.of(endurance(durationMinutes));
+			case 3 -> Optional.of(longRide(durationMinutes));
+			default -> findById(id);
+		};
+	}
+
+	// ---------- Workouts mit variabler Dauer ----------
+
+	public static Workout recovery(int minutes) {
+		return new Workout(1L, "Lockeres Ausrollen " + formatMinutes(minutes), WorkoutType.RECOVERY,
+				"Ganz locker treten, damit sich die Beine von harten Tagen erholen.",
+				steps(steady(STEADY, min(minutes), 50)));
+	}
+
+	public static Workout endurance(int minutes) {
+		return new Workout(2L, "Grundlage " + formatMinutes(minutes), WorkoutType.ENDURANCE,
+				"Gleichmäßige Fahrt in Zone 2. Baut Ausdauer und Fettstoffwechsel auf.",
+				steps(warmup(), steady(STEADY, min(minutes - 20), 68), cooldown()));
+	}
+
+	public static Workout longRide(int minutes) {
+		return new Workout(3L, "Lange Ausfahrt " + formatMinutes(minutes), WorkoutType.LONG_RIDE,
+				"Lange Grundlage – gewöhnt den Körper an die Belastung langer Event-Distanzen.",
+				steps(ramp(WARMUP, min(15), 50, 68), steady(STEADY, min(minutes - 30), 68),
+						ramp(COOLDOWN, min(15), 65, 50)));
+	}
+
+	/** 45 → "45 min", 180 → "3 h", 210 → "3:30 h" */
+	static String formatMinutes(int minutes) {
+		if (minutes < 120) {
+			return minutes + " min";
+		}
+		int hours = minutes / 60;
+		int rest = minutes % 60;
+		return rest == 0 ? hours + " h" : "%d:%02d h".formatted(hours, rest);
 	}
 
 	// ---------- Hilfsmethoden zum Zusammenbauen der Workouts ----------
