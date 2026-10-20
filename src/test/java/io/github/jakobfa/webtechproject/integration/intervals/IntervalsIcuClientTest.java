@@ -1,5 +1,6 @@
 package io.github.jakobfa.webtechproject.integration.intervals;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.springframework.test.web.client.match.MockRestRequestMatchers.content;
 import static org.springframework.test.web.client.match.MockRestRequestMatchers.header;
@@ -11,6 +12,7 @@ import static org.springframework.test.web.client.response.MockRestResponseCreat
 
 import java.util.List;
 
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.HttpStatus;
@@ -24,21 +26,28 @@ import org.springframework.web.client.RestClientException;
  */
 class IntervalsIcuClientTest {
 
-	private final IntervalsProperties properties = new IntervalsProperties("https://intervals.icu", "geheim", "0", 1L);
+	private static final IntervalsCredentials CREDENTIALS = new IntervalsCredentials("geheim", "i42");
+	// "API_KEY:geheim" in Base64
+	private static final String AUTH_HEADER = "Basic QVBJX0tFWTpnZWhlaW0=";
 
 	private final IntervalsEvent event = new IntervalsEvent("WORKOUT", "2026-10-21T00:00:00", "Ride",
 			"Sweet Spot 3 × 12", "Beschreibung", "sweet-spot-3x12.fit", "AAAA", "quaelmich-2026-10-21");
 
-	@Test
-	void sendsEventsWithBasicAuthToBulkEndpoint() {
-		RestClient.Builder builder = RestClient.builder();
-		MockRestServiceServer server = MockRestServiceServer.bindTo(builder).build();
-		IntervalsIcuClient client = new IntervalsIcuClient(properties, builder);
+	private MockRestServiceServer server;
+	private IntervalsIcuClient client;
 
-		server.expect(requestTo("https://intervals.icu/api/v1/athlete/0/events/bulk?upsert=true"))
+	@BeforeEach
+	void setUp() {
+		RestClient.Builder builder = RestClient.builder();
+		server = MockRestServiceServer.bindTo(builder).build();
+		client = new IntervalsIcuClient(new IntervalsProperties("https://intervals.icu", null), builder);
+	}
+
+	@Test
+	void sendsEventsWithBasicAuthToTheUsersCalendar() {
+		server.expect(requestTo("https://intervals.icu/api/v1/athlete/i42/events/bulk?upsert=true"))
 				.andExpect(method(HttpMethod.POST))
-				// "API_KEY:geheim" in Base64
-				.andExpect(header("Authorization", "Basic QVBJX0tFWTpnZWhlaW0="))
+				.andExpect(header("Authorization", AUTH_HEADER))
 				.andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_JSON))
 				.andExpect(jsonPath("$[0].category").value("WORKOUT"))
 				.andExpect(jsonPath("$[0].start_date_local").value("2026-10-21T00:00:00"))
@@ -46,21 +55,35 @@ class IntervalsIcuClientTest {
 				.andExpect(jsonPath("$[0].external_id").value("quaelmich-2026-10-21"))
 				.andRespond(withSuccess("[]", MediaType.APPLICATION_JSON));
 
-		client.upsertEvents(List.of(event));
+		client.upsertEvents(CREDENTIALS, List.of(event));
 
 		server.verify();
 	}
 
 	@Test
-	void reportsErrorsFromIntervals() {
-		RestClient.Builder builder = RestClient.builder();
-		MockRestServiceServer server = MockRestServiceServer.bindTo(builder).build();
-		IntervalsIcuClient client = new IntervalsIcuClient(properties, builder);
+	void verifyAcceptsWorkingCredentials() {
+		server.expect(requestTo("https://intervals.icu/api/v1/athlete/i42"))
+				.andExpect(method(HttpMethod.GET))
+				.andExpect(header("Authorization", AUTH_HEADER))
+				.andRespond(withSuccess("{}", MediaType.APPLICATION_JSON));
 
-		server.expect(requestTo("https://intervals.icu/api/v1/athlete/0/events/bulk?upsert=true"))
-				.andRespond(withStatus(HttpStatus.UNAUTHORIZED));
+		assertThat(client.verify(CREDENTIALS)).isTrue();
+	}
 
-		assertThatThrownBy(() -> client.upsertEvents(List.of(event))).isInstanceOf(RestClientException.class);
+	@Test
+	void verifyRejectsWrongCredentials() {
+		server.expect(requestTo("https://intervals.icu/api/v1/athlete/i42")).andRespond(withStatus(HttpStatus.UNAUTHORIZED));
+
+		assertThat(client.verify(CREDENTIALS)).isFalse();
+	}
+
+	@Test
+	void serverErrorsAreReported() {
+		server.expect(requestTo("https://intervals.icu/api/v1/athlete/i42/events/bulk?upsert=true"))
+				.andRespond(withStatus(HttpStatus.INTERNAL_SERVER_ERROR));
+
+		assertThatThrownBy(() -> client.upsertEvents(CREDENTIALS, List.of(event)))
+				.isInstanceOf(RestClientException.class);
 	}
 
 }

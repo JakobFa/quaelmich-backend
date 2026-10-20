@@ -24,16 +24,14 @@ public class IntervalsSyncService {
 	public record SyncResult(int uploaded, LocalDate from, LocalDate to) {
 	}
 
-	private final IntervalsProperties properties;
 	private final IntervalsIcuClient client;
 	private final TrainingPlanService planService;
 	private final WorkoutLibrary library;
 	private final FitWorkoutExporter fitExporter;
 	private final Clock clock;
 
-	public IntervalsSyncService(IntervalsProperties properties, IntervalsIcuClient client,
-			TrainingPlanService planService, WorkoutLibrary library, FitWorkoutExporter fitExporter, Clock clock) {
-		this.properties = properties;
+	public IntervalsSyncService(IntervalsIcuClient client, TrainingPlanService planService, WorkoutLibrary library,
+			FitWorkoutExporter fitExporter, Clock clock) {
 		this.client = client;
 		this.planService = planService;
 		this.library = library;
@@ -41,12 +39,8 @@ public class IntervalsSyncService {
 		this.clock = clock;
 	}
 
-	public boolean isAvailableFor(Long athleteId) {
-		return properties.allows(athleteId);
-	}
-
-	/** Leer, wenn der Athlet (noch) keinen Plan hat. */
-	public Optional<SyncResult> syncUpcoming(Long athleteId, int days) {
+	/** Schreibt die Workouts der nächsten Tage in den Kalender des Nutzers. Leer, wenn es (noch) keinen Plan gibt. */
+	public Optional<SyncResult> syncUpcoming(IntervalsCredentials credentials, Long athleteId, int days) {
 		LocalDate from = LocalDate.now(clock);
 		LocalDate to = from.plusDays(days - 1L);
 
@@ -56,7 +50,7 @@ public class IntervalsSyncService {
 					.map(this::toEvent)
 					.toList();
 			if (!events.isEmpty()) {
-				client.upsertEvents(events);
+				client.upsertEvents(credentials, events);
 			}
 			return new SyncResult(events.size(), from, to);
 		});

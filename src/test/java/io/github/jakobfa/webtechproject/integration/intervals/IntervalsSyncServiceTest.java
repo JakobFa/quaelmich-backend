@@ -2,6 +2,7 @@ package io.github.jakobfa.webtechproject.integration.intervals;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -37,9 +38,10 @@ class IntervalsSyncServiceTest {
 	private final IntervalsIcuClient client = mock(IntervalsIcuClient.class);
 	private final TrainingPlanService planService = mock(TrainingPlanService.class);
 	private final WorkoutLibrary library = new WorkoutLibrary();
-	private final IntervalsSyncService service = new IntervalsSyncService(
-			new IntervalsProperties("https://intervals.icu", "geheim", "0", 7L),
-			client, planService, library, new FitWorkoutExporter(CLOCK), CLOCK);
+	private final IntervalsSyncService service = new IntervalsSyncService(client, planService, library,
+			new FitWorkoutExporter(CLOCK), CLOCK);
+
+	private static final IntervalsCredentials CREDENTIALS = new IntervalsCredentials("geheim", "i42");
 
 	private TrainingPlan planWith(LocalDate... dates) {
 		TrainingPlan plan = new TrainingPlan(new Athlete(), TODAY.minusDays(7));
@@ -52,14 +54,8 @@ class IntervalsSyncServiceTest {
 	@SuppressWarnings("unchecked")
 	private List<IntervalsEvent> sentEvents() {
 		ArgumentCaptor<List<IntervalsEvent>> captor = ArgumentCaptor.forClass(List.class);
-		verify(client).upsertEvents(captor.capture());
+		verify(client).upsertEvents(eq(CREDENTIALS), captor.capture());
 		return captor.getValue();
-	}
-
-	@Test
-	void onlyTheConfiguredProfileMaySync() {
-		assertThat(service.isAvailableFor(7L)).isTrue();
-		assertThat(service.isAvailableFor(8L)).isFalse();
 	}
 
 	@Test
@@ -67,7 +63,7 @@ class IntervalsSyncServiceTest {
 		when(planService.findByAthlete(7L)).thenReturn(Optional.of(
 				planWith(TODAY.minusDays(1), TODAY, TODAY.plusDays(13), TODAY.plusDays(14))));
 
-		var result = service.syncUpcoming(7L, 14).orElseThrow();
+		var result = service.syncUpcoming(CREDENTIALS, 7L, 14).orElseThrow();
 
 		assertThat(result.uploaded()).isEqualTo(2);
 		assertThat(result.to()).isEqualTo(TODAY.plusDays(13));
@@ -79,7 +75,7 @@ class IntervalsSyncServiceTest {
 	void sendsAValidFitFileAsBase64() {
 		when(planService.findByAthlete(7L)).thenReturn(Optional.of(planWith(TODAY)));
 
-		service.syncUpcoming(7L, 14);
+		service.syncUpcoming(CREDENTIALS, 7L, 14);
 
 		IntervalsEvent event = sentEvents().getFirst();
 		assertThat(event.category()).isEqualTo("WORKOUT");
@@ -94,15 +90,15 @@ class IntervalsSyncServiceTest {
 	void doesNotCallIntervalsWhenNothingIsPlanned() {
 		when(planService.findByAthlete(7L)).thenReturn(Optional.of(planWith(TODAY.plusDays(30))));
 
-		assertThat(service.syncUpcoming(7L, 14).orElseThrow().uploaded()).isZero();
-		verify(client, never()).upsertEvents(any());
+		assertThat(service.syncUpcoming(CREDENTIALS, 7L, 14).orElseThrow().uploaded()).isZero();
+		verify(client, never()).upsertEvents(any(), any());
 	}
 
 	@Test
 	void isEmptyWithoutPlan() {
 		when(planService.findByAthlete(7L)).thenReturn(Optional.empty());
 
-		assertThat(service.syncUpcoming(7L, 14)).isEmpty();
+		assertThat(service.syncUpcoming(CREDENTIALS, 7L, 14)).isEmpty();
 	}
 
 }
