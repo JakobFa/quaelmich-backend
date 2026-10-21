@@ -86,7 +86,7 @@ public class ActivityImportService {
 				.orElse(List.of());
 		Optional<List<RecordedRide>> stravaRides = strava
 				? stravaService.recentRides(userId, from, today, athlete.get().getFtp(),
-						athlete.get().getThresholdHeartRate())
+						athlete.get().getEffectiveThresholdHeartRate())
 				: Optional.empty();
 		List<RecordedRide> rides = merge(intervalsRides, stravaRides.orElse(List.of()));
 

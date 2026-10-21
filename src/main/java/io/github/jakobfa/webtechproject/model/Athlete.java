@@ -47,13 +47,30 @@ public class Athlete {
 	@Max(600)
 	private Integer ftp;
 
+	/** Maximalpuls in Schlägen pro Minute, optional – Grundlage für den Puls-TSS */
+	@Min(120)
+	@Max(230)
+	private Integer maxHeartRate;
+
 	/**
-	 * Schwellenpuls (LTHR) in Schlägen pro Minute, optional.
-	 * Damit wird für Fahrten ohne Wattmesser ein TSS aus dem Puls geschätzt.
+	 * Schwellenpuls (LTHR), optional – nur nötig, wenn er aus einem Test genau bekannt ist.
+	 * Sonst gilt 90 % des Maximalpulses.
 	 */
 	@Min(100)
 	@Max(220)
 	private Integer thresholdHeartRate;
+
+	/** Schwellenpuls ≈ 90 % des Maximalpulses (Faustregel) */
+	public static final double THRESHOLD_SHARE_OF_MAX = 0.9;
+
+	/** Eingetragener Schwellenpuls, sonst 90 % des Maximalpulses; null, wenn beides fehlt */
+	@JsonIgnore
+	public Integer getEffectiveThresholdHeartRate() {
+		if (thresholdHeartRate != null) {
+			return thresholdHeartRate;
+		}
+		return maxHeartRate == null ? null : (int) Math.round(maxHeartRate * THRESHOLD_SHARE_OF_MAX);
+	}
 
 	@NotNull
 	@DecimalMin("30")

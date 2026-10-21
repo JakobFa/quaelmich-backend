@@ -120,7 +120,7 @@ class StravaControllerTest {
 	}
 
 	@Test
-	void suggestsFtpWeightAndThresholdHeartRateFromStrava() throws Exception {
+	void suggestsFtpWeightAndMaxHeartRateFromStrava() throws Exception {
 		String token = registerNewUser(mockMvc);
 		stravaAcceptsTheCode();
 		when(client.profile("neu")).thenReturn(new StravaProfile(260, 71.84));
@@ -135,12 +135,12 @@ class StravaControllerTest {
 				.andExpect(jsonPath("$.profileAccess").value(true))
 				.andExpect(jsonPath("$.ftp").value(260))
 				.andExpect(jsonPath("$.weightKg").value(71.8))
-				.andExpect(jsonPath("$.thresholdHeartRate").value(168))
-				.andExpect(jsonPath("$.thresholdSource").value("ZONES"));
+				.andExpect(jsonPath("$.maxHeartRate").value(189))
+				.andExpect(jsonPath("$.maxHeartRateSource").value("ZONES"));
 	}
 
 	@Test
-	void withoutHeartRateZonesEstimatesFromTheHighestHeartRate() throws Exception {
+	void withoutHeartRateZonesTakesTheHighestHeartRate() throws Exception {
 		String token = registerNewUser(mockMvc);
 		stravaAcceptsTheCode();
 		when(client.profile("neu")).thenReturn(new StravaProfile(0, 0.0));
@@ -153,9 +153,8 @@ class StravaControllerTest {
 		mockMvc.perform(get("/me/strava/profile").header("Authorization", token))
 				.andExpect(jsonPath("$.ftp").doesNotExist())
 				.andExpect(jsonPath("$.weightKg").doesNotExist())
-				.andExpect(jsonPath("$.maxHeartRateObserved").value(190))
-				.andExpect(jsonPath("$.thresholdHeartRate").value(171))
-				.andExpect(jsonPath("$.thresholdSource").value("ACTIVITIES"));
+				.andExpect(jsonPath("$.maxHeartRate").value(190))
+				.andExpect(jsonPath("$.maxHeartRateSource").value("ACTIVITIES"));
 	}
 
 	@Test

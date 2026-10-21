@@ -31,27 +31,28 @@ public class StravaService {
 	/**
 	 * Vorschlag fürs eigene Profil aus Strava. Werte sind null, wenn sie bei Strava nicht eingetragen sind.
 	 *
-	 * @param profileAccess        false = ohne Erlaubnis profile:read_all verbunden → neu verbinden
-	 * @param thresholdHeartRate   geschätzter Schwellenpuls
-	 * @param thresholdSource      ZONES (Strava-Pulszonen) oder ACTIVITIES (höchster Puls der letzten 90 Tage)
-	 * @param maxHeartRateObserved höchster gemessener Puls, wenn aus den Aktivitäten geschätzt wurde
+	 * @param profileAccess      false = ohne Erlaubnis profile:read_all verbunden → neu verbinden
+	 * @param maxHeartRate       Maximalpuls
+	 * @param maxHeartRateSource ZONES (aus den Strava-Pulszonen zurückgerechnet) oder ACTIVITIES (höchster
+	 *                           gemessener Puls der letzten 90 Tage)
 	 */
-	public record ProfileSuggestion(boolean profileAccess, Integer ftp, Double weightKg, Integer thresholdHeartRate,
-			ThresholdSource thresholdSource, Integer maxHeartRateObserved) {
+	public record ProfileSuggestion(boolean profileAccess, Integer ftp, Double weightKg, Integer maxHeartRate,
+			MaxHeartRateSource maxHeartRateSource) {
 
 		static ProfileSuggestion noAccess() {
-			return new ProfileSuggestion(false, null, null, null, null, null);
+			return new ProfileSuggestion(false, null, null, null, null);
 		}
 	}
 
-	public enum ThresholdSource {
+	public enum MaxHeartRateSource {
 		ZONES, ACTIVITIES
 	}
 
+	/** Strava legt seine Standard-Pulszonen bei diesen Anteilen des Maximalpulses fest (Beginn Zone 2 bis 5) */
+	private static final double[] STRAVA_ZONE_SHARES = { 0.65, 0.81, 0.89, 0.97 };
+
 	/** So weit zurück wird nach dem höchsten Puls gesucht */
 	static final int MAX_HEART_RATE_DAYS = 90;
-	/** Schwellenpuls ≈ 90 % des Maximalpulses */
-	static final double THRESHOLD_SHARE_OF_MAX = 0.9;
 
 	/** Wird geworfen, wenn die Strava-Anbindung auf dem Server nicht eingerichtet ist. */
 	public static class NotConfiguredException extends RuntimeException {
@@ -206,18 +207,17 @@ public class StravaService {
 
 		Integer fromZones = null;
 		try {
-			fromZones = thresholdFromZones(client.zones(accessToken));
+			fromZones = maxHeartRateFromZones(client.zones(accessToken));
 		} catch (RestClientException e) {
 			log.warn("Strava-Pulszonen für Nutzer {} nicht lesbar: {}", userId, e.getMessage());
 		}
 		if (fromZones != null) {
-			return Optional.of(new ProfileSuggestion(true, ftp, weight, fromZones, ThresholdSource.ZONES, null));
+			return Optional.of(new ProfileSuggestion(true, ftp, weight, fromZones, MaxHeartRateSource.ZONES));
 		}
-		// ohne Pulszonen bei Strava: höchster gemessener Puls der letzten Wochen
+		// eigene Zonen oder keine: höchster gemessener Puls der letzten Wochen
 		Integer maxSeen = maxHeartRateSeen(accessToken);
-		Integer fromActivities = maxSeen == null ? null : (int) Math.round(maxSeen * THRESHOLD_SHARE_OF_MAX);
-		return Optional.of(new ProfileSuggestion(true, ftp, weight, fromActivities,
-				fromActivities == null ? null : ThresholdSource.ACTIVITIES, maxSeen));
+		return Optional.of(new ProfileSuggestion(true, ftp, weight, maxSeen,
+				maxSeen == null ? null : MaxHeartRateSource.ACTIVITIES));
 	}
 
 	/** Höchster Puls aller Aktivitäten (auch Läufe) der letzten 90 Tage; null ohne Pulsdaten */
@@ -233,17 +233,25 @@ public class StravaService {
 	}
 
 	/**
-	 * Strava teilt den Puls in 5 Zonen; Zone 4 heißt dort "Schwelle". Ihre Untergrenze liegt bei den
-	 * Standardzonen bei ca. 89 % des Maximalpulses – nah am Schwellenpuls (ca. 90 %).
-	 * Genauer ist ein eigener Test.
+	 * Rechnet den Maximalpuls aus Stravas Standardzonen zurück: Die Zonen 2–5 beginnen dort bei 65, 81, 89 und
+	 * 97 % des Maximalpulses (bei 189 also 123/153/168/183). Bei eigenen Zonen geht das nicht → null.
 	 */
-	static Integer thresholdFromZones(StravaClient.Zones zones) {
+	static Integer maxHeartRateFromZones(StravaClient.Zones zones) {
 		if (zones == null || zones.heartRate() == null || zones.heartRate().zones() == null
-				|| zones.heartRate().zones().size() < 4) {
+				|| Boolean.TRUE.equals(zones.heartRate().customZones())
+				|| zones.heartRate().zones().size() != STRAVA_ZONE_SHARES.length + 1) {
 			return null;
 		}
-		Integer lowerBound = zones.heartRate().zones().get(3).min();
-		return lowerBound != null && lowerBound >= 100 && lowerBound <= 220 ? lowerBound : null;
+		double sum = 0;
+		for (int i = 0; i < STRAVA_ZONE_SHARES.length; i++) {
+			Integer start = zones.heartRate().zones().get(i + 1).min();
+			if (start == null || start <= 0) {
+				return null;
+			}
+			sum += start / STRAVA_ZONE_SHARES[i];
+		}
+		int max = (int) Math.round(sum / STRAVA_ZONE_SHARES.length);
+		return max >= 120 && max <= 230 ? max : null;
 	}
 
 	/** Liefert einen gültigen Access-Token; null, wenn der Nutzer den Zugriff bei Strava entzogen hat. */
