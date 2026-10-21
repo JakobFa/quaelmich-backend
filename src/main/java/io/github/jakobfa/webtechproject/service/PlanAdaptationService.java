@@ -102,6 +102,10 @@ public class PlanAdaptationService {
 				: library.easierVariant(original).orElse(null);
 
 		next.setOriginalTitle(original.getTitle());
+		if (next.getOriginalWorkoutId() == null) {
+			next.setOriginalWorkoutId(next.getWorkoutId());
+			next.setOriginalDurationMinutes(next.getDurationMinutes());
+		}
 		if (replacement == null) {
 			int minutes = Math.min(original.getDurationInMinutes(), MAX_RECOVERY_MINUTES);
 			next.setWorkoutId(WorkoutLibrary.recovery(minutes).getId());

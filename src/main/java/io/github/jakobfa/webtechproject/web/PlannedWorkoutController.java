@@ -1,8 +1,10 @@
 package io.github.jakobfa.webtechproject.web;
 
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.oauth2.jwt.Jwt;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PutMapping;
@@ -12,11 +14,17 @@ import org.springframework.web.bind.annotation.RestController;
 import io.github.jakobfa.webtechproject.auth.CurrentUser;
 import io.github.jakobfa.webtechproject.model.Athlete;
 import io.github.jakobfa.webtechproject.model.HeartRateTargets;
+import io.github.jakobfa.webtechproject.integration.intervals.IntervalsAutoSyncService;
+import io.github.jakobfa.webtechproject.model.PlannedWorkout;
 import io.github.jakobfa.webtechproject.service.FitWorkoutExporter;
+import io.github.jakobfa.webtechproject.service.WorkoutCustomizationService;
+import io.github.jakobfa.webtechproject.service.WorkoutCustomizationService.Direction;
+import io.github.jakobfa.webtechproject.service.WorkoutCustomizationService.NotPossibleException;
 import io.github.jakobfa.webtechproject.service.PlannedWorkoutService;
 import io.github.jakobfa.webtechproject.web.dto.PlannedWorkoutResponse;
 import io.github.jakobfa.webtechproject.web.dto.WorkoutProgressRequest;
 import jakarta.validation.Valid;
+import jakarta.validation.constraints.NotNull;
 
 @RestController
 public class PlannedWorkoutController {
@@ -24,12 +32,57 @@ public class PlannedWorkoutController {
 	private final PlannedWorkoutService plannedWorkoutService;
 	private final PlanResponseMapper mapper;
 	private final FitWorkoutExporter fitExporter;
+	private final WorkoutCustomizationService customization;
+	private final IntervalsAutoSyncService autoSync;
 
 	public PlannedWorkoutController(PlannedWorkoutService plannedWorkoutService, PlanResponseMapper mapper,
-			FitWorkoutExporter fitExporter) {
+			FitWorkoutExporter fitExporter, WorkoutCustomizationService customization,
+			IntervalsAutoSyncService autoSync) {
 		this.plannedWorkoutService = plannedWorkoutService;
 		this.mapper = mapper;
 		this.fitExporter = fitExporter;
+		this.customization = customization;
+		this.autoSync = autoSync;
+	}
+
+	public record AdjustmentRequest(@NotNull Direction direction) {
+	}
+
+	/**
+	 * Workout anpassen: leichter, härter, kürzer, länger.
+	 * 409, wenn das gerade nicht geht (z. B. schon erledigt oder leichter als Ausrollen).
+	 */
+	@PutMapping(path = "/planned-workouts/{id}/adjustment")
+	public ResponseEntity<PlannedWorkoutResponse> adjust(@AuthenticationPrincipal Jwt jwt, @PathVariable Long id,
+			@Valid @RequestBody AdjustmentRequest request) {
+		Long userId = CurrentUser.id(jwt);
+		try {
+			return customization.adjust(id, userId, request.direction())
+					.map(planned -> syncedResponse(userId, planned))
+					.orElse(ResponseEntity.notFound().build());
+		} catch (NotPossibleException e) {
+			return ResponseEntity.status(HttpStatus.CONFLICT).build();
+		}
+	}
+
+	/** Zurück zum ursprünglich geplanten Workout */
+	@DeleteMapping(path = "/planned-workouts/{id}/adjustment")
+	public ResponseEntity<PlannedWorkoutResponse> resetAdjustment(@AuthenticationPrincipal Jwt jwt,
+			@PathVariable Long id) {
+		Long userId = CurrentUser.id(jwt);
+		try {
+			return customization.reset(id, userId)
+					.map(planned -> syncedResponse(userId, planned))
+					.orElse(ResponseEntity.notFound().build());
+		} catch (NotPossibleException e) {
+			return ResponseEntity.status(HttpStatus.CONFLICT).build();
+		}
+	}
+
+	/** Geändertes Workout gleich an intervals.icu senden, falls Auto-Sync an ist */
+	private ResponseEntity<PlannedWorkoutResponse> syncedResponse(Long userId, PlannedWorkout planned) {
+		autoSync.syncUserIfEnabled(userId);
+		return ResponseEntity.ok(mapper.toResponse(planned));
 	}
 
 	@GetMapping(path = "/planned-workouts/{id}")

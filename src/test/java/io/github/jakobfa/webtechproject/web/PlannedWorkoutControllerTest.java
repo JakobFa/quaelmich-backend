@@ -3,6 +3,7 @@ package io.github.jakobfa.webtechproject.web;
 import static io.github.jakobfa.webtechproject.web.TestUsers.registerWithProfile;
 import static org.hamcrest.Matchers.endsWith;
 import static org.hamcrest.Matchers.nullValue;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
@@ -170,6 +171,67 @@ class PlannedWorkoutControllerTest {
 
 		linkRide();
 		confirm(registerWithProfile(mockMvc), false).andExpect(status().isNotFound());
+	}
+
+	private ResultActions adjust(String direction) throws Exception {
+		return mockMvc.perform(put("/planned-workouts/" + plannedId + "/adjustment")
+				.header("Authorization", token)
+				.contentType(MediaType.APPLICATION_JSON)
+				.content("{ \"direction\": \"%s\" }".formatted(direction)));
+	}
+
+	/** ein offenes Workout, das sich in alle Richtungen ändern lässt (Grundlage 90 min) */
+	private void makeItEndurance() {
+		PlannedWorkout planned = repository.findById(plannedId).orElseThrow();
+		planned.setWorkoutId(2L);
+		planned.setDurationMinutes(90);
+		repository.save(planned);
+	}
+
+	@Test
+	void shorterWorkoutCanBeResetToTheOriginal() throws Exception {
+		makeItEndurance();
+
+		adjust("SHORTER")
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.workout.durationInMinutes").value(75))
+				.andExpect(jsonPath("$.adjustment.note").value("Von dir angepasst: kürzer."))
+				.andExpect(jsonPath("$.adjustment.originalTitle").value("Grundlage 90 min"))
+				.andExpect(jsonPath("$.options.reset").value(true));
+
+		mockMvc.perform(delete("/planned-workouts/" + plannedId + "/adjustment").header("Authorization", token))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.workout.durationInMinutes").value(90))
+				.andExpect(jsonPath("$.adjustment").value(nullValue()))
+				.andExpect(jsonPath("$.options.reset").value(false));
+	}
+
+	@Test
+	void goingBackAndForthEndsAtTheOriginal() throws Exception {
+		makeItEndurance();
+		adjust("LONGER");
+
+		adjust("SHORTER")
+				.andExpect(jsonPath("$.workout.durationInMinutes").value(90))
+				.andExpect(jsonPath("$.adjustment").value(nullValue()));
+	}
+
+	@Test
+	void completedWorkoutsCannotBeAdjusted() throws Exception {
+		makeItEndurance();
+		saveProgress(token, true, 5);
+
+		adjust("HARDER").andExpect(status().isConflict());
+		mockMvc.perform(get("/planned-workouts/" + plannedId).header("Authorization", token))
+				.andExpect(jsonPath("$.options.harder").value(false));
+	}
+
+	@Test
+	void otherUsersCannotAdjust() throws Exception {
+		String other = registerWithProfile(mockMvc);
+		mockMvc.perform(put("/planned-workouts/" + plannedId + "/adjustment").header("Authorization", other)
+				.contentType(MediaType.APPLICATION_JSON).content("{ \"direction\": \"EASIER\" }"))
+				.andExpect(status().isNotFound());
 	}
 
 	@Test

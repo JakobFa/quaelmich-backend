@@ -84,6 +84,11 @@ public class PlannedWorkout {
 	/** ursprünglich geplantes Workout (Titel), falls ersetzt */
 	private String originalTitle;
 
+	/** ursprünglich geplantes Workout, um eine Anpassung rückgängig machen zu können */
+	private Long originalWorkoutId;
+
+	private Integer originalDurationMinutes;
+
 	public PlannedWorkout(LocalDate date, Workout workout, Integer durationMinutes, Phase phase) {
 		this.date = date;
 		this.workoutId = workout.getId();

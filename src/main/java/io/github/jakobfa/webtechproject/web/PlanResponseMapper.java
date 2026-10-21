@@ -12,6 +12,7 @@ import io.github.jakobfa.webtechproject.model.TrainingPlan;
 import io.github.jakobfa.webtechproject.repository.ExtraRideRepository;
 import io.github.jakobfa.webtechproject.service.EventProfile;
 import io.github.jakobfa.webtechproject.service.PlanAdaptationService;
+import io.github.jakobfa.webtechproject.service.WorkoutCustomizationService;
 import io.github.jakobfa.webtechproject.service.WorkoutLibrary;
 import io.github.jakobfa.webtechproject.web.dto.ExtraRideResponse;
 import io.github.jakobfa.webtechproject.web.dto.PlannedWorkoutResponse;
@@ -26,12 +27,14 @@ public class PlanResponseMapper {
 	private final WorkoutLibrary workoutLibrary;
 	private final PlanAdaptationService adaptation;
 	private final ExtraRideRepository extraRideRepository;
+	private final WorkoutCustomizationService customization;
 
 	public PlanResponseMapper(WorkoutLibrary workoutLibrary, PlanAdaptationService adaptation,
-			ExtraRideRepository extraRideRepository) {
+			ExtraRideRepository extraRideRepository, WorkoutCustomizationService customization) {
 		this.workoutLibrary = workoutLibrary;
 		this.adaptation = adaptation;
 		this.extraRideRepository = extraRideRepository;
+		this.customization = customization;
 	}
 
 	public TrainingPlanResponse toResponse(TrainingPlan plan) {
@@ -62,7 +65,8 @@ public class PlanResponseMapper {
 		var adjustment = planned.getAdjustmentNote() == null ? null
 				: new PlannedWorkoutResponse.Adjustment(planned.getAdjustmentNote(), planned.getOriginalTitle());
 		return new PlannedWorkoutResponse(planned.getId(), planned.getDate(), planned.getPhase(),
-				planned.isCompleted(), planned.getRating(), workout, actual, adjustment);
+				planned.isCompleted(), planned.getRating(), workout, actual, adjustment,
+				customization.optionsFor(planned));
 	}
 
 }
