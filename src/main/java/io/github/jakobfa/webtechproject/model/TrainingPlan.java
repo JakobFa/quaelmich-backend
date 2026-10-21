@@ -47,4 +47,9 @@ public class TrainingPlan {
 		workouts.add(workout);
 	}
 
+	/** Nach Änderungen wieder nach Datum sortieren (wie beim Laden mit @OrderBy) */
+	public void sortByDate() {
+		workouts.sort(java.util.Comparator.comparing(PlannedWorkout::getDate));
+	}
+
 }

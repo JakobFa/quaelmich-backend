@@ -4,7 +4,9 @@ import static io.github.jakobfa.webtechproject.web.TestUsers.registerNewUser;
 import static io.github.jakobfa.webtechproject.web.TestUsers.registerWithProfile;
 import static org.hamcrest.Matchers.greaterThan;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -13,11 +15,14 @@ import java.time.LocalDate;
 import java.time.ZoneId;
 import java.time.temporal.TemporalAdjusters;
 import java.util.Base64;
+import java.util.List;
+import java.util.Map;
 
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
+import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
 
 import com.jayway.jsonpath.JsonPath;
@@ -58,6 +63,39 @@ class TrainingPlanControllerTest {
 
 		mockMvc.perform(get("/me/plan").header("Authorization", token))
 				.andExpect(jsonPath("$.extraRides[0].date").value(monday.toString()));
+	}
+
+	@Test
+	void changedAvailabilityAdjustsThePlanButKeepsWhatIsDone() throws Exception {
+		String token = registerWithProfile(mockMvc);
+		String before = mockMvc.perform(post("/me/plan").header("Authorization", token)).andReturn().getResponse()
+				.getContentAsString();
+		Number planId = JsonPath.read(before, "$.id");
+		Number doneId = JsonPath.read(before, "$.workouts[0].id");
+		mockMvc.perform(put("/planned-workouts/" + doneId + "/progress").header("Authorization", token)
+				.contentType(MediaType.APPLICATION_JSON).content("{ \"completed\": true, \"rating\": 6 }"));
+
+		// ab jetzt nur noch samstags Zeit
+		String onlySaturday = TestUsers.athleteJson(240, "Testevent", LocalDate.now().plusWeeks(10))
+				.replaceAll("\"availability\":\\s*\\{[^}]*\\}", "\"availability\": { \"monday\": 0, "
+						+ "\"tuesday\": 0, \"wednesday\": 0, \"thursday\": 0, \"friday\": 0, \"saturday\": 3, "
+						+ "\"sunday\": 0 }");
+		mockMvc.perform(put("/me/athlete").header("Authorization", token)
+				.contentType(MediaType.APPLICATION_JSON).content(onlySaturday)).andExpect(status().isOk());
+		String after = mockMvc.perform(post("/me/plan").header("Authorization", token)).andReturn().getResponse()
+				.getContentAsString();
+
+		assertThat((Number) JsonPath.read(after, "$.id")).as("derselbe Plan").isEqualTo(planId);
+		List<Map<String, Object>> workouts = JsonPath.read(after, "$.workouts");
+		assertThat(workouts).filteredOn(w -> doneId.equals(w.get("id"))).singleElement()
+				.satisfies(w -> {
+					assertThat(w.get("completed")).isEqualTo(true);
+					assertThat(w.get("rating")).isEqualTo(6);
+				});
+		assertThat(workouts).filteredOn(w -> !doneId.equals(w.get("id")))
+				.isNotEmpty()
+				.allSatisfy(w -> assertThat(LocalDate.parse((String) w.get("date")).getDayOfWeek())
+						.isEqualTo(DayOfWeek.SATURDAY));
 	}
 
 	@Test
