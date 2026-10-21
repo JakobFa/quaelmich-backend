@@ -34,6 +34,9 @@ public class AppUser {
 
 	private Instant createdAt;
 
+	/** Zeitpunkt der letzten Passwort-Änderung – davor ausgestellte Anmeldungen (JWTs) gelten nicht mehr */
+	private Instant passwordChangedAt;
+
 	public AppUser(String email, String passwordHash, Instant createdAt) {
 		this.email = email;
 		this.passwordHash = passwordHash;

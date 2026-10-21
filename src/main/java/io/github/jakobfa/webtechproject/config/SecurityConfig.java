@@ -18,6 +18,12 @@ import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.oauth2.jose.jws.MacAlgorithm;
+import org.springframework.security.oauth2.core.DelegatingOAuth2TokenValidator;
+import org.springframework.security.oauth2.core.OAuth2Error;
+import org.springframework.security.oauth2.core.OAuth2TokenValidator;
+import org.springframework.security.oauth2.core.OAuth2TokenValidatorResult;
+import org.springframework.security.oauth2.jwt.Jwt;
+import org.springframework.security.oauth2.jwt.JwtValidators;
 import org.springframework.security.oauth2.jwt.JwtDecoder;
 import org.springframework.security.oauth2.jwt.JwtEncoder;
 import org.springframework.security.oauth2.jwt.NimbusJwtDecoder;
@@ -25,6 +31,8 @@ import org.springframework.security.oauth2.jwt.NimbusJwtEncoder;
 import org.springframework.security.web.SecurityFilterChain;
 
 import com.nimbusds.jose.jwk.source.ImmutableSecret;
+
+import io.github.jakobfa.webtechproject.repository.AppUserRepository;
 
 /**
  * Zugriffsschutz: Ohne Login sind nur Registrierung, Anmeldung und die Workout-Bibliothek erreichbar.
@@ -47,7 +55,8 @@ public class SecurityConfig {
 				.sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
 				.authorizeHttpRequests(auth -> auth
 						.requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
-						.requestMatchers(HttpMethod.POST, "/auth/register", "/auth/login").permitAll()
+						.requestMatchers(HttpMethod.POST, "/auth/register", "/auth/login", "/auth/password-reset",
+								"/auth/password-reset/confirm").permitAll()
 						// prüft selbst ein eigenes Geheimnis (X-Sync-Token), siehe InternalSyncController
 						.requestMatchers(HttpMethod.POST, "/internal/intervals/sync-all").permitAll()
 						.requestMatchers(HttpMethod.GET, "/workouts", "/workouts/**").permitAll()
@@ -84,9 +93,25 @@ public class SecurityConfig {
 		return new NimbusJwtEncoder(new ImmutableSecret<>(jwtSigningKey));
 	}
 
+	/**
+	 * Prüft Signatur und Ablauf – und zusätzlich, dass das Token nicht vor der letzten Passwort-Änderung
+	 * ausgestellt wurde. So sind nach "Passwort vergessen" alle alten Anmeldungen ungültig.
+	 */
 	@Bean
-	public JwtDecoder jwtDecoder(SecretKey jwtSigningKey) {
-		return NimbusJwtDecoder.withSecretKey(jwtSigningKey).macAlgorithm(MacAlgorithm.HS256).build();
+	public JwtDecoder jwtDecoder(SecretKey jwtSigningKey, AppUserRepository userRepository) {
+		NimbusJwtDecoder decoder = NimbusJwtDecoder.withSecretKey(jwtSigningKey).macAlgorithm(MacAlgorithm.HS256)
+				.build();
+		OAuth2TokenValidator<Jwt> notBeforePasswordChange = jwt -> {
+			var user = userRepository.findById(Long.valueOf(jwt.getSubject()));
+			boolean valid = user.isPresent() && (user.get().getPasswordChangedAt() == null
+					|| (jwt.getIssuedAt() != null && !jwt.getIssuedAt().isBefore(user.get().getPasswordChangedAt())));
+			return valid ? OAuth2TokenValidatorResult.success()
+					: OAuth2TokenValidatorResult.failure(new OAuth2Error("invalid_token",
+							"Anmeldung ist nach einer Passwort-Änderung abgelaufen", null));
+		};
+		decoder.setJwtValidator(new DelegatingOAuth2TokenValidator<>(JwtValidators.createDefault(),
+				notBeforePasswordChange));
+		return decoder;
 	}
 
 }
