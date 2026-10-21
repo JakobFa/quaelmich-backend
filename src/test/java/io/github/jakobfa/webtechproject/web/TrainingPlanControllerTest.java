@@ -99,6 +99,28 @@ class TrainingPlanControllerTest {
 	}
 
 	@Test
+	void progressShowsLevelAndPlanState() throws Exception {
+		String token = registerWithProfile(mockMvc);
+		mockMvc.perform(get("/me/progress").header("Authorization", token))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.xp").value(0))
+				.andExpect(jsonPath("$.level.name").value("Kettenfett-Neuling"))
+				.andExpect(jsonPath("$.nextLevel.fromXp").value(250))
+				.andExpect(jsonPath("$.plan").doesNotExist());
+
+		mockMvc.perform(post("/me/plan").header("Authorization", token));
+		mockMvc.perform(get("/me/progress").header("Authorization", token))
+				.andExpect(jsonPath("$.plan.week").value(1))
+				.andExpect(jsonPath("$.plan.eventName").value("Testevent"));
+	}
+
+	@Test
+	void progressNeedsAProfile() throws Exception {
+		mockMvc.perform(get("/me/progress").header("Authorization", registerNewUser(mockMvc)))
+				.andExpect(status().isNotFound());
+	}
+
+	@Test
 	void generatesAndLoadsOwnPlanWithDatedWorkouts() throws Exception {
 		String token = registerWithProfile(mockMvc);
 
