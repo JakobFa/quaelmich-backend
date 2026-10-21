@@ -27,5 +27,5 @@ jobs:
                --max-time 180 \
                -X POST \
                -H "X-Sync-Token: $SYNC_TOKEN" \
-               https://quaelmich-backend.onrender.com/internal/intervals/sync-all
+               https://api.quaelmich.com/internal/intervals/sync-all
           echo
