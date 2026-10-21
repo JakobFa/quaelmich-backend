@@ -36,7 +36,8 @@ public record IntervalsActivity(
 	/** intervals.icu liefert die Trainingslast für alle Sportarten; fehlt sie, wird sie aus der Dauer geschätzt */
 	public RecordedActivity toRecordedActivity() {
 		return RecordedActivity.withEstimateIfMissing(id, Sport.fromActivityType(type),
-				LocalDateTime.parse(startDateLocal.substring(0, 19)), movingTimeSeconds, distance, trainingLoad, false);
+				LocalDateTime.parse(startDateLocal.substring(0, 19)), movingTimeSeconds, distance, trainingLoad, false,
+				false);
 	}
 
 }

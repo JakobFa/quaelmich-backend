@@ -16,9 +16,10 @@ import io.github.jakobfa.webtechproject.model.Sport;
  * @param tss              Trainingslast; kann bei Radfahrten ohne Wattmesser und ohne Puls fehlen
  * @param tssFromHeartRate true, wenn der TSS nur aus dem Puls geschätzt ist (hrTSS)
  * @param tssFromDuration  true, wenn der TSS nur grob aus Dauer und Sportart geschätzt ist
+ * @param commute          bei Strava als "Pendeln" markiert – hakt nie ein geplantes Workout ab
  */
 public record RecordedActivity(String id, Sport sport, LocalDateTime start, int movingSeconds, Double distanceMeters,
-		Integer tss, boolean tssFromHeartRate, boolean tssFromDuration) {
+		Integer tss, boolean tssFromHeartRate, boolean tssFromDuration, boolean commute) {
 
 	public static final String STRAVA_PREFIX = "strava-";
 
@@ -49,12 +50,13 @@ public record RecordedActivity(String id, Sport sport, LocalDateTime start, int 
 
 	/** Startet eine Einheit aus der Dauer geschätzt, wenn sonst keine Trainingslast bekannt ist */
 	public static RecordedActivity withEstimateIfMissing(String id, Sport sport, LocalDateTime start, int movingSeconds,
-			Double distanceMeters, Integer tss, boolean tssFromHeartRate) {
+			Double distanceMeters, Integer tss, boolean tssFromHeartRate, boolean commute) {
 		if (tss == null && sport.estimateTss(movingSeconds) != null) {
 			return new RecordedActivity(id, sport, start, movingSeconds, distanceMeters,
-					sport.estimateTss(movingSeconds), false, true);
+					sport.estimateTss(movingSeconds), false, true, commute);
 		}
-		return new RecordedActivity(id, sport, start, movingSeconds, distanceMeters, tss, tssFromHeartRate, false);
+		return new RecordedActivity(id, sport, start, movingSeconds, distanceMeters, tss, tssFromHeartRate, false,
+				commute);
 	}
 
 	public static boolean isFromStrava(String id) {

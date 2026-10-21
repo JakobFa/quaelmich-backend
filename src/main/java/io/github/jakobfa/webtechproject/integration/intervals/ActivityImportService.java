@@ -3,6 +3,7 @@ package io.github.jakobfa.webtechproject.integration.intervals;
 import java.time.Clock;
 import java.time.LocalDate;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -22,13 +23,16 @@ import io.github.jakobfa.webtechproject.model.PlannedWorkout;
 import io.github.jakobfa.webtechproject.repository.ExtraRideRepository;
 import io.github.jakobfa.webtechproject.repository.PlannedWorkoutRepository;
 import io.github.jakobfa.webtechproject.service.AthleteService;
+import io.github.jakobfa.webtechproject.model.Workout;
+import io.github.jakobfa.webtechproject.model.WorkoutType;
 import io.github.jakobfa.webtechproject.service.PlanAdaptationService;
+import io.github.jakobfa.webtechproject.service.WorkoutLibrary;
 
 /**
  * Holt gefahrene Einheiten aus intervals.icu (z. B. vom Wahoo oder Garmin) und Strava (z. B. von der
  * Apple Watch) und verknüpft sie mit dem Plan:
- * Gibt es an einem Tag mit geplantem Workout eine Radfahrt, wird das Workout abgehakt und die
- * tatsächlichen Werte werden gespeichert. Bei mehreren Fahrten an einem Tag zählt die längste.
+ * Gibt es an einem Tag mit geplantem Workout eine Radfahrt, die dazu passt, wird das Workout abgehakt und die
+ * tatsächlichen Werte werden gespeichert. Bei mehreren passenden Fahrten zählt die längste.
  * Alle übrigen Fahrten (z. B. am Ruhetag) werden als Zusatzfahrten gespeichert.
  * Kommt dieselbe Fahrt aus beiden Quellen, gewinnt intervals.icu (dort gibt es den TSS).
  * Die Bewertung der Anstrengung bleibt unverändert – die kennt nur der Nutzer.
@@ -48,12 +52,13 @@ public class ActivityImportService {
 	private final PlannedWorkoutRepository plannedWorkoutRepository;
 	private final ExtraRideRepository extraRideRepository;
 	private final PlanAdaptationService adaptation;
+	private final WorkoutLibrary library;
 	private final Clock clock;
 
 	public ActivityImportService(IntervalsConnectionService connectionService, IntervalsIcuClient client,
 			StravaService stravaService, AthleteService athleteService,
 			PlannedWorkoutRepository plannedWorkoutRepository, ExtraRideRepository extraRideRepository,
-			PlanAdaptationService adaptation, Clock clock) {
+			PlanAdaptationService adaptation, WorkoutLibrary library, Clock clock) {
 		this.connectionService = connectionService;
 		this.client = client;
 		this.stravaService = stravaService;
@@ -61,6 +66,7 @@ public class ActivityImportService {
 		this.plannedWorkoutRepository = plannedWorkoutRepository;
 		this.extraRideRepository = extraRideRepository;
 		this.adaptation = adaptation;
+		this.library = library;
 		this.clock = clock;
 	}
 
@@ -90,11 +96,10 @@ public class ActivityImportService {
 				: Optional.empty();
 		List<RecordedActivity> rides = merge(intervalsRides, stravaRides.orElse(List.of()));
 
-		// pro Tag die längste Fahrt
-		Map<LocalDate, RecordedActivity> longestRidePerDay = rides.stream().filter(RecordedActivity::isRide)
-				.collect(Collectors.toMap(
-				RecordedActivity::date, Function.identity(),
-				(a, b) -> a.movingSeconds() >= b.movingSeconds() ? a : b));
+		Map<LocalDate, List<RecordedActivity>> ridesPerDay = rides.stream().filter(RecordedActivity::isRide)
+				.collect(Collectors.groupingBy(RecordedActivity::date));
+		Map<String, RecordedActivity> byId = rides.stream()
+				.collect(Collectors.toMap(RecordedActivity::id, Function.identity(), (a, b) -> a));
 
 		// Workouts bis übermorgen laden: die vergangenen zum Zuordnen, die kommenden zum Anpassen
 		List<PlannedWorkout> window = plannedWorkoutRepository.findByPlanAthleteIdAndDateBetween(athleteId, from,
@@ -103,11 +108,30 @@ public class ActivityImportService {
 		int matched = 0;
 		int adjusted = 0;
 		for (PlannedWorkout planned : window) {
-			RecordedActivity ride = longestRidePerDay.get(planned.getDate());
-			if (ride == null) {
+			String linkedId = planned.getActivityId();
+			// vom Nutzer beantwortet ("Ja, das war's" / "Nein, anderes Training") → Zuordnung bleibt
+			if (linkedId != null && planned.getActivityConfirmed() != null) {
+				if (byId.containsKey(linkedId)) {
+					updateValues(planned, byId.get(linkedId));
+				}
 				continue;
 			}
-			if (ride.id().equals(planned.getActivityId())) {
+			// die längste Fahrt des Tages, die zum Workout passt
+			Workout workout = library.resolve(planned.getWorkoutId(), planned.getDurationMinutes()).orElseThrow();
+			RecordedActivity ride = ridesPerDay.getOrDefault(planned.getDate(), List.of()).stream()
+					.filter(candidate -> fitsWorkout(candidate, workout))
+					.max(Comparator.comparingInt(RecordedActivity::movingSeconds))
+					.orElse(null);
+			if (ride == null) {
+				// früher automatisch zugeordnet, passt aber nicht (mehr) → wieder freigeben, wird Zusatzfahrt
+				boolean sourceAnswered = RecordedActivity.isFromStrava(linkedId) ? stravaRides.isPresent()
+						: credentials.isPresent();
+				if (linkedId != null && sourceAnswered) {
+					planned.clearActivity();
+				}
+				continue;
+			}
+			if (ride.id().equals(linkedId)) {
 				updateValues(planned, ride); // z. B. TSS neu geschätzt, nachdem der Schwellenpuls eingetragen wurde
 				continue;
 			}
@@ -150,6 +174,26 @@ public class ActivityImportService {
 				.toList());
 
 		return Optional.of(new ImportResult(rides.size(), matched, extra, adjusted));
+	}
+
+	/** Anteil von Dauer bzw. TSS des Workouts, den eine Fahrt mindestens haben muss, um es abzuhaken */
+	static final double MIN_SHARE = 0.6;
+
+	private static final Set<WorkoutType> EASY_TYPES = Set.of(WorkoutType.RECOVERY, WorkoutType.ENDURANCE,
+			WorkoutType.LONG_RIDE);
+
+	/**
+	 * Passt die Fahrt zum geplanten Workout? Mindestens 60 % der Dauer, bei harten Workouts auch 60 % des TSS
+	 * (falls bekannt). Pendelfahrten passen nie – sonst würde der Weg zur Arbeit ein FTP-Test.
+	 */
+	static boolean fitsWorkout(RecordedActivity ride, Workout workout) {
+		if (ride.commute()) {
+			return false;
+		}
+		boolean longEnough = ride.movingSeconds() >= workout.getDurationInMinutes() * 60 * MIN_SHARE;
+		boolean hardEnough = EASY_TYPES.contains(workout.getType()) || ride.tss() == null
+				|| ride.tss() >= workout.getTss() * MIN_SHARE;
+		return longEnough && hardEnough;
 	}
 
 	/** Strava-Fahrten, die es schon aus intervals.icu gibt, fallen weg */

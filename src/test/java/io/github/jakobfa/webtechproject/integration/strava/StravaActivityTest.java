@@ -9,11 +9,11 @@ import io.github.jakobfa.webtechproject.model.Sport;
 class StravaActivityTest {
 
 	private static StravaActivity ride(String type, Integer weightedWatts, Boolean deviceWatts) {
-		return new StravaActivity(1L, type, "2026-10-21T07:30:00Z", 3600, 30000.0, weightedWatts, deviceWatts, null, null);
+		return new StravaActivity(1L, type, "2026-10-21T07:30:00Z", 3600, 30000.0, weightedWatts, deviceWatts, null, null, null);
 	}
 
 	private static StravaActivity commute(Double averageHeartRate) {
-		return new StravaActivity(2L, "Ride", "2026-10-21T07:30:00Z", 1800, 9000.0, null, null, averageHeartRate, null);
+		return new StravaActivity(2L, "Ride", "2026-10-21T07:30:00Z", 1800, 9000.0, null, null, averageHeartRate, null, null);
 	}
 
 	@Test
@@ -27,7 +27,7 @@ class StravaActivityTest {
 
 	@Test
 	void powerBeatsHeartRate() {
-		var withPower = new StravaActivity(3L, "Ride", "2026-10-21T07:30:00Z", 3600, 30000.0, 250, true, 150.0, null)
+		var withPower = new StravaActivity(3L, "Ride", "2026-10-21T07:30:00Z", 3600, 30000.0, 250, true, 150.0, null, null)
 				.toRecordedActivity(250, 170);
 
 		assertThat(withPower.tss()).isEqualTo(100);
@@ -80,7 +80,7 @@ class StravaActivityTest {
 
 	@Test
 	void runWithHeartRateUsesHeartRateTss() {
-		var run = new StravaActivity(4L, "Run", "2026-10-21T07:30:00Z", 3600, 10000.0, 250, true, 153.0, null)
+		var run = new StravaActivity(4L, "Run", "2026-10-21T07:30:00Z", 3600, 10000.0, 250, true, 153.0, null, null)
 				.toRecordedActivity(250, 170);
 
 		assertThat(run.tss()).as("Watt zählen beim Laufen nicht, der Puls schon").isEqualTo(81);

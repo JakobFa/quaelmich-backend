@@ -86,7 +86,7 @@ class StravaControllerTest {
 		mockMvc.perform(post("/me/plan").header("Authorization", token));
 		stravaAcceptsTheCode();
 		when(client.listActivities(eq("neu"), any(), any())).thenReturn(List.of(
-				new StravaActivity(777L, "Ride", TODAY + "T07:30:00Z", 1800, 9800.0, null, null, null, null)));
+				new StravaActivity(777L, "Ride", TODAY + "T07:30:00Z", 1800, 9800.0, null, null, null, null, null)));
 
 		connect(token)
 				.andExpect(status().isOk())
@@ -106,7 +106,7 @@ class StravaControllerTest {
 		mockMvc.perform(post("/me/plan").header("Authorization", token));
 		stravaAcceptsTheCode();
 		when(client.listActivities(any(), any(), any())).thenReturn(List.of(
-				new StravaActivity(778L, "Ride", TODAY + "T07:30:00Z", 1800, 9800.0, null, null, null, null)));
+				new StravaActivity(778L, "Ride", TODAY + "T07:30:00Z", 1800, 9800.0, null, null, null, null, null)));
 		connect(token);
 		mockMvc.perform(post("/me/activities/import").header("Authorization", token));
 
@@ -149,8 +149,8 @@ class StravaControllerTest {
 		when(client.profile("neu")).thenReturn(new StravaProfile(0, 0.0));
 		when(client.zones("neu")).thenThrow(new org.springframework.web.client.RestClientException("kaputt"));
 		when(client.listActivities(eq("neu"), any(), any(), eq(200))).thenReturn(List.of(
-				new StravaActivity(1L, "Ride", TODAY + "T07:30:00Z", 1800, 9800.0, null, null, 130.0, 171.0),
-				new StravaActivity(2L, "Run", TODAY + "T18:00:00Z", 2400, 6000.0, null, null, 160.0, 190.0)));
+				new StravaActivity(1L, "Ride", TODAY + "T07:30:00Z", 1800, 9800.0, null, null, 130.0, 171.0, null),
+				new StravaActivity(2L, "Run", TODAY + "T18:00:00Z", 2400, 6000.0, null, null, 160.0, 190.0, null)));
 		connect(token, "read,activity:read_all,profile:read_all");
 
 		mockMvc.perform(get("/me/strava/profile").header("Authorization", token))

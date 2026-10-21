@@ -23,7 +23,9 @@ public record StravaActivity(
 		@JsonProperty("weighted_average_watts") Integer weightedAverageWatts,
 		@JsonProperty("device_watts") Boolean deviceWatts,
 		@JsonProperty("average_heartrate") Double averageHeartRate,
-		@JsonProperty("max_heartrate") Double maxHeartRate) {
+		@JsonProperty("max_heartrate") Double maxHeartRate,
+		/** in Strava als "Pendeln" markiert */
+		Boolean commute) {
 
 	/** Alle Sportarten mit Dauer und Startzeit */
 	public boolean isUsable() {
@@ -71,7 +73,7 @@ public record StravaActivity(
 		// Strava hängt an die Ortszeit ein "Z" an, obwohl es keine UTC-Zeit ist
 		return RecordedActivity.withEstimateIfMissing(RecordedActivity.STRAVA_PREFIX + id, sport,
 				LocalDateTime.parse(startDateLocal.substring(0, 19)), movingTimeSeconds, distance,
-				powerTss != null ? powerTss : heartRateTss, heartRateTss != null);
+				powerTss != null ? powerTss : heartRateTss, heartRateTss != null, Boolean.TRUE.equals(commute));
 	}
 
 }

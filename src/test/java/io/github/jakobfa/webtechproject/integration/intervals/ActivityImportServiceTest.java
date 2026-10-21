@@ -49,7 +49,7 @@ class ActivityImportServiceTest {
 	private final StravaService strava = mock(StravaService.class);
 	private final WorkoutLibrary library = new WorkoutLibrary();
 	private final ActivityImportService service = new ActivityImportService(connectionService, client,
-			strava, athleteService, repository, extraRides, new PlanAdaptationService(library), CLOCK);
+			strava, athleteService, repository, extraRides, new PlanAdaptationService(library), library, CLOCK);
 
 	@BeforeEach
 	void connectedUserWithProfile() {
@@ -235,7 +235,7 @@ class ActivityImportServiceTest {
 
 	private static RecordedActivity stravaRide(String id, LocalDate date, String time, int minutes) {
 		return new RecordedActivity("strava-" + id, Sport.RIDE, java.time.LocalDateTime.parse(date + "T" + time),
-				minutes * 60, minutes * 400.0, null, false, false);
+				minutes * 60, minutes * 400.0, null, false, false, false);
 	}
 
 	private void givenStrava(RecordedActivity... rides) {
@@ -248,7 +248,7 @@ class ActivityImportServiceTest {
 		when(connectionService.credentialsOf(1L)).thenReturn(Optional.empty());
 		PlannedWorkout today = planned(TODAY);
 		givenPlan(today);
-		givenStrava(stravaRide("5", TODAY, "07:30:00", 30));
+		givenStrava(stravaRide("5", TODAY, "07:30:00", 60));
 
 		var result = service.importRecent(1L).orElseThrow();
 
@@ -292,20 +292,84 @@ class ActivityImportServiceTest {
 		PlannedWorkout today = planned(TODAY);
 		givenPlan(today);
 		when(connectionService.credentialsOf(1L)).thenReturn(Optional.empty());
-		givenStrava(stravaRide("5", TODAY, "07:30:00", 30));
+		givenStrava(stravaRide("5", TODAY, "07:30:00", 60));
 		service.importRecent(1L);
 		today.setActivityConfirmed(true);
 
 		// Schwellenpuls nachgetragen → jetzt mit geschätztem TSS
 		when(strava.recentRides(eq(1L), any(), any(), any(), any())).thenReturn(Optional.of(List.of(
-				new RecordedActivity("strava-5", Sport.RIDE, java.time.LocalDateTime.parse(TODAY + "T07:30:00"), 1800,
-						12000.0, 32, true, false))));
+				new RecordedActivity("strava-5", Sport.RIDE, java.time.LocalDateTime.parse(TODAY + "T07:30:00"), 3600,
+						12000.0, 32, true, false, false))));
 		var result = service.importRecent(1L).orElseThrow();
 
 		assertThat(result.matched()).isZero();
 		assertThat(today.getActualTss()).isEqualTo(32);
 		assertThat(today.isActualTssFromHeartRate()).isTrue();
 		assertThat(today.getActivityConfirmed()).isTrue();
+	}
+
+	@Test
+	void commuteNeverTicksOffAWorkout() {
+		when(connectionService.credentialsOf(1L)).thenReturn(Optional.empty());
+		PlannedWorkout today = planned(TODAY);
+		givenPlan(today);
+		givenStrava(new RecordedActivity("strava-9", Sport.RIDE, java.time.LocalDateTime.parse(TODAY + "T07:30:00"),
+				3600, 20000.0, 55, false, false, true));
+
+		var result = service.importRecent(1L).orElseThrow();
+
+		assertThat(today.getActivityId()).isNull();
+		assertThat(result.extra()).isEqualTo(1);
+	}
+
+	@Test
+	void easyRideDoesNotCountAsAHardWorkout() {
+		when(connectionService.credentialsOf(1L)).thenReturn(Optional.empty());
+		PlannedWorkout today = planned(TODAY); // Sweet Spot 3 × 12, 71 min
+		givenPlan(today);
+		// lang genug, aber viel zu locker (≈25 statt ≈70 TSS)
+		givenStrava(new RecordedActivity("strava-10", Sport.RIDE, java.time.LocalDateTime.parse(TODAY + "T07:30:00"),
+				3300, 20000.0, 25, false, false, false));
+
+		service.importRecent(1L);
+
+		assertThat(today.getActivityId()).isNull();
+		assertThat(today.isCompleted()).isFalse();
+	}
+
+	@Test
+	void earlierAutomaticMatchThatNoLongerFitsIsReleased() {
+		when(connectionService.credentialsOf(1L)).thenReturn(Optional.empty());
+		PlannedWorkout today = planned(TODAY);
+		today.setActivityId("strava-11");
+		today.setCompleted(true);
+		today.setActualTss(25);
+		givenPlan(today);
+		givenStrava(new RecordedActivity("strava-11", Sport.RIDE, java.time.LocalDateTime.parse(TODAY + "T07:30:00"),
+				3300, 20000.0, 25, false, false, false));
+
+		var result = service.importRecent(1L).orElseThrow();
+
+		assertThat(today.getActivityId()).isNull();
+		assertThat(today.isCompleted()).isFalse();
+		assertThat(result.extra()).as("wird zur Zusatzfahrt").isEqualTo(1);
+	}
+
+	@Test
+	void confirmedMatchStaysEvenIfItDoesNotFit() {
+		when(connectionService.credentialsOf(1L)).thenReturn(Optional.empty());
+		PlannedWorkout today = planned(TODAY);
+		today.setActivityId("strava-12");
+		today.setCompleted(true);
+		today.setActivityConfirmed(true);
+		givenPlan(today);
+		givenStrava(new RecordedActivity("strava-12", Sport.RIDE, java.time.LocalDateTime.parse(TODAY + "T07:30:00"),
+				1800, 10000.0, 20, false, false, true));
+
+		service.importRecent(1L);
+
+		assertThat(today.getActivityId()).isEqualTo("strava-12");
+		assertThat(today.isCompleted()).isTrue();
 	}
 
 	@Test
