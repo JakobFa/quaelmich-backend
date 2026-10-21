@@ -77,7 +77,7 @@ class StravaControllerTest {
 		mockMvc.perform(post("/me/plan").header("Authorization", token));
 		stravaAcceptsTheCode();
 		when(client.listActivities(eq("neu"), any(), any())).thenReturn(List.of(
-				new StravaActivity(777L, "Ride", TODAY + "T07:30:00Z", 1800, 9800.0, null, null)));
+				new StravaActivity(777L, "Ride", TODAY + "T07:30:00Z", 1800, 9800.0, null, null, null)));
 
 		connect(token)
 				.andExpect(status().isOk())
@@ -97,7 +97,7 @@ class StravaControllerTest {
 		mockMvc.perform(post("/me/plan").header("Authorization", token));
 		stravaAcceptsTheCode();
 		when(client.listActivities(any(), any(), any())).thenReturn(List.of(
-				new StravaActivity(778L, "Ride", TODAY + "T07:30:00Z", 1800, 9800.0, null, null)));
+				new StravaActivity(778L, "Ride", TODAY + "T07:30:00Z", 1800, 9800.0, null, null, null)));
 		connect(token);
 		mockMvc.perform(post("/me/activities/import").header("Authorization", token));
 

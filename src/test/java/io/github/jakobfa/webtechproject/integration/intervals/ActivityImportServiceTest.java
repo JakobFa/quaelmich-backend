@@ -201,12 +201,12 @@ class ActivityImportServiceTest {
 
 	private static RecordedRide stravaRide(String id, LocalDate date, String time, int minutes) {
 		return new RecordedRide("strava-" + id, java.time.LocalDateTime.parse(date + "T" + time), minutes * 60,
-				minutes * 400.0, null);
+				minutes * 400.0, null, false);
 	}
 
 	private void givenStrava(RecordedRide... rides) {
 		when(strava.isConnected(1L)).thenReturn(true);
-		when(strava.recentRides(eq(1L), any(), any(), any())).thenReturn(Optional.of(List.of(rides)));
+		when(strava.recentRides(eq(1L), any(), any(), any(), any())).thenReturn(Optional.of(List.of(rides)));
 	}
 
 	@Test
@@ -246,11 +246,32 @@ class ActivityImportServiceTest {
 		when(extraRides.findByAthleteIdAndDateBetween(eq(7L), any(), any())).thenReturn(List.of(commute));
 		when(client.listActivities(any(), any(), any())).thenReturn(List.of());
 		when(strava.isConnected(1L)).thenReturn(true);
-		when(strava.recentRides(eq(1L), any(), any(), any())).thenReturn(Optional.empty());
+		when(strava.recentRides(eq(1L), any(), any(), any(), any())).thenReturn(Optional.empty());
 
 		service.importRecent(1L);
 
 		verify(extraRides).deleteAll(List.of());
+	}
+
+	@Test
+	void sameRideAgainUpdatesValuesButKeepsTheConfirmation() {
+		PlannedWorkout today = planned(TODAY);
+		givenPlan(today);
+		when(connectionService.credentialsOf(1L)).thenReturn(Optional.empty());
+		givenStrava(stravaRide("5", TODAY, "07:30:00", 30));
+		service.importRecent(1L);
+		today.setActivityConfirmed(true);
+
+		// Schwellenpuls nachgetragen → jetzt mit geschätztem TSS
+		when(strava.recentRides(eq(1L), any(), any(), any(), any())).thenReturn(Optional.of(List.of(
+				new RecordedRide("strava-5", java.time.LocalDateTime.parse(TODAY + "T07:30:00"), 1800, 12000.0, 32,
+						true))));
+		var result = service.importRecent(1L).orElseThrow();
+
+		assertThat(result.matched()).isZero();
+		assertThat(today.getActualTss()).isEqualTo(32);
+		assertThat(today.isActualTssFromHeartRate()).isTrue();
+		assertThat(today.getActivityConfirmed()).isTrue();
 	}
 
 	@Test

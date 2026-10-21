@@ -47,6 +47,14 @@ public class Athlete {
 	@Max(600)
 	private Integer ftp;
 
+	/**
+	 * Schwellenpuls (LTHR) in Schlägen pro Minute, optional.
+	 * Damit wird für Fahrten ohne Wattmesser ein TSS aus dem Puls geschätzt.
+	 */
+	@Min(100)
+	@Max(220)
+	private Integer thresholdHeartRate;
+
 	@NotNull
 	@DecimalMin("30")
 	@DecimalMax("200")

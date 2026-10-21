@@ -42,6 +42,7 @@ public class AthleteService {
 
 	private Athlete update(Athlete existing, Athlete changes) {
 		existing.setFtp(changes.getFtp());
+		existing.setThresholdHeartRate(changes.getThresholdHeartRate());
 		existing.setWeightKg(changes.getWeightKg());
 		existing.setLevel(changes.getLevel());
 		existing.setAvailability(changes.getAvailability());

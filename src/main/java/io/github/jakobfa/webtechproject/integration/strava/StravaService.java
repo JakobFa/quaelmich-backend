@@ -126,7 +126,8 @@ public class StravaService {
 	 * nicht erreichbar ist – ein Strava-Problem soll den Import aus intervals.icu nicht verhindern.
 	 */
 	@Transactional
-	public Optional<List<RecordedRide>> recentRides(Long userId, LocalDate from, LocalDate to, Integer ftp) {
+	public Optional<List<RecordedRide>> recentRides(Long userId, LocalDate from, LocalDate to, Integer ftp,
+			Integer thresholdHeartRate) {
 		if (!isConfigured()) {
 			return Optional.empty();
 		}
@@ -143,7 +144,7 @@ public class StravaService {
 			Instant before = to.plusDays(1).atStartOfDay(clock.getZone()).toInstant();
 			return Optional.of(client.listActivities(accessToken, after, before).stream()
 					.filter(StravaActivity::isUsableRide)
-					.map(activity -> activity.toRecordedRide(ftp))
+					.map(activity -> activity.toRecordedRide(ftp, thresholdHeartRate))
 					.toList());
 		} catch (RestClientException e) {
 			log.warn("Strava-Fahrten für Nutzer {} nicht abrufbar: {}", userId, e.getMessage());

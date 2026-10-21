@@ -41,7 +41,8 @@ public class PlanResponseMapper {
 
 	private static ExtraRideResponse toResponse(ExtraRide ride) {
 		return new ExtraRideResponse(ride.getId(), ride.getDate(), ride.getDurationMinutes(), ride.getDistanceKm(),
-				ride.getTss(), ride.assessment(), RecordedRide.stravaUrl(ride.getActivityId()));
+				ride.getTss(), ride.assessment(), RecordedRide.stravaUrl(ride.getActivityId()),
+				ride.isTssFromHeartRate());
 	}
 
 	public PlannedWorkoutResponse toResponse(PlannedWorkout planned) {
@@ -49,7 +50,7 @@ public class PlanResponseMapper {
 		var actual = planned.getActivityId() == null ? null
 				: new PlannedWorkoutResponse.Actual(planned.getActualDurationMinutes(), planned.getActualDistanceKm(),
 						planned.getActualTss(), adaptation.assess(planned), planned.getActivityConfirmed(),
-						RecordedRide.stravaUrl(planned.getActivityId()));
+						RecordedRide.stravaUrl(planned.getActivityId()), planned.isActualTssFromHeartRate());
 		var adjustment = planned.getAdjustmentNote() == null ? null
 				: new PlannedWorkoutResponse.Adjustment(planned.getAdjustmentNote(), planned.getOriginalTitle());
 		return new PlannedWorkoutResponse(planned.getId(), planned.getDate(), planned.getPhase(),

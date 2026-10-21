@@ -10,7 +10,8 @@ import io.github.jakobfa.webtechproject.integration.RecordedRide;
 
 /**
  * Eine Aktivität aus der Strava-API (nur die Felder, die quaelmich braucht).
- * Strava liefert keinen TSS – mit Wattmesser rechnen wir ihn aus der gewichteten Leistung und der FTP aus.
+ * Strava liefert keinen TSS – mit Wattmesser rechnen wir ihn aus der gewichteten Leistung und der FTP aus,
+ * sonst schätzen wir ihn aus dem Durchschnittspuls und dem Schwellenpuls (hrTSS).
  */
 @JsonIgnoreProperties(ignoreUnknown = true)
 public record StravaActivity(
@@ -20,7 +21,8 @@ public record StravaActivity(
 		@JsonProperty("moving_time") Integer movingTimeSeconds,
 		Double distance,
 		@JsonProperty("weighted_average_watts") Integer weightedAverageWatts,
-		@JsonProperty("device_watts") Boolean deviceWatts) {
+		@JsonProperty("device_watts") Boolean deviceWatts,
+		@JsonProperty("average_heartrate") Double averageHeartRate) {
 
 	private static final Set<String> RIDE_TYPES = Set.of("Ride", "VirtualRide", "GravelRide", "MountainBikeRide");
 
@@ -42,10 +44,28 @@ public record StravaActivity(
 		return (int) Math.round(movingTimeSeconds / 3600.0 * intensity * intensity * 100);
 	}
 
-	public RecordedRide toRecordedRide(Integer ftp) {
+	/**
+	 * hrTSS = Stunden × (Ø-Puls / Schwellenpuls)² × 100 – dieselbe Formel wie beim Watt-TSS, nur mit Puls.
+	 * Mit dem Durchschnitt statt Pulszonen wird ein Intervalltraining eher unterschätzt; fürs Pendeln
+	 * oder lockere Fahrten passt es gut. Null ohne Pulsdaten oder ohne Schwellenpuls.
+	 */
+	public Integer heartRateTss(Integer thresholdHeartRate) {
+		if (averageHeartRate == null || averageHeartRate <= 0 || thresholdHeartRate == null
+				|| thresholdHeartRate <= 0) {
+			return null;
+		}
+		double intensity = averageHeartRate / thresholdHeartRate;
+		return (int) Math.round(movingTimeSeconds / 3600.0 * intensity * intensity * 100);
+	}
+
+	/** Watt-TSS, wenn möglich – sonst Puls-TSS */
+	public RecordedRide toRecordedRide(Integer ftp, Integer thresholdHeartRate) {
+		Integer powerTss = tss(ftp);
+		Integer tss = powerTss != null ? powerTss : heartRateTss(thresholdHeartRate);
 		// Strava hängt an die Ortszeit ein "Z" an, obwohl es keine UTC-Zeit ist
 		return new RecordedRide(RecordedRide.STRAVA_PREFIX + id,
-				LocalDateTime.parse(startDateLocal.substring(0, 19)), movingTimeSeconds, distance, tss(ftp));
+				LocalDateTime.parse(startDateLocal.substring(0, 19)), movingTimeSeconds, distance, tss,
+				powerTss == null && tss != null);
 	}
 
 }

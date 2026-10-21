@@ -37,7 +37,7 @@ public record IntervalsActivity(
 
 	public RecordedRide toRecordedRide() {
 		return new RecordedRide(id, LocalDateTime.parse(startDateLocal.substring(0, 19)), movingTimeSeconds, distance,
-				trainingLoad);
+				trainingLoad, false);
 	}
 
 }

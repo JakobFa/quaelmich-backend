@@ -10,9 +10,11 @@ import java.time.LocalDateTime;
  * @param id             eindeutig über alle Quellen: intervals.icu-IDs wie "i123", Strava-IDs als "strava-456"
  * @param start          Startzeit in Ortszeit
  * @param distanceMeters kann fehlen (z. B. Rolle ohne Distanz)
- * @param tss            Trainingslast; kann fehlen, wenn ohne Wattmesser gefahren wurde
+ * @param tss            Trainingslast; kann fehlen, wenn ohne Wattmesser und ohne Puls gefahren wurde
+ * @param tssFromHeartRate true, wenn der TSS nur aus dem Puls geschätzt ist (hrTSS)
  */
-public record RecordedRide(String id, LocalDateTime start, int movingSeconds, Double distanceMeters, Integer tss) {
+public record RecordedRide(String id, LocalDateTime start, int movingSeconds, Double distanceMeters, Integer tss,
+		boolean tssFromHeartRate) {
 
 	public static final String STRAVA_PREFIX = "strava-";
 

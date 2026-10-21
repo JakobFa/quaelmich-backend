@@ -63,6 +63,11 @@ public class PlannedWorkout {
 	/** Trainingslast laut intervals.icu (entspricht dem TSS) */
 	private Integer actualTss;
 
+	/** TSS nur aus dem Puls geschätzt (ohne Wattmesser) */
+	@Column(nullable = false)
+	@ColumnDefault("false")
+	private boolean actualTssFromHeartRate;
+
 	/** Vom Nutzer bestätigt, dass die erkannte Fahrt das geplante Training war (null = noch nicht gefragt) */
 	private Boolean activityConfirmed;
 
@@ -97,6 +102,7 @@ public class PlannedWorkout {
 		actualDurationMinutes = null;
 		actualDistanceKm = null;
 		actualTss = null;
+		actualTssFromHeartRate = false;
 		activityConfirmed = null;
 		adaptationApplied = false;
 	}

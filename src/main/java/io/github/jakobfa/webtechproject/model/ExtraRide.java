@@ -2,8 +2,11 @@ package io.github.jakobfa.webtechproject.model;
 
 import java.time.LocalDate;
 
+import org.hibernate.annotations.ColumnDefault;
+
 import com.fasterxml.jackson.annotation.JsonIgnore;
 
+import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.Id;
@@ -44,6 +47,11 @@ public class ExtraRide {
 	private Double distanceKm;
 
 	private Integer tss;
+
+	/** TSS nur aus dem Puls geschätzt (ohne Wattmesser) */
+	@Column(nullable = false)
+	@ColumnDefault("false")
+	private boolean tssFromHeartRate;
 
 	/** Wurde der Plan wegen dieser Fahrt schon angepasst? */
 	private boolean adaptationApplied;

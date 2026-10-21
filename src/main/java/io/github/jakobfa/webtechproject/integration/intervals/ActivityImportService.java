@@ -85,7 +85,8 @@ public class ActivityImportService {
 						.toList())
 				.orElse(List.of());
 		Optional<List<RecordedRide>> stravaRides = strava
-				? stravaService.recentRides(userId, from, today, athlete.get().getFtp())
+				? stravaService.recentRides(userId, from, today, athlete.get().getFtp(),
+						athlete.get().getThresholdHeartRate())
 				: Optional.empty();
 		List<RecordedRide> rides = merge(intervalsRides, stravaRides.orElse(List.of()));
 
@@ -102,12 +103,17 @@ public class ActivityImportService {
 		int adjusted = 0;
 		for (PlannedWorkout planned : window) {
 			RecordedRide ride = longestRidePerDay.get(planned.getDate());
-			if (ride != null && !ride.id().equals(planned.getActivityId())) {
-				apply(planned, ride);
-				matched++;
-				if (adaptation.adaptAfter(planned, window).isPresent()) {
-					adjusted++;
-				}
+			if (ride == null) {
+				continue;
+			}
+			if (ride.id().equals(planned.getActivityId())) {
+				updateValues(planned, ride); // z. B. TSS neu geschätzt, nachdem der Schwellenpuls eingetragen wurde
+				continue;
+			}
+			apply(planned, ride);
+			matched++;
+			if (adaptation.adaptAfter(planned, window).isPresent()) {
+				adjusted++;
 			}
 		}
 
@@ -159,6 +165,7 @@ public class ActivityImportService {
 		extraRide.setDurationMinutes(ride.movingMinutes());
 		extraRide.setDistanceKm(ride.distanceKm());
 		extraRide.setTss(ride.tss());
+		extraRide.setTssFromHeartRate(ride.tssFromHeartRate());
 	}
 
 	static void apply(PlannedWorkout planned, RecordedRide ride) {
@@ -166,9 +173,15 @@ public class ActivityImportService {
 		planned.setActivityId(ride.id());
 		planned.setActivityConfirmed(null); // neue Fahrt → neu nachfragen
 		planned.setAdaptationApplied(false);
+		updateValues(planned, ride);
+	}
+
+	/** Ist-Werte übernehmen, ohne Bestätigung und Anpassung zurückzusetzen */
+	static void updateValues(PlannedWorkout planned, RecordedRide ride) {
 		planned.setActualDurationMinutes(ride.movingMinutes());
 		planned.setActualDistanceKm(ride.distanceKm());
 		planned.setActualTss(ride.tss());
+		planned.setActualTssFromHeartRate(ride.tssFromHeartRate());
 	}
 
 }
