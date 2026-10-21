@@ -10,6 +10,8 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RestController;
 
 import io.github.jakobfa.webtechproject.auth.CurrentUser;
+import io.github.jakobfa.webtechproject.model.Athlete;
+import io.github.jakobfa.webtechproject.model.HeartRateTargets;
 import io.github.jakobfa.webtechproject.service.FitWorkoutExporter;
 import io.github.jakobfa.webtechproject.service.PlannedWorkoutService;
 import io.github.jakobfa.webtechproject.web.dto.PlannedWorkoutResponse;
@@ -58,11 +60,17 @@ public class PlannedWorkoutController {
 				.orElse(ResponseEntity.notFound().build());
 	}
 
+	/** Im Puls-Modus Pulsbereiche, sonst null (= nach Watt) */
+	static HeartRateTargets heartRateTargetsOf(Athlete athlete) {
+		return athlete.isHeartRateMode() ? athlete.getHeartRateTargets() : null;
+	}
+
 	/** .fit-Datei mit der im Plan angepassten Dauer (z. B. "Grundlage 75 min") */
 	@GetMapping(path = "/planned-workouts/{id}/fit")
 	public ResponseEntity<byte[]> downloadFit(@AuthenticationPrincipal Jwt jwt, @PathVariable Long id) {
 		return plannedWorkoutService.findOwned(id, CurrentUser.id(jwt))
-				.map(planned -> FitDownload.of(mapper.toResponse(planned).workout(), fitExporter))
+				.map(planned -> FitDownload.of(mapper.toResponse(planned).workout(), fitExporter,
+						heartRateTargetsOf(planned.getPlan().getAthlete())))
 				.orElse(ResponseEntity.notFound().build());
 	}
 

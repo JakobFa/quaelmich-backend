@@ -6,6 +6,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import io.github.jakobfa.webtechproject.model.Athlete;
+import io.github.jakobfa.webtechproject.model.TrainingMode;
 import io.github.jakobfa.webtechproject.repository.AppUserRepository;
 import io.github.jakobfa.webtechproject.repository.AthleteRepository;
 
@@ -37,6 +38,9 @@ public class AthleteService {
 		athlete.setId(null);
 		athlete.getEvent().setId(null);
 		athlete.setOwner(userRepository.getReferenceById(userId));
+		if (athlete.getTrainingMode() == null) {
+			athlete.setTrainingMode(TrainingMode.POWER);
+		}
 		return athleteRepository.save(athlete);
 	}
 
@@ -44,6 +48,8 @@ public class AthleteService {
 		existing.setFtp(changes.getFtp());
 		existing.setThresholdHeartRate(changes.getThresholdHeartRate());
 		existing.setMaxHeartRate(changes.getMaxHeartRate());
+		existing.setHeartRateZoneStarts(changes.getHeartRateZoneStarts());
+		existing.setTrainingMode(changes.getTrainingMode() == null ? TrainingMode.POWER : changes.getTrainingMode());
 		existing.setWeightKg(changes.getWeightKg());
 		existing.setLevel(changes.getLevel());
 		existing.setAvailability(changes.getAvailability());

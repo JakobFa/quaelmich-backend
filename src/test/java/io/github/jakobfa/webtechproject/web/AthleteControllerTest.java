@@ -40,6 +40,24 @@ class AthleteControllerTest {
 	}
 
 	@Test
+	void heartRateModeWorksWithoutFtp() throws Exception {
+		String json = athleteJson(250, "Pendeln", EVENT)
+				.replace("\"ftp\": 250,", "\"trainingMode\": \"HEART_RATE\", \"maxHeartRate\": 189,");
+
+		save(json).andExpect(status().isOk())
+				.andExpect(jsonPath("$.ftp").value(org.hamcrest.Matchers.nullValue()))
+				.andExpect(jsonPath("$.trainingMode").value("HEART_RATE"));
+
+		save(json.replace("\"maxHeartRate\": 189,", "")).andExpect(status().isBadRequest());
+	}
+
+	@Test
+	void olderClientsWithoutTrainingModeTrainByPower() throws Exception {
+		save(athleteJson(250, "Ötztaler Radmarathon", EVENT))
+				.andExpect(jsonPath("$.trainingMode").value("POWER"));
+	}
+
+	@Test
 	void newUserHasNoProfileYet() throws Exception {
 		mockMvc.perform(get("/me/athlete").header("Authorization", token)).andExpect(status().isNotFound());
 	}

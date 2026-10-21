@@ -10,6 +10,8 @@ import org.springframework.stereotype.Service;
 
 import io.github.jakobfa.webtechproject.model.PlannedWorkout;
 import io.github.jakobfa.webtechproject.model.Workout;
+import io.github.jakobfa.webtechproject.model.Athlete;
+import io.github.jakobfa.webtechproject.model.HeartRateTargets;
 import io.github.jakobfa.webtechproject.service.FitWorkoutExporter;
 import io.github.jakobfa.webtechproject.service.TrainingPlanService;
 import io.github.jakobfa.webtechproject.service.WorkoutLibrary;
@@ -47,7 +49,7 @@ public class IntervalsSyncService {
 		return planService.findByAthlete(athleteId).map(plan -> {
 			List<IntervalsEvent> events = plan.getWorkouts().stream()
 					.filter(planned -> !planned.getDate().isBefore(from) && !planned.getDate().isAfter(to))
-					.map(this::toEvent)
+.map(planned -> toEvent(planned, heartRateTargetsOf(plan.getAthlete())))
 					.toList();
 			if (!events.isEmpty()) {
 				client.upsertEvents(credentials, events);
@@ -56,9 +58,18 @@ public class IntervalsSyncService {
 		});
 	}
 
+	private static HeartRateTargets heartRateTargetsOf(Athlete athlete) {
+		return athlete != null && athlete.isHeartRateMode() ? athlete.getHeartRateTargets() : null;
+	}
+
 	IntervalsEvent toEvent(PlannedWorkout planned) {
+		return toEvent(planned, null);
+	}
+
+	/** heartRate: im Puls-Modus Pulsziele statt Wattziele in der .fit-Datei */
+	IntervalsEvent toEvent(PlannedWorkout planned, HeartRateTargets heartRate) {
 		Workout workout = library.resolve(planned.getWorkoutId(), planned.getDurationMinutes()).orElseThrow();
-		String fit = Base64.getEncoder().encodeToString(fitExporter.export(workout));
+		String fit = Base64.getEncoder().encodeToString(fitExporter.export(workout, heartRate));
 		return new IntervalsEvent(
 				"WORKOUT",
 				planned.getDate() + "T00:00:00",

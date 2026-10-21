@@ -25,6 +25,7 @@ import com.garmin.fit.WorkoutMesgListener;
 import com.garmin.fit.WorkoutStepMesg;
 import com.garmin.fit.WorkoutStepMesgListener;
 
+import io.github.jakobfa.webtechproject.model.HeartRateTargets;
 import io.github.jakobfa.webtechproject.model.Workout;
 
 /**
@@ -90,6 +91,30 @@ class FitWorkoutExporterTest {
 		assertThat(interval.getDurationTime()).isEqualTo(720f);
 		assertThat(interval.getCustomTargetPowerLow()).isEqualTo(90L);
 		assertThat(interval.getCustomTargetPowerHigh()).isEqualTo(90L);
+	}
+
+	@Test
+	void writesHeartRateRangesForTrainingWithoutPowerMeter() {
+		var heartRate = new HeartRateTargets(List.of(123, 153, 168, 183), 189);
+
+		Decoded decoded = decode(exporter.export(library.findById(5L).orElseThrow(), heartRate));
+
+		WorkoutStepMesg warmup = decoded.steps().get(0); // 50 → 75 % FTP → Zone 2
+		assertThat(warmup.getTargetType()).isEqualTo(WktStepTarget.HEART_RATE);
+		assertThat(warmup.getCustomTargetHeartRateLow()).isEqualTo(123L + 100);
+		assertThat(warmup.getCustomTargetHeartRateHigh()).isEqualTo(152L + 100);
+
+		WorkoutStepMesg interval = decoded.steps().get(1); // 90 % FTP → Zone 3
+		assertThat(interval.getCustomTargetHeartRateLow()).isEqualTo(153L + 100);
+		assertThat(interval.getCustomTargetHeartRateHigh()).isEqualTo(167L + 100);
+	}
+
+	@Test
+	void everyLibraryWorkoutCanBeExportedWithHeartRate() {
+		var heartRate = new HeartRateTargets(List.of(123, 153, 168, 183), 189);
+		assertThat(library.findAll()).allSatisfy(workout -> assertThat(new Decode()
+				.checkFileIntegrity(new ByteArrayInputStream(exporter.export(workout, heartRate))))
+				.as(workout.getTitle()).isTrue());
 	}
 
 	@Test

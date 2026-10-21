@@ -136,7 +136,10 @@ class StravaControllerTest {
 				.andExpect(jsonPath("$.ftp").value(260))
 				.andExpect(jsonPath("$.weightKg").value(71.8))
 				.andExpect(jsonPath("$.maxHeartRate").value(189))
-				.andExpect(jsonPath("$.maxHeartRateSource").value("ZONES"));
+				.andExpect(jsonPath("$.maxHeartRateSource").value("ZONES"))
+				.andExpect(jsonPath("$.heartRateZoneStarts[0]").value(123))
+				.andExpect(jsonPath("$.heartRateZoneStarts[3]").value(183))
+				.andExpect(jsonPath("$.customZones").value(false));
 	}
 
 	@Test

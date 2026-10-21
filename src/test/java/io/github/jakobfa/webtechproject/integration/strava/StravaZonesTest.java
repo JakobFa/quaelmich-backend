@@ -28,6 +28,12 @@ class StravaZonesTest {
 	}
 
 	@Test
+	void takesZoneStartsAlsoFromCustomZones() {
+		assertThat(StravaService.zoneStarts(zones(true, 120, 150, 165, 178))).containsExactly(120, 150, 165, 178);
+		assertThat(StravaService.zoneStarts(new Zones(null))).isNull();
+	}
+
+	@Test
 	void customZonesOrMissingZonesGiveNothing() {
 		assertThat(StravaService.maxHeartRateFromZones(zones(true, 123, 153, 168, 183))).isNull();
 		assertThat(StravaService.maxHeartRateFromZones(new Zones(null))).isNull();

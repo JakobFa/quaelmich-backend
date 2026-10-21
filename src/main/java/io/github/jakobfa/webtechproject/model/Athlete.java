@@ -1,6 +1,11 @@
 package io.github.jakobfa.webtechproject.model;
 
+import java.util.List;
+
+import org.hibernate.annotations.ColumnDefault;
+
 import jakarta.persistence.CascadeType;
+import jakarta.persistence.Convert;
 import jakarta.persistence.Embedded;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
@@ -10,6 +15,7 @@ import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.OneToOne;
 import jakarta.validation.Valid;
+import jakarta.validation.constraints.AssertTrue;
 import jakarta.validation.constraints.DecimalMax;
 import jakarta.validation.constraints.DecimalMin;
 import jakarta.validation.constraints.Max;
@@ -41,11 +47,15 @@ public class Athlete {
 	@JoinColumn(unique = true)
 	private AppUser owner;
 
-	/** Functional Threshold Power in Watt */
-	@NotNull
+	/** Functional Threshold Power in Watt; im Puls-Modus optional */
 	@Min(50)
 	@Max(600)
 	private Integer ftp;
+
+	/** Training nach Watt oder Puls; null wird wie POWER behandelt (ältere Profile) */
+	@Enumerated(EnumType.STRING)
+	@ColumnDefault("'POWER'")
+	private TrainingMode trainingMode = TrainingMode.POWER;
 
 	/** Maximalpuls in Schlägen pro Minute, optional – Grundlage für den Puls-TSS */
 	@Min(120)
@@ -59,6 +69,66 @@ public class Athlete {
 	@Min(100)
 	@Max(220)
 	private Integer thresholdHeartRate;
+
+	/**
+	 * Eigene Pulszonen, optional: Beginn von Zone 2, 3, 4 und 5 in bpm (Zone 1 beginnt bei 0),
+	 * z. B. [123, 153, 168, 183]. Ohne eigene Zonen werden sie aus dem Maximalpuls berechnet.
+	 */
+	@Convert(converter = IntegerListConverter.class)
+	private List<Integer> heartRateZoneStarts;
+
+	/** Zonen müssen aus 4 aufsteigenden, sinnvollen Pulswerten bestehen (oder fehlen) */
+	@JsonIgnore
+	@AssertTrue(message = "Pulszonen: 4 aufsteigende Werte zwischen 60 und 230")
+	public boolean isHeartRateZoneStartsValid() {
+		if (heartRateZoneStarts == null || heartRateZoneStarts.isEmpty()) {
+			return true;
+		}
+		if (heartRateZoneStarts.size() != 4 || heartRateZoneStarts.stream().anyMatch(java.util.Objects::isNull)) {
+			return false;
+		}
+		for (int i = 0; i < 4; i++) {
+			int value = heartRateZoneStarts.get(i);
+			if (value < 60 || value > 230 || (i > 0 && value <= heartRateZoneStarts.get(i - 1))) {
+				return false;
+			}
+		}
+		return true;
+	}
+
+	/** Mit Wattmesser braucht es die FTP, ohne Wattmesser Maximalpuls oder Pulszonen */
+	@JsonIgnore
+	@AssertTrue(message = "Training nach Watt braucht die FTP, nach Puls den Maximalpuls oder Pulszonen")
+	public boolean isTrainingModeComplete() {
+		return isHeartRateMode() ? getHeartRateTargets() != null : ftp != null;
+	}
+
+	@JsonIgnore
+	public boolean isHeartRateMode() {
+		return trainingMode == TrainingMode.HEART_RATE;
+	}
+
+	/** Anteile des Maximalpulses, bei denen Zone 2–5 beginnen (wie bei Strava) */
+	private static final double[] ZONE_SHARES_OF_MAX = { 0.65, 0.81, 0.89, 0.97 };
+
+	/**
+	 * Pulsbereiche fürs Training: eigene Zonen, sonst aus dem Maximalpuls berechnet.
+	 * Null, wenn weder Zonen noch Maximalpuls bekannt sind.
+	 */
+	@JsonIgnore
+	public HeartRateTargets getHeartRateTargets() {
+		if (heartRateZoneStarts != null && heartRateZoneStarts.size() == 4 && isHeartRateZoneStartsValid()) {
+			int max = maxHeartRate != null ? maxHeartRate
+					: (int) Math.round(heartRateZoneStarts.get(3) / ZONE_SHARES_OF_MAX[3]);
+			return new HeartRateTargets(heartRateZoneStarts, Math.max(max, heartRateZoneStarts.get(3) + 1));
+		}
+		if (maxHeartRate == null) {
+			return null;
+		}
+		List<Integer> starts = java.util.Arrays.stream(ZONE_SHARES_OF_MAX)
+				.mapToObj(share -> (int) Math.round(maxHeartRate * share)).toList();
+		return new HeartRateTargets(starts, maxHeartRate);
+	}
 
 	/** Schwellenpuls ≈ 90 % des Maximalpulses (Faustregel) */
 	public static final double THRESHOLD_SHARE_OF_MAX = 0.9;

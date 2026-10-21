@@ -5,6 +5,7 @@ import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 
+import io.github.jakobfa.webtechproject.model.HeartRateTargets;
 import io.github.jakobfa.webtechproject.model.Workout;
 import io.github.jakobfa.webtechproject.service.FitWorkoutExporter;
 
@@ -17,13 +18,18 @@ final class FitDownload {
 	}
 
 	static ResponseEntity<byte[]> of(Workout workout, FitWorkoutExporter exporter) {
+		return of(workout, exporter, null);
+	}
+
+	/** heartRate: Pulsbereiche fürs Training ohne Wattmesser, null = nach Watt */
+	static ResponseEntity<byte[]> of(Workout workout, FitWorkoutExporter exporter, HeartRateTargets heartRate) {
 		ContentDisposition disposition = ContentDisposition.attachment()
 				.filename(FitWorkoutExporter.fileName(workout))
 				.build();
 		return ResponseEntity.ok()
 				.header(HttpHeaders.CONTENT_DISPOSITION, disposition.toString())
 				.contentType(MediaType.APPLICATION_OCTET_STREAM)
-				.body(exporter.export(workout));
+				.body(exporter.export(workout, heartRate));
 	}
 
 }

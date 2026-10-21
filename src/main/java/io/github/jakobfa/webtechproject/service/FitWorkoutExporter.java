@@ -20,6 +20,7 @@ import com.garmin.fit.WktStepTarget;
 import com.garmin.fit.WorkoutMesg;
 import com.garmin.fit.WorkoutStepMesg;
 
+import io.github.jakobfa.webtechproject.model.HeartRateTargets;
 import io.github.jakobfa.webtechproject.model.StepKind;
 import io.github.jakobfa.webtechproject.model.Workout;
 import io.github.jakobfa.webtechproject.model.WorkoutStep;
@@ -31,6 +32,9 @@ import io.github.jakobfa.webtechproject.model.WorkoutStep;
  * Die Leistung wird in Prozent der FTP angegeben (FIT-Werte 0–1000 bedeuten "% FTP");
  * das Gerät rechnet mit der dort eingestellten FTP selbst in Watt um.
  * Rampen (z. B. Aufwärmen 50 → 75 %) werden als Zielbereich von Start- bis Endwert geschrieben.
+ *
+ * Für Training ohne Wattmesser werden stattdessen Pulsbereiche in bpm geschrieben
+ * (FIT-Werte über 100 bedeuten "bpm + 100"); kurze harte Abschnitte bleiben ohne Ziel.
  */
 @Component
 public class FitWorkoutExporter {
@@ -42,13 +46,18 @@ public class FitWorkoutExporter {
 	}
 
 	public byte[] export(Workout workout) {
+		return export(workout, null);
+	}
+
+	/** @param heartRate Pulsbereiche fürs Training ohne Wattmesser; null = nach Watt */
+	public byte[] export(Workout workout, HeartRateTargets heartRate) {
 		List<WorkoutStep> steps = workout.getSteps();
 
 		BufferEncoder encoder = new BufferEncoder(Fit.ProtocolVersion.V2_0);
 		encoder.write(fileId());
 		encoder.write(workoutMesg(workout, steps.size()));
 		for (int i = 0; i < steps.size(); i++) {
-			encoder.write(stepMesg(steps.get(i), i));
+			encoder.write(stepMesg(steps.get(i), i, heartRate));
 		}
 		return encoder.close();
 	}
@@ -73,7 +82,7 @@ public class FitWorkoutExporter {
 		return mesg;
 	}
 
-	private WorkoutStepMesg stepMesg(WorkoutStep step, int index) {
+	private WorkoutStepMesg stepMesg(WorkoutStep step, int index, HeartRateTargets heartRate) {
 		WorkoutStepMesg mesg = new WorkoutStepMesg();
 		mesg.setMessageIndex(index);
 		mesg.setWktStepName(stepName(step.kind()));
@@ -81,6 +90,19 @@ public class FitWorkoutExporter {
 
 		mesg.setDurationType(WktStepDuration.TIME);
 		mesg.setDurationTime((float) step.durationSeconds());
+
+		if (heartRate != null) {
+			HeartRateTargets.Range range = heartRate.forStep(step);
+			if (range == null) {
+				mesg.setTargetType(WktStepTarget.OPEN); // kurz und hart: nach Gefühl
+			} else {
+				mesg.setTargetType(WktStepTarget.HEART_RATE);
+				mesg.setTargetValue(0L);
+				mesg.setCustomTargetHeartRateLow((long) range.low() + 100);
+				mesg.setCustomTargetHeartRateHigh((long) range.high() + 100);
+			}
+			return mesg;
+		}
 
 		long low = Math.min(step.powerStartPercent(), step.powerEndPercent());
 		long high = Math.max(step.powerStartPercent(), step.powerEndPercent());

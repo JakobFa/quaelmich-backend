@@ -35,12 +35,14 @@ public class StravaService {
 	 * @param maxHeartRate       Maximalpuls
 	 * @param maxHeartRateSource ZONES (aus den Strava-Pulszonen zurückgerechnet) oder ACTIVITIES (höchster
 	 *                           gemessener Puls der letzten 90 Tage)
+	 * @param heartRateZoneStarts Beginn von Zone 2–5 laut Strava, null ohne Zonen
+	 * @param customZones        true, wenn bei Strava eigene Zonen eingetragen sind
 	 */
 	public record ProfileSuggestion(boolean profileAccess, Integer ftp, Double weightKg, Integer maxHeartRate,
-			MaxHeartRateSource maxHeartRateSource) {
+			MaxHeartRateSource maxHeartRateSource, List<Integer> heartRateZoneStarts, boolean customZones) {
 
 		static ProfileSuggestion noAccess() {
-			return new ProfileSuggestion(false, null, null, null, null);
+			return new ProfileSuggestion(false, null, null, null, null, null, false);
 		}
 	}
 
@@ -205,19 +207,24 @@ public class StravaService {
 				? Math.round(profile.weight() * 10) / 10.0
 				: null;
 
-		Integer fromZones = null;
+		StravaClient.Zones zones = null;
 		try {
-			fromZones = maxHeartRateFromZones(client.zones(accessToken));
+			zones = client.zones(accessToken);
 		} catch (RestClientException e) {
 			log.warn("Strava-Pulszonen für Nutzer {} nicht lesbar: {}", userId, e.getMessage());
 		}
+		List<Integer> zoneStarts = zoneStarts(zones);
+		boolean custom = zones != null && zones.heartRate() != null
+				&& Boolean.TRUE.equals(zones.heartRate().customZones());
+		Integer fromZones = maxHeartRateFromZones(zones);
 		if (fromZones != null) {
-			return Optional.of(new ProfileSuggestion(true, ftp, weight, fromZones, MaxHeartRateSource.ZONES));
+			return Optional.of(new ProfileSuggestion(true, ftp, weight, fromZones, MaxHeartRateSource.ZONES,
+					zoneStarts, custom));
 		}
 		// eigene Zonen oder keine: höchster gemessener Puls der letzten Wochen
 		Integer maxSeen = maxHeartRateSeen(accessToken);
 		return Optional.of(new ProfileSuggestion(true, ftp, weight, maxSeen,
-				maxSeen == null ? null : MaxHeartRateSource.ACTIVITIES));
+				maxSeen == null ? null : MaxHeartRateSource.ACTIVITIES, zoneStarts, custom));
 	}
 
 	/** Höchster Puls aller Aktivitäten (auch Läufe) der letzten 90 Tage; null ohne Pulsdaten */
@@ -230,6 +237,23 @@ public class StravaService {
 				.max(Double::compare)
 				.map(hr -> (int) Math.round(hr))
 				.orElse(null);
+	}
+
+	/** Beginn von Zone 2–5 (Strava liefert 5 Zonen, Zone 1 beginnt bei 0); null, wenn unbrauchbar */
+	static List<Integer> zoneStarts(StravaClient.Zones zones) {
+		if (zones == null || zones.heartRate() == null || zones.heartRate().zones() == null
+				|| zones.heartRate().zones().size() != 5) {
+			return null;
+		}
+		List<Integer> starts = zones.heartRate().zones().subList(1, 5).stream().map(StravaClient.ZoneRange::min)
+				.toList();
+		for (int i = 0; i < starts.size(); i++) {
+			Integer value = starts.get(i);
+			if (value == null || value < 60 || value > 230 || (i > 0 && value <= starts.get(i - 1))) {
+				return null;
+			}
+		}
+		return starts;
 	}
 
 	/**
