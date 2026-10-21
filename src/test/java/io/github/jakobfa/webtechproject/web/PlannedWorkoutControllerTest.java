@@ -1,6 +1,7 @@
 package io.github.jakobfa.webtechproject.web;
 
 import static io.github.jakobfa.webtechproject.web.TestUsers.registerWithProfile;
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.hamcrest.Matchers.endsWith;
 import static org.hamcrest.Matchers.nullValue;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
@@ -22,7 +23,9 @@ import org.springframework.test.web.servlet.ResultActions;
 
 import com.jayway.jsonpath.JsonPath;
 
+import io.github.jakobfa.webtechproject.model.ExtraRide;
 import io.github.jakobfa.webtechproject.model.PlannedWorkout;
+import io.github.jakobfa.webtechproject.model.Sport;
 import io.github.jakobfa.webtechproject.repository.PlannedWorkoutRepository;
 
 @SpringBootTest
@@ -34,6 +37,57 @@ class PlannedWorkoutControllerTest {
 
 	@Autowired
 	private PlannedWorkoutRepository repository;
+
+	@Autowired
+	private io.github.jakobfa.webtechproject.repository.ExtraRideRepository extraRides;
+
+	/** Eine nicht zugeordnete Fahrt am Tag des Workouts */
+	private ExtraRide rideOnTheSameDay(Sport sport) {
+		PlannedWorkout planned = repository.findById(plannedId).orElseThrow();
+		ExtraRide ride = new ExtraRide(planned.getPlan().getAthlete(), "strava-" + sport + plannedId);
+		ride.setDate(planned.getDate());
+		ride.setDurationMinutes(40);
+		ride.setDistanceKm(15.0);
+		ride.setTss(30);
+		ride.setSport(sport);
+		ride.setAdaptationApplied(true);
+		return extraRides.save(ride);
+	}
+
+	@Test
+	void rideOfTheDayCanBeAssignedByHand() throws Exception {
+		ExtraRide ride = rideOnTheSameDay(Sport.RIDE);
+		rideOnTheSameDay(Sport.RUN); // ein Lauf kann kein Rad-Workout sein
+
+		mockMvc.perform(get("/planned-workouts/" + plannedId + "/candidate-rides").header("Authorization", token))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.length()").value(1))
+				.andExpect(jsonPath("$[0].id").value(ride.getId()));
+
+		mockMvc.perform(put("/planned-workouts/" + plannedId + "/activity").header("Authorization", token)
+				.contentType(MediaType.APPLICATION_JSON).content("{ \"extraRideId\": %d }".formatted(ride.getId())))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.completed").value(true))
+				.andExpect(jsonPath("$.actual.tss").value(30))
+				.andExpect(jsonPath("$.actual.confirmed").value(true));
+
+		assertThat(extraRides.findById(ride.getId())).as("keine doppelte Belastung").isEmpty();
+		assertThat(repository.findById(plannedId).orElseThrow().isAdaptationApplied())
+				.as("hat den Plan schon angepasst – nicht nochmal").isTrue();
+		mockMvc.perform(get("/planned-workouts/" + plannedId + "/candidate-rides").header("Authorization", token))
+				.andExpect(jsonPath("$.length()").value(0));
+	}
+
+	@Test
+	void othersCannotAssignRides() throws Exception {
+		ExtraRide ride = rideOnTheSameDay(Sport.RIDE);
+		String other = registerWithProfile(mockMvc);
+
+		mockMvc.perform(put("/planned-workouts/" + plannedId + "/activity").header("Authorization", other)
+				.contentType(MediaType.APPLICATION_JSON).content("{ \"extraRideId\": %d }".formatted(ride.getId())))
+				.andExpect(status().isNotFound());
+		assertThat(extraRides.findById(ride.getId())).isPresent();
+	}
 
 	private String token;
 	private long plannedId;

@@ -1,5 +1,7 @@
 package io.github.jakobfa.webtechproject.web;
 
+import java.util.List;
+
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
@@ -17,7 +19,9 @@ import io.github.jakobfa.webtechproject.model.HeartRateTargets;
 import io.github.jakobfa.webtechproject.integration.intervals.IntervalsAutoSyncService;
 import io.github.jakobfa.webtechproject.model.PlannedWorkout;
 import io.github.jakobfa.webtechproject.service.FitWorkoutExporter;
+import io.github.jakobfa.webtechproject.service.RideAssignmentService;
 import io.github.jakobfa.webtechproject.service.WorkoutCustomizationService;
+import io.github.jakobfa.webtechproject.web.dto.ExtraRideResponse;
 import io.github.jakobfa.webtechproject.service.WorkoutCustomizationService.Direction;
 import io.github.jakobfa.webtechproject.service.WorkoutCustomizationService.NotPossibleException;
 import io.github.jakobfa.webtechproject.service.PlannedWorkoutService;
@@ -34,15 +38,38 @@ public class PlannedWorkoutController {
 	private final FitWorkoutExporter fitExporter;
 	private final WorkoutCustomizationService customization;
 	private final IntervalsAutoSyncService autoSync;
+	private final RideAssignmentService rideAssignment;
 
 	public PlannedWorkoutController(PlannedWorkoutService plannedWorkoutService, PlanResponseMapper mapper,
 			FitWorkoutExporter fitExporter, WorkoutCustomizationService customization,
-			IntervalsAutoSyncService autoSync) {
+			IntervalsAutoSyncService autoSync, RideAssignmentService rideAssignment) {
 		this.plannedWorkoutService = plannedWorkoutService;
 		this.mapper = mapper;
 		this.fitExporter = fitExporter;
 		this.customization = customization;
 		this.autoSync = autoSync;
+		this.rideAssignment = rideAssignment;
+	}
+
+	public record RideAssignment(@NotNull Long extraRideId) {
+	}
+
+	/** Fahrten des Tages, die man diesem Workout selbst zuordnen kann (leer, wenn schon eine zugeordnet ist) */
+	@GetMapping(path = "/planned-workouts/{id}/candidate-rides")
+	public ResponseEntity<List<ExtraRideResponse>> candidateRides(@AuthenticationPrincipal Jwt jwt,
+			@PathVariable Long id) {
+		return rideAssignment.candidates(id, CurrentUser.id(jwt))
+				.map(rides -> ResponseEntity.ok(rides.stream().map(PlanResponseMapper::toResponse).toList()))
+				.orElse(ResponseEntity.notFound().build());
+	}
+
+	/** "Diese Fahrt war das Training": hakt das Workout ab und übernimmt die Werte der Fahrt */
+	@PutMapping(path = "/planned-workouts/{id}/activity")
+	public ResponseEntity<PlannedWorkoutResponse> assignRide(@AuthenticationPrincipal Jwt jwt, @PathVariable Long id,
+			@Valid @RequestBody RideAssignment request) {
+		return rideAssignment.assign(id, CurrentUser.id(jwt), request.extraRideId())
+				.map(planned -> ResponseEntity.ok(mapper.toResponse(planned)))
+				.orElse(ResponseEntity.notFound().build());
 	}
 
 	public record AdjustmentRequest(@NotNull Direction direction) {

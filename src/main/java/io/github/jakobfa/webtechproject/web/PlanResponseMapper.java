@@ -50,7 +50,7 @@ public class PlanResponseMapper {
 				EventProfile.of(plan.getAthlete()));
 	}
 
-	private static ExtraRideResponse toResponse(ExtraRide ride) {
+	public static ExtraRideResponse toResponse(ExtraRide ride) {
 		return new ExtraRideResponse(ride.getId(), ride.getDate(), ride.getDurationMinutes(), ride.getDistanceKm(),
 				ride.getTss(), ride.assessment(), RecordedActivity.stravaUrl(ride.getActivityId()),
 				ride.isTssFromHeartRate(), ride.isTssFromDuration(), ride.getSport());

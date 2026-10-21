@@ -77,16 +77,16 @@ class ActivityImportServiceTest {
 		yesterday.setRating(6);
 		givenPlan(yesterday);
 		when(client.listActivities(CREDENTIALS, TODAY.minusDays(14), TODAY))
-				.thenReturn(List.of(ride("i1", TODAY.minusDays(1), 102, 78)));
+				.thenReturn(List.of(ride("i1", TODAY.minusDays(1), 75, 70))); // geplant: 71 min, 67 TSS
 
 		var result = service.importRecent(1L).orElseThrow();
 
 		assertThat(result.matched()).isEqualTo(1);
 		assertThat(yesterday.isCompleted()).isTrue();
 		assertThat(yesterday.getActivityId()).isEqualTo("i1");
-		assertThat(yesterday.getActualDurationMinutes()).isEqualTo(102);
-		assertThat(yesterday.getActualDistanceKm()).isEqualTo(51.0);
-		assertThat(yesterday.getActualTss()).isEqualTo(78);
+		assertThat(yesterday.getActualDurationMinutes()).isEqualTo(75);
+		assertThat(yesterday.getActualDistanceKm()).isEqualTo(37.5);
+		assertThat(yesterday.getActualTss()).isEqualTo(70);
 		assertThat(yesterday.getRating()).as("Bewertung bleibt beim Nutzer").isEqualTo(6);
 	}
 
@@ -233,6 +233,11 @@ class ActivityImportServiceTest {
 		verify(extraRides).deleteAll(List.of(gone));
 	}
 
+	private static RecordedActivity stravaRide(String id, LocalDate date, String time, int minutes, int tss) {
+		return new RecordedActivity("strava-" + id, Sport.RIDE, java.time.LocalDateTime.parse(date + "T" + time),
+				minutes * 60, minutes * 400.0, tss, true, false, false);
+	}
+
 	private static RecordedActivity stravaRide(String id, LocalDate date, String time, int minutes) {
 		return new RecordedActivity("strava-" + id, Sport.RIDE, java.time.LocalDateTime.parse(date + "T" + time),
 				minutes * 60, minutes * 400.0, null, false, false, false);
@@ -248,13 +253,13 @@ class ActivityImportServiceTest {
 		when(connectionService.credentialsOf(1L)).thenReturn(Optional.empty());
 		PlannedWorkout today = planned(TODAY);
 		givenPlan(today);
-		givenStrava(stravaRide("5", TODAY, "07:30:00", 60));
+		givenStrava(stravaRide("5", TODAY, "07:30:00", 70, 65));
 
 		var result = service.importRecent(1L).orElseThrow();
 
 		assertThat(result.matched()).isEqualTo(1);
 		assertThat(today.getActivityId()).isEqualTo("strava-5");
-		assertThat(today.getActualTss()).isNull();
+		assertThat(today.getActualTss()).isEqualTo(65);
 		verify(client, never()).listActivities(any(), any(), any());
 	}
 
@@ -262,9 +267,9 @@ class ActivityImportServiceTest {
 	void sameRideFromBothSourcesCountsOnceAndIntervalsWins() {
 		PlannedWorkout today = planned(TODAY);
 		givenPlan(today);
-		when(client.listActivities(any(), any(), any())).thenReturn(List.of(ride("i1", TODAY, 60, 45)));
+		when(client.listActivities(any(), any(), any())).thenReturn(List.of(ride("i1", TODAY, 70, 65)));
 		// Wahoo lädt auch zu Strava: Start 3 Minuten versetzt, gleiche Fahrt
-		givenStrava(stravaRide("6", TODAY, "17:03:00", 61), stravaRide("7", TODAY, "07:10:00", 25));
+		givenStrava(stravaRide("6", TODAY, "17:03:00", 71), stravaRide("7", TODAY, "07:10:00", 25));
 
 		var result = service.importRecent(1L).orElseThrow();
 
@@ -292,20 +297,63 @@ class ActivityImportServiceTest {
 		PlannedWorkout today = planned(TODAY);
 		givenPlan(today);
 		when(connectionService.credentialsOf(1L)).thenReturn(Optional.empty());
-		givenStrava(stravaRide("5", TODAY, "07:30:00", 60));
+		givenStrava(stravaRide("5", TODAY, "07:30:00", 70, 65));
 		service.importRecent(1L);
 		today.setActivityConfirmed(true);
 
-		// Schwellenpuls nachgetragen → jetzt mit geschätztem TSS
+		// Schwellenpuls geändert → TSS neu geschätzt
 		when(strava.recentRides(eq(1L), any(), any(), any(), any())).thenReturn(Optional.of(List.of(
-				new RecordedActivity("strava-5", Sport.RIDE, java.time.LocalDateTime.parse(TODAY + "T07:30:00"), 3600,
-						12000.0, 32, true, false, false))));
+				new RecordedActivity("strava-5", Sport.RIDE, java.time.LocalDateTime.parse(TODAY + "T07:30:00"), 4200,
+						28000.0, 58, true, false, false))));
 		var result = service.importRecent(1L).orElseThrow();
 
 		assertThat(result.matched()).isZero();
-		assertThat(today.getActualTss()).isEqualTo(32);
+		assertThat(today.getActualTss()).isEqualTo(58);
 		assertThat(today.isActualTssFromHeartRate()).isTrue();
 		assertThat(today.getActivityConfirmed()).isTrue();
+	}
+
+	@Test
+	void muchLongerRideIsNotThePlannedWorkout() {
+		PlannedWorkout today = planned(TODAY); // 71 min
+		givenPlan(today);
+		when(client.listActivities(any(), any(), any())).thenReturn(List.of(ride("i3", TODAY, 150, 90)));
+
+		var result = service.importRecent(1L).orElseThrow();
+
+		assertThat(today.getActivityId()).as("150 statt 71 min").isNull();
+		assertThat(result.extra()).isEqualTo(1);
+	}
+
+	@Test
+	void hardWorkoutWithoutAnyLoadDataIsNeverTickedOffAutomatically() {
+		when(connectionService.credentialsOf(1L)).thenReturn(Optional.empty());
+		PlannedWorkout today = planned(TODAY);
+		givenPlan(today);
+		givenStrava(stravaRide("13", TODAY, "07:30:00", 71)); // passende Dauer, aber kein TSS
+
+		service.importRecent(1L);
+
+		assertThat(today.getActivityId()).isNull();
+	}
+
+	@Test
+	void fitRulesAtTheBorders() {
+		var sweetSpot = library.findById(5L).orElseThrow(); // 71 min, 67 TSS
+		java.util.function.BiFunction<Integer, Integer, RecordedActivity> ride = (minutes, tss) -> new RecordedActivity(
+				"x", Sport.RIDE, java.time.LocalDateTime.parse(TODAY + "T07:00:00"), minutes * 60, null, tss, false,
+				false, false);
+
+		assertThat(ActivityImportService.fitsWorkout(ride.apply(57, 67), sweetSpot)).isTrue();
+		assertThat(ActivityImportService.fitsWorkout(ride.apply(56, 67), sweetSpot)).isFalse();
+		assertThat(ActivityImportService.fitsWorkout(ride.apply(92, 67), sweetSpot)).isTrue();
+		assertThat(ActivityImportService.fitsWorkout(ride.apply(93, 67), sweetSpot)).isFalse();
+		assertThat(ActivityImportService.fitsWorkout(ride.apply(71, 50), sweetSpot)).isFalse();
+		assertThat(ActivityImportService.fitsWorkout(ride.apply(71, 91), sweetSpot)).isFalse();
+
+		var endurance = WorkoutLibrary.endurance(90);
+		assertThat(ActivityImportService.fitsWorkout(ride.apply(90, null), endurance))
+				.as("lockere Fahrt ohne TSS: Dauer reicht").isTrue();
 	}
 
 	@Test

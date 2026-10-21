@@ -177,23 +177,37 @@ public class ActivityImportService {
 	}
 
 	/** Anteil von Dauer bzw. TSS des Workouts, den eine Fahrt mindestens haben muss, um es abzuhaken */
-	static final double MIN_SHARE = 0.6;
+	/** Erlaubte Abweichung von der geplanten Dauer (80–130 %) */
+	static final double MIN_DURATION_SHARE = 0.8;
+	static final double MAX_DURATION_SHARE = 1.3;
+	/** Erlaubte Abweichung vom geplanten TSS (75–135 %) */
+	static final double MIN_TSS_SHARE = 0.75;
+	static final double MAX_TSS_SHARE = 1.35;
 
 	private static final Set<WorkoutType> EASY_TYPES = Set.of(WorkoutType.RECOVERY, WorkoutType.ENDURANCE,
 			WorkoutType.LONG_RIDE);
 
 	/**
-	 * Passt die Fahrt zum geplanten Workout? Mindestens 60 % der Dauer, bei harten Workouts auch 60 % des TSS
-	 * (falls bekannt). Pendelfahrten passen nie – sonst würde der Weg zur Arbeit ein FTP-Test.
+	 * Ist die Fahrt sehr wahrscheinlich das geplante Workout? Lieber einmal zu wenig automatisch abhaken als
+	 * falsch – der Nutzer kann eine Fahrt jederzeit selbst zuordnen.
+	 * - Dauer: 80–130 % der geplanten Dauer
+	 * - TSS: 75–135 % des geplanten TSS
+	 * - ohne TSS (weder Watt noch Puls) nur lockere Workouts, harte lassen sich so nicht prüfen
+	 * - Pendelfahrten nie
 	 */
 	static boolean fitsWorkout(RecordedActivity ride, Workout workout) {
 		if (ride.commute()) {
 			return false;
 		}
-		boolean longEnough = ride.movingSeconds() >= workout.getDurationInMinutes() * 60 * MIN_SHARE;
-		boolean hardEnough = EASY_TYPES.contains(workout.getType()) || ride.tss() == null
-				|| ride.tss() >= workout.getTss() * MIN_SHARE;
-		return longEnough && hardEnough;
+		double durationShare = ride.movingSeconds() / (workout.getDurationInMinutes() * 60.0);
+		if (durationShare < MIN_DURATION_SHARE || durationShare > MAX_DURATION_SHARE) {
+			return false;
+		}
+		if (ride.tss() == null) {
+			return EASY_TYPES.contains(workout.getType());
+		}
+		double tssShare = (double) ride.tss() / workout.getTss();
+		return tssShare >= MIN_TSS_SHARE && tssShare <= MAX_TSS_SHARE;
 	}
 
 	/** Strava-Fahrten, die es schon aus intervals.icu gibt, fallen weg */
