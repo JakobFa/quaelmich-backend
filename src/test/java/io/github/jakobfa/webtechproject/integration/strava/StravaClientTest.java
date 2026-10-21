@@ -67,9 +67,9 @@ class StravaClientTest {
 				Instant.ofEpochSecond(1792000000));
 
 		assertThat(activities).singleElement().satisfies(activity -> {
-			assertThat(activity.isUsableRide()).isTrue();
-			assertThat(activity.toRecordedRide(250, null).id()).isEqualTo("strava-777");
-			assertThat(activity.toRecordedRide(250, null).start().getHour()).as("Ortszeit, nicht UTC").isEqualTo(7);
+			assertThat(activity.isUsable()).isTrue();
+			assertThat(activity.toRecordedActivity(250, null).id()).isEqualTo("strava-777");
+			assertThat(activity.toRecordedActivity(250, null).start().getHour()).as("Ortszeit, nicht UTC").isEqualTo(7);
 		});
 	}
 

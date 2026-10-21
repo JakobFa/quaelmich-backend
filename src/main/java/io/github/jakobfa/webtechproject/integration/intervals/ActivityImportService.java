@@ -14,7 +14,7 @@ import java.util.stream.Collectors;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import io.github.jakobfa.webtechproject.integration.RecordedRide;
+import io.github.jakobfa.webtechproject.integration.RecordedActivity;
 import io.github.jakobfa.webtechproject.integration.strava.StravaService;
 import io.github.jakobfa.webtechproject.model.Athlete;
 import io.github.jakobfa.webtechproject.model.ExtraRide;
@@ -78,21 +78,22 @@ public class ActivityImportService {
 		LocalDate today = LocalDate.now(clock);
 		LocalDate from = today.minusDays(DAYS_BACK);
 		// intervals.icu-Fehler werden weitergereicht, Strava-Fehler ergeben nur eine leere Liste
-		List<RecordedRide> intervalsRides = credentials
+		List<RecordedActivity> intervalsRides = credentials
 				.map(c -> client.listActivities(c, from, today).stream()
-						.filter(IntervalsActivity::isUsableRide)
-						.map(IntervalsActivity::toRecordedRide)
+						.filter(IntervalsActivity::isUsable)
+						.map(IntervalsActivity::toRecordedActivity)
 						.toList())
 				.orElse(List.of());
-		Optional<List<RecordedRide>> stravaRides = strava
+		Optional<List<RecordedActivity>> stravaRides = strava
 				? stravaService.recentRides(userId, from, today, athlete.get().getFtp(),
 						athlete.get().getEffectiveThresholdHeartRate())
 				: Optional.empty();
-		List<RecordedRide> rides = merge(intervalsRides, stravaRides.orElse(List.of()));
+		List<RecordedActivity> rides = merge(intervalsRides, stravaRides.orElse(List.of()));
 
 		// pro Tag die längste Fahrt
-		Map<LocalDate, RecordedRide> longestRidePerDay = rides.stream().collect(Collectors.toMap(
-				RecordedRide::date, Function.identity(),
+		Map<LocalDate, RecordedActivity> longestRidePerDay = rides.stream().filter(RecordedActivity::isRide)
+				.collect(Collectors.toMap(
+				RecordedActivity::date, Function.identity(),
 				(a, b) -> a.movingSeconds() >= b.movingSeconds() ? a : b));
 
 		// Workouts bis übermorgen laden: die vergangenen zum Zuordnen, die kommenden zum Anpassen
@@ -102,7 +103,7 @@ public class ActivityImportService {
 		int matched = 0;
 		int adjusted = 0;
 		for (PlannedWorkout planned : window) {
-			RecordedRide ride = longestRidePerDay.get(planned.getDate());
+			RecordedActivity ride = longestRidePerDay.get(planned.getDate());
 			if (ride == null) {
 				continue;
 			}
@@ -123,7 +124,7 @@ public class ActivityImportService {
 		Map<String, ExtraRide> known = extraRideRepository.findByAthleteIdAndDateBetween(athleteId, from, today)
 				.stream().collect(Collectors.toMap(ExtraRide::getActivityId, Function.identity(), (a, b) -> a));
 		int extra = 0;
-		for (RecordedRide ride : rides) {
+		for (RecordedActivity ride : rides) {
 			ExtraRide existing = known.remove(ride.id());
 			if (linked.contains(ride.id())) {
 				if (existing != null) {
@@ -143,7 +144,7 @@ public class ActivityImportService {
 		}
 		// gelöschte (oder inzwischen doppelte) Fahrten entfernen – aber nur aus Quellen, die geantwortet haben
 		extraRideRepository.deleteAll(known.values().stream()
-				.filter(ride -> RecordedRide.isFromStrava(ride.getActivityId())
+				.filter(ride -> RecordedActivity.isFromStrava(ride.getActivityId())
 						? stravaRides.isPresent()
 						: credentials.isPresent())
 				.toList());
@@ -152,23 +153,25 @@ public class ActivityImportService {
 	}
 
 	/** Strava-Fahrten, die es schon aus intervals.icu gibt, fallen weg */
-	static List<RecordedRide> merge(List<RecordedRide> intervalsRides, List<RecordedRide> stravaRides) {
-		List<RecordedRide> merged = new ArrayList<>(intervalsRides);
+	static List<RecordedActivity> merge(List<RecordedActivity> intervalsRides, List<RecordedActivity> stravaRides) {
+		List<RecordedActivity> merged = new ArrayList<>(intervalsRides);
 		stravaRides.stream()
-				.filter(strava -> intervalsRides.stream().noneMatch(strava::isSameRideAs))
+				.filter(strava -> intervalsRides.stream().noneMatch(strava::isSameActivityAs))
 				.forEach(merged::add);
 		return merged;
 	}
 
-	static void apply(ExtraRide extraRide, RecordedRide ride) {
+	static void apply(ExtraRide extraRide, RecordedActivity ride) {
 		extraRide.setDate(ride.date());
 		extraRide.setDurationMinutes(ride.movingMinutes());
 		extraRide.setDistanceKm(ride.distanceKm());
 		extraRide.setTss(ride.tss());
 		extraRide.setTssFromHeartRate(ride.tssFromHeartRate());
+		extraRide.setTssFromDuration(ride.tssFromDuration());
+		extraRide.setSport(ride.sport());
 	}
 
-	static void apply(PlannedWorkout planned, RecordedRide ride) {
+	static void apply(PlannedWorkout planned, RecordedActivity ride) {
 		planned.setCompleted(true);
 		planned.setActivityId(ride.id());
 		planned.setActivityConfirmed(null); // neue Fahrt → neu nachfragen
@@ -177,7 +180,7 @@ public class ActivityImportService {
 	}
 
 	/** Ist-Werte übernehmen, ohne Bestätigung und Anpassung zurückzusetzen */
-	static void updateValues(PlannedWorkout planned, RecordedRide ride) {
+	static void updateValues(PlannedWorkout planned, RecordedActivity ride) {
 		planned.setActualDurationMinutes(ride.movingMinutes());
 		planned.setActualDistanceKm(ride.distanceKm());
 		planned.setActualTss(ride.tss());

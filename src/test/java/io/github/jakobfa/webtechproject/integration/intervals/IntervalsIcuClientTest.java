@@ -97,11 +97,11 @@ class IntervalsIcuClientTest {
 
 		assertThat(activities).hasSize(2);
 		IntervalsActivity ride = activities.getFirst();
-		assertThat(ride.isUsableRide()).isTrue();
+		assertThat(ride.isUsable()).isTrue();
 		assertThat(ride.date()).isEqualTo(LocalDate.of(2026, 10, 20));
 		assertThat(ride.movingTimeSeconds()).isEqualTo(5400);
 		assertThat(ride.trainingLoad()).isEqualTo(68);
-		assertThat(activities.get(1).isUsableRide()).as("Strava-Platzhalter").isFalse();
+		assertThat(activities.get(1).isUsable()).as("Strava-Platzhalter").isFalse();
 	}
 
 	@Test

@@ -4,6 +4,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import org.junit.jupiter.api.Test;
 
+import io.github.jakobfa.webtechproject.model.Sport;
+
 class StravaActivityTest {
 
 	private static StravaActivity ride(String type, Integer weightedWatts, Boolean deviceWatts) {
@@ -17,7 +19,7 @@ class StravaActivityTest {
 	@Test
 	void estimatesTssFromHeartRateWithoutPowerMeter() {
 		// 30 min bei 136 Schlägen, Schwellenpuls 170 → 0,5 h × 0,8² × 100 = 32
-		var ride = commute(136.0).toRecordedRide(250, 170);
+		var ride = commute(136.0).toRecordedActivity(250, 170);
 
 		assertThat(ride.tss()).isEqualTo(32);
 		assertThat(ride.tssFromHeartRate()).isTrue();
@@ -26,7 +28,7 @@ class StravaActivityTest {
 	@Test
 	void powerBeatsHeartRate() {
 		var withPower = new StravaActivity(3L, "Ride", "2026-10-21T07:30:00Z", 3600, 30000.0, 250, true, 150.0, null)
-				.toRecordedRide(250, 170);
+				.toRecordedActivity(250, 170);
 
 		assertThat(withPower.tss()).isEqualTo(100);
 		assertThat(withPower.tssFromHeartRate()).isFalse();
@@ -34,9 +36,9 @@ class StravaActivityTest {
 
 	@Test
 	void noEstimateWithoutHeartRateOrThreshold() {
-		assertThat(commute(null).toRecordedRide(250, 170).tss()).isNull();
-		assertThat(commute(136.0).toRecordedRide(250, null).tss()).isNull();
-		assertThat(commute(136.0).toRecordedRide(250, null).tssFromHeartRate()).isFalse();
+		assertThat(commute(null).toRecordedActivity(250, 170).tss()).isNull();
+		assertThat(commute(136.0).toRecordedActivity(250, null).tss()).isNull();
+		assertThat(commute(136.0).toRecordedActivity(250, null).tssFromHeartRate()).isFalse();
 	}
 
 	@Test
@@ -55,11 +57,34 @@ class StravaActivityTest {
 	}
 
 	@Test
-	void onlyRidesWithoutMotorCount() {
-		assertThat(ride("Ride", null, null).isUsableRide()).isTrue();
-		assertThat(ride("GravelRide", null, null).isUsableRide()).isTrue();
-		assertThat(ride("EBikeRide", null, null).isUsableRide()).isFalse();
-		assertThat(ride("Run", null, null).isUsableRide()).isFalse();
+	void allSportsCountButOnlyRidesAreRides() {
+		assertThat(ride("Ride", null, null).sport()).isEqualTo(Sport.RIDE);
+		assertThat(ride("GravelRide", null, null).sport()).isEqualTo(Sport.RIDE);
+		assertThat(ride("EBikeRide", null, null).sport()).as("E-Bike ist kein Training aufs Rad-Ziel")
+				.isEqualTo(Sport.OTHER);
+		assertThat(ride("Run", null, null).isUsable()).isTrue();
+		assertThat(ride("Run", null, null).sport()).isEqualTo(Sport.RUN);
+	}
+
+	@Test
+	void runWithoutHeartRateIsEstimatedRideIsNot() {
+		// eine Stunde Laufen ohne Puls ≈ 60 TSS, als Schätzung markiert
+		var run = ride("Run", null, null).toRecordedActivity(250, 170);
+		assertThat(run.tss()).isEqualTo(60);
+		assertThat(run.tssFromDuration()).isTrue();
+
+		var rideWithoutData = ride("Ride", null, null).toRecordedActivity(250, 170);
+		assertThat(rideWithoutData.tss()).isNull();
+		assertThat(rideWithoutData.tssFromDuration()).isFalse();
+	}
+
+	@Test
+	void runWithHeartRateUsesHeartRateTss() {
+		var run = new StravaActivity(4L, "Run", "2026-10-21T07:30:00Z", 3600, 10000.0, 250, true, 153.0, null)
+				.toRecordedActivity(250, 170);
+
+		assertThat(run.tss()).as("Watt zählen beim Laufen nicht, der Puls schon").isEqualTo(81);
+		assertThat(run.tssFromHeartRate()).isTrue();
 	}
 
 }

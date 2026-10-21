@@ -7,6 +7,8 @@ import org.hibernate.annotations.ColumnDefault;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 
 import jakarta.persistence.Column;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
 import jakarta.persistence.Entity;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.Id;
@@ -16,7 +18,8 @@ import lombok.NoArgsConstructor;
 import lombok.Setter;
 
 /**
- * Eine gefahrene Einheit ohne passendes Workout im Plan, z. B. eine Ausfahrt am Ruhetag.
+ * Eine gemachte Einheit ohne passendes Workout im Plan: eine Ausfahrt am Ruhetag, aber auch Laufen,
+ * Schwimmen, Krafttraining … – zählt als zusätzliche Belastung.
  * Kommt wie die übrigen Fahrten aus intervals.icu.
  */
 @Entity
@@ -52,6 +55,19 @@ public class ExtraRide {
 	@Column(nullable = false)
 	@ColumnDefault("false")
 	private boolean tssFromHeartRate;
+
+	/** TSS nur grob aus Dauer und Sportart geschätzt (ohne Puls) */
+	@Column(nullable = false)
+	@ColumnDefault("false")
+	private boolean tssFromDuration;
+
+	/** Sportart; ältere Einträge ohne Angabe sind Radfahrten */
+	@Enumerated(EnumType.STRING)
+	private Sport sport;
+
+	public Sport getSport() {
+		return sport == null ? Sport.RIDE : sport;
+	}
 
 	/** Wurde der Plan wegen dieser Fahrt schon angepasst? */
 	private boolean adaptationApplied;

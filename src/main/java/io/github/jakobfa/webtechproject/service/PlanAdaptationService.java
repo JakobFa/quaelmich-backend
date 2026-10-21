@@ -76,8 +76,9 @@ public class PlanAdaptationService {
 			return Optional.empty();
 		}
 		ride.setAdaptationApplied(true);
-		String note = "Angepasst: Am %s bist du zusätzlich %s gefahren – mehr Erholung."
-				.formatted(DAY.format(ride.getDate()), describeLoad(ride.getTss(), ride.getDurationMinutes()));
+		String note = "Angepasst: Am %s hattest du zusätzlich %s %s – mehr Erholung."
+				.formatted(DAY.format(ride.getDate()), describeLoad(ride.getTss(), ride.getDurationMinutes()),
+						ride.getSport().inGerman());
 		return adaptNextHardSession(ride.getDate(), assessment, note, upcoming);
 	}
 

@@ -2,12 +2,12 @@ package io.github.jakobfa.webtechproject.integration.intervals;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
-import java.util.Set;
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.annotation.JsonProperty;
 
-import io.github.jakobfa.webtechproject.integration.RecordedRide;
+import io.github.jakobfa.webtechproject.integration.RecordedActivity;
+import io.github.jakobfa.webtechproject.model.Sport;
 
 /**
  * Eine Aktivität aus intervals.icu (nur die Felder, die quaelmich braucht).
@@ -23,21 +23,20 @@ public record IntervalsActivity(
 		@JsonProperty("icu_training_load") Integer trainingLoad,
 		String source) {
 
-	private static final Set<String> RIDE_TYPES = Set.of("Ride", "VirtualRide", "GravelRide", "MountainBikeRide");
-
-	/** Nur echte Radfahrten mit Daten – keine Läufe, keine Strava-Platzhalter */
-	public boolean isUsableRide() {
-		return type != null && RIDE_TYPES.contains(type) && movingTimeSeconds != null && movingTimeSeconds > 0
-				&& startDateLocal != null && !"STRAVA".equalsIgnoreCase(source);
+	/** Alle Sportarten mit Dauer und Startzeit – nur keine Strava-Platzhalter (die liefert die API leer) */
+	public boolean isUsable() {
+		return movingTimeSeconds != null && movingTimeSeconds > 0 && startDateLocal != null
+				&& !"STRAVA".equalsIgnoreCase(source);
 	}
 
 	public LocalDate date() {
 		return LocalDate.parse(startDateLocal.substring(0, 10));
 	}
 
-	public RecordedRide toRecordedRide() {
-		return new RecordedRide(id, LocalDateTime.parse(startDateLocal.substring(0, 19)), movingTimeSeconds, distance,
-				trainingLoad, false);
+	/** intervals.icu liefert die Trainingslast für alle Sportarten; fehlt sie, wird sie aus der Dauer geschätzt */
+	public RecordedActivity toRecordedActivity() {
+		return RecordedActivity.withEstimateIfMissing(id, Sport.fromActivityType(type),
+				LocalDateTime.parse(startDateLocal.substring(0, 19)), movingTimeSeconds, distance, trainingLoad, false);
 	}
 
 }

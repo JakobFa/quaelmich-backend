@@ -132,7 +132,7 @@ class PlanAdaptationServiceTest {
 
 		assertThat(adaptation.adaptAfter(extraRide(50), List.of(next))).contains(next);
 		assertThat(next.getWorkoutId()).isEqualTo(14L);
-		assertThat(next.getAdjustmentNote()).isEqualTo("Angepasst: Am Mo., 19.10. bist du zusätzlich 50 TSS gefahren – mehr Erholung.");
+		assertThat(next.getAdjustmentNote()).isEqualTo("Angepasst: Am Mo., 19.10. hattest du zusätzlich 50 TSS auf dem Rad – mehr Erholung.");
 	}
 
 	@Test

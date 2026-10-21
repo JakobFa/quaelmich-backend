@@ -1,12 +1,12 @@
 package io.github.jakobfa.webtechproject.integration.strava;
 
 import java.time.LocalDateTime;
-import java.util.Set;
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.annotation.JsonProperty;
 
-import io.github.jakobfa.webtechproject.integration.RecordedRide;
+import io.github.jakobfa.webtechproject.integration.RecordedActivity;
+import io.github.jakobfa.webtechproject.model.Sport;
 
 /**
  * Eine Aktivität aus der Strava-API (nur die Felder, die quaelmich braucht).
@@ -25,12 +25,13 @@ public record StravaActivity(
 		@JsonProperty("average_heartrate") Double averageHeartRate,
 		@JsonProperty("max_heartrate") Double maxHeartRate) {
 
-	private static final Set<String> RIDE_TYPES = Set.of("Ride", "VirtualRide", "GravelRide", "MountainBikeRide");
+	/** Alle Sportarten mit Dauer und Startzeit */
+	public boolean isUsable() {
+		return movingTimeSeconds != null && movingTimeSeconds > 0 && startDateLocal != null && id != null;
+	}
 
-	/** Nur Radfahrten ohne Motor, mit Dauer und Startzeit */
-	public boolean isUsableRide() {
-		return sportType != null && RIDE_TYPES.contains(sportType) && movingTimeSeconds != null
-				&& movingTimeSeconds > 0 && startDateLocal != null && id != null;
+	public Sport sport() {
+		return Sport.fromActivityType(sportType);
 	}
 
 	/**
@@ -59,14 +60,18 @@ public record StravaActivity(
 		return (int) Math.round(movingTimeSeconds / 3600.0 * intensity * intensity * 100);
 	}
 
-	/** Watt-TSS, wenn möglich – sonst Puls-TSS */
-	public RecordedRide toRecordedRide(Integer ftp, Integer thresholdHeartRate) {
-		Integer powerTss = tss(ftp);
-		Integer tss = powerTss != null ? powerTss : heartRateTss(thresholdHeartRate);
+	/**
+	 * Watt-TSS (nur Radfahrten mit Wattmesser), sonst Puls-TSS, sonst – außer bei Radfahrten – eine grobe
+	 * Schätzung aus Dauer und Sportart.
+	 */
+	public RecordedActivity toRecordedActivity(Integer ftp, Integer thresholdHeartRate) {
+		Sport sport = sport();
+		Integer powerTss = sport == Sport.RIDE ? tss(ftp) : null;
+		Integer heartRateTss = powerTss == null ? heartRateTss(thresholdHeartRate) : null;
 		// Strava hängt an die Ortszeit ein "Z" an, obwohl es keine UTC-Zeit ist
-		return new RecordedRide(RecordedRide.STRAVA_PREFIX + id,
-				LocalDateTime.parse(startDateLocal.substring(0, 19)), movingTimeSeconds, distance, tss,
-				powerTss == null && tss != null);
+		return RecordedActivity.withEstimateIfMissing(RecordedActivity.STRAVA_PREFIX + id, sport,
+				LocalDateTime.parse(startDateLocal.substring(0, 19)), movingTimeSeconds, distance,
+				powerTss != null ? powerTss : heartRateTss, heartRateTss != null);
 	}
 
 }

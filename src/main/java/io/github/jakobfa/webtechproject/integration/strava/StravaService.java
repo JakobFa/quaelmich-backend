@@ -13,7 +13,7 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.client.HttpClientErrorException;
 import org.springframework.web.client.RestClientException;
 
-import io.github.jakobfa.webtechproject.integration.RecordedRide;
+import io.github.jakobfa.webtechproject.integration.RecordedActivity;
 import io.github.jakobfa.webtechproject.integration.intervals.SecretCipher;
 import io.github.jakobfa.webtechproject.repository.AppUserRepository;
 import io.github.jakobfa.webtechproject.repository.ExtraRideRepository;
@@ -155,7 +155,7 @@ public class StravaService {
 	 * nicht erreichbar ist – ein Strava-Problem soll den Import aus intervals.icu nicht verhindern.
 	 */
 	@Transactional
-	public Optional<List<RecordedRide>> recentRides(Long userId, LocalDate from, LocalDate to, Integer ftp,
+	public Optional<List<RecordedActivity>> recentRides(Long userId, LocalDate from, LocalDate to, Integer ftp,
 			Integer thresholdHeartRate) {
 		if (!isConfigured()) {
 			return Optional.empty();
@@ -172,8 +172,8 @@ public class StravaService {
 			Instant after = from.atStartOfDay(clock.getZone()).toInstant();
 			Instant before = to.plusDays(1).atStartOfDay(clock.getZone()).toInstant();
 			return Optional.of(client.listActivities(accessToken, after, before).stream()
-					.filter(StravaActivity::isUsableRide)
-					.map(activity -> activity.toRecordedRide(ftp, thresholdHeartRate))
+					.filter(StravaActivity::isUsable)
+					.map(activity -> activity.toRecordedActivity(ftp, thresholdHeartRate))
 					.toList());
 		} catch (RestClientException e) {
 			log.warn("Strava-Fahrten für Nutzer {} nicht abrufbar: {}", userId, e.getMessage());
@@ -307,10 +307,10 @@ public class StravaService {
 		repository.delete(connection);
 		athleteService.findByOwner(userId).ifPresent(athlete -> {
 			plannedWorkoutRepository
-					.findByPlanAthleteIdAndActivityIdStartingWith(athlete.getId(), RecordedRide.STRAVA_PREFIX)
+					.findByPlanAthleteIdAndActivityIdStartingWith(athlete.getId(), RecordedActivity.STRAVA_PREFIX)
 					.forEach(planned -> planned.clearActivity());
 			extraRideRepository.deleteByAthleteIdAndActivityIdStartingWith(athlete.getId(),
-					RecordedRide.STRAVA_PREFIX);
+					RecordedActivity.STRAVA_PREFIX);
 		});
 	}
 

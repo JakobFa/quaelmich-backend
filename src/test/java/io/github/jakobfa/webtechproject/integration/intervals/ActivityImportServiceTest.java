@@ -18,12 +18,13 @@ import java.util.Optional;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
-import io.github.jakobfa.webtechproject.integration.RecordedRide;
+import io.github.jakobfa.webtechproject.integration.RecordedActivity;
 import io.github.jakobfa.webtechproject.integration.strava.StravaService;
 import io.github.jakobfa.webtechproject.model.Assessment;
 import io.github.jakobfa.webtechproject.model.Athlete;
 import io.github.jakobfa.webtechproject.model.ExtraRide;
 import io.github.jakobfa.webtechproject.model.Phase;
+import io.github.jakobfa.webtechproject.model.Sport;
 import io.github.jakobfa.webtechproject.model.PlannedWorkout;
 import io.github.jakobfa.webtechproject.repository.ExtraRideRepository;
 import io.github.jakobfa.webtechproject.repository.PlannedWorkoutRepository;
@@ -102,7 +103,7 @@ class ActivityImportServiceTest {
 	}
 
 	@Test
-	void ignoresRunsAndStravaPlaceholders() {
+	void runsCountAsExtraLoadButNeverTickOffARideWorkout() {
 		PlannedWorkout today = planned(TODAY);
 		givenPlan(today);
 		when(client.listActivities(any(), any(), any())).thenReturn(List.of(
@@ -113,6 +114,39 @@ class ActivityImportServiceTest {
 
 		assertThat(result.matched()).isZero();
 		assertThat(today.isCompleted()).isFalse();
+		assertThat(result.extra()).as("Lauf als Zusatzeinheit, Strava-Platzhalter nicht").isEqualTo(1);
+		var saved = org.mockito.ArgumentCaptor.forClass(ExtraRide.class);
+		verify(extraRides).save(saved.capture());
+		assertThat(saved.getValue().getSport()).isEqualTo(Sport.RUN);
+		assertThat(saved.getValue().getTss()).as("Trainingslast von intervals.icu").isEqualTo(30);
+	}
+
+	@Test
+	void hardRunMakesTheNextHardRideSessionEasier() {
+		PlannedWorkout tomorrow = planned(TODAY.plusDays(1)); // Sweet Spot 3 × 12
+		givenPlan(tomorrow);
+		when(client.listActivities(any(), any(), any())).thenReturn(List.of(
+				new IntervalsActivity("r2", TODAY + "T07:00:00", "Run", 5400, 15000.0, 95, "GARMIN")));
+
+		service.importRecent(1L);
+
+		assertThat(tomorrow.getWorkoutId()).isEqualTo(1L); // ≥ 90 TSS → Ausrollen
+		assertThat(tomorrow.getAdjustmentNote()).contains("95 TSS beim Laufen");
+	}
+
+	@Test
+	void swimWithoutLoadIsEstimatedFromDuration() {
+		givenPlan();
+		when(client.listActivities(any(), any(), any())).thenReturn(List.of(
+				new IntervalsActivity("w1", TODAY + "T06:30:00", "Swim", 3600, 2500.0, null, "GARMIN")));
+
+		service.importRecent(1L);
+
+		var saved = org.mockito.ArgumentCaptor.forClass(ExtraRide.class);
+		verify(extraRides).save(saved.capture());
+		assertThat(saved.getValue().getSport()).isEqualTo(Sport.SWIM);
+		assertThat(saved.getValue().getTss()).isEqualTo(45);
+		assertThat(saved.getValue().isTssFromDuration()).isTrue();
 	}
 
 	@Test
@@ -199,12 +233,12 @@ class ActivityImportServiceTest {
 		verify(extraRides).deleteAll(List.of(gone));
 	}
 
-	private static RecordedRide stravaRide(String id, LocalDate date, String time, int minutes) {
-		return new RecordedRide("strava-" + id, java.time.LocalDateTime.parse(date + "T" + time), minutes * 60,
-				minutes * 400.0, null, false);
+	private static RecordedActivity stravaRide(String id, LocalDate date, String time, int minutes) {
+		return new RecordedActivity("strava-" + id, Sport.RIDE, java.time.LocalDateTime.parse(date + "T" + time),
+				minutes * 60, minutes * 400.0, null, false, false);
 	}
 
-	private void givenStrava(RecordedRide... rides) {
+	private void givenStrava(RecordedActivity... rides) {
 		when(strava.isConnected(1L)).thenReturn(true);
 		when(strava.recentRides(eq(1L), any(), any(), any(), any())).thenReturn(Optional.of(List.of(rides)));
 	}
@@ -264,8 +298,8 @@ class ActivityImportServiceTest {
 
 		// Schwellenpuls nachgetragen → jetzt mit geschätztem TSS
 		when(strava.recentRides(eq(1L), any(), any(), any(), any())).thenReturn(Optional.of(List.of(
-				new RecordedRide("strava-5", java.time.LocalDateTime.parse(TODAY + "T07:30:00"), 1800, 12000.0, 32,
-						true))));
+				new RecordedActivity("strava-5", Sport.RIDE, java.time.LocalDateTime.parse(TODAY + "T07:30:00"), 1800,
+						12000.0, 32, true, false))));
 		var result = service.importRecent(1L).orElseThrow();
 
 		assertThat(result.matched()).isZero();
