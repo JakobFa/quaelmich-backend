@@ -86,4 +86,19 @@ public class PlannedWorkout {
 		this.phase = phase;
 	}
 
+
+	/**
+	 * Entfernt die verknüpfte Fahrt (z. B. nach dem Trennen von Strava).
+	 * Selbst bestätigte Workouts bleiben erledigt, automatisch abgehakte werden wieder offen.
+	 */
+	public void clearActivity() {
+		completed = completed && Boolean.TRUE.equals(activityConfirmed);
+		activityId = null;
+		actualDurationMinutes = null;
+		actualDistanceKm = null;
+		actualTss = null;
+		activityConfirmed = null;
+		adaptationApplied = false;
+	}
+
 }

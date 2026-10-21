@@ -1,10 +1,13 @@
 package io.github.jakobfa.webtechproject.integration.intervals;
 
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.util.Set;
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.annotation.JsonProperty;
+
+import io.github.jakobfa.webtechproject.integration.RecordedRide;
 
 /**
  * Eine Aktivität aus intervals.icu (nur die Felder, die quaelmich braucht).
@@ -30,6 +33,11 @@ public record IntervalsActivity(
 
 	public LocalDate date() {
 		return LocalDate.parse(startDateLocal.substring(0, 10));
+	}
+
+	public RecordedRide toRecordedRide() {
+		return new RecordedRide(id, LocalDateTime.parse(startDateLocal.substring(0, 19)), movingTimeSeconds, distance,
+				trainingLoad);
 	}
 
 }

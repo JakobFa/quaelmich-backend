@@ -18,6 +18,8 @@ import java.util.Optional;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
+import io.github.jakobfa.webtechproject.integration.RecordedRide;
+import io.github.jakobfa.webtechproject.integration.strava.StravaService;
 import io.github.jakobfa.webtechproject.model.Assessment;
 import io.github.jakobfa.webtechproject.model.Athlete;
 import io.github.jakobfa.webtechproject.model.ExtraRide;
@@ -43,9 +45,10 @@ class ActivityImportServiceTest {
 	private final AthleteService athleteService = mock(AthleteService.class);
 	private final PlannedWorkoutRepository repository = mock(PlannedWorkoutRepository.class);
 	private final ExtraRideRepository extraRides = mock(ExtraRideRepository.class);
+	private final StravaService strava = mock(StravaService.class);
 	private final WorkoutLibrary library = new WorkoutLibrary();
 	private final ActivityImportService service = new ActivityImportService(connectionService, client,
-			athleteService, repository, extraRides, new PlanAdaptationService(library), CLOCK);
+			strava, athleteService, repository, extraRides, new PlanAdaptationService(library), CLOCK);
 
 	@BeforeEach
 	void connectedUserWithProfile() {
@@ -194,6 +197,60 @@ class ActivityImportServiceTest {
 		service.importRecent(1L);
 
 		verify(extraRides).deleteAll(List.of(gone));
+	}
+
+	private static RecordedRide stravaRide(String id, LocalDate date, String time, int minutes) {
+		return new RecordedRide("strava-" + id, java.time.LocalDateTime.parse(date + "T" + time), minutes * 60,
+				minutes * 400.0, null);
+	}
+
+	private void givenStrava(RecordedRide... rides) {
+		when(strava.isConnected(1L)).thenReturn(true);
+		when(strava.recentRides(eq(1L), any(), any(), any())).thenReturn(Optional.of(List.of(rides)));
+	}
+
+	@Test
+	void stravaOnlyUserGetsRidesToo() {
+		when(connectionService.credentialsOf(1L)).thenReturn(Optional.empty());
+		PlannedWorkout today = planned(TODAY);
+		givenPlan(today);
+		givenStrava(stravaRide("5", TODAY, "07:30:00", 30));
+
+		var result = service.importRecent(1L).orElseThrow();
+
+		assertThat(result.matched()).isEqualTo(1);
+		assertThat(today.getActivityId()).isEqualTo("strava-5");
+		assertThat(today.getActualTss()).isNull();
+		verify(client, never()).listActivities(any(), any(), any());
+	}
+
+	@Test
+	void sameRideFromBothSourcesCountsOnceAndIntervalsWins() {
+		PlannedWorkout today = planned(TODAY);
+		givenPlan(today);
+		when(client.listActivities(any(), any(), any())).thenReturn(List.of(ride("i1", TODAY, 60, 45)));
+		// Wahoo lädt auch zu Strava: Start 3 Minuten versetzt, gleiche Fahrt
+		givenStrava(stravaRide("6", TODAY, "17:03:00", 61), stravaRide("7", TODAY, "07:10:00", 25));
+
+		var result = service.importRecent(1L).orElseThrow();
+
+		assertThat(result.activities()).as("Pendelfahrt + Wahoo-Fahrt").isEqualTo(2);
+		assertThat(today.getActivityId()).isEqualTo("i1");
+		assertThat(result.extra()).isEqualTo(1);
+	}
+
+	@Test
+	void stravaOutageDoesNotDeleteStravaRides() {
+		givenPlan();
+		ExtraRide commute = new ExtraRide(new Athlete(), "strava-8");
+		when(extraRides.findByAthleteIdAndDateBetween(eq(7L), any(), any())).thenReturn(List.of(commute));
+		when(client.listActivities(any(), any(), any())).thenReturn(List.of());
+		when(strava.isConnected(1L)).thenReturn(true);
+		when(strava.recentRides(eq(1L), any(), any(), any())).thenReturn(Optional.empty());
+
+		service.importRecent(1L);
+
+		verify(extraRides).deleteAll(List.of());
 	}
 
 	@Test

@@ -16,8 +16,6 @@ import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.client.RestClientException;
 
 import io.github.jakobfa.webtechproject.auth.CurrentUser;
-import io.github.jakobfa.webtechproject.integration.intervals.ActivityImportService;
-import io.github.jakobfa.webtechproject.integration.intervals.ActivityImportService.ImportResult;
 import io.github.jakobfa.webtechproject.integration.intervals.IntervalsConnection;
 import io.github.jakobfa.webtechproject.integration.intervals.IntervalsConnectionService;
 import io.github.jakobfa.webtechproject.integration.intervals.IntervalsConnectionService.InvalidCredentialsException;
@@ -62,26 +60,11 @@ public class IntervalsController {
 	private final IntervalsConnectionService connectionService;
 	private final IntervalsSyncService syncService;
 	private final AthleteService athleteService;
-	private final ActivityImportService activityImport;
-
 	public IntervalsController(IntervalsConnectionService connectionService, IntervalsSyncService syncService,
-			AthleteService athleteService, ActivityImportService activityImport) {
+			AthleteService athleteService) {
 		this.connectionService = connectionService;
 		this.syncService = syncService;
 		this.athleteService = athleteService;
-		this.activityImport = activityImport;
-	}
-
-	/** Gefahrene Einheiten der letzten 14 Tage abholen und mit dem Plan verknüpfen. */
-	@PostMapping(path = "/me/intervals/import")
-	public ResponseEntity<ImportResult> importActivities(@AuthenticationPrincipal Jwt jwt) {
-		try {
-			return activityImport.importRecent(CurrentUser.id(jwt))
-					.map(ResponseEntity::ok)
-					.orElse(ResponseEntity.status(HttpStatus.CONFLICT).build()); // nicht verbunden oder kein Profil
-		} catch (RestClientException e) {
-			return ResponseEntity.status(HttpStatus.BAD_GATEWAY).build();
-		}
 	}
 
 	@GetMapping(path = "/me/intervals")

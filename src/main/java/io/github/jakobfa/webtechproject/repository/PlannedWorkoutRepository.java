@@ -11,4 +11,6 @@ public interface PlannedWorkoutRepository extends JpaRepository<PlannedWorkout, 
 
 	List<PlannedWorkout> findByPlanAthleteIdAndDateBetween(Long athleteId, LocalDate from, LocalDate to);
 
+	List<PlannedWorkout> findByPlanAthleteIdAndActivityIdStartingWith(Long athleteId, String prefix);
+
 }

@@ -2,6 +2,7 @@ package io.github.jakobfa.webtechproject.web;
 
 import org.springframework.stereotype.Component;
 
+import io.github.jakobfa.webtechproject.integration.RecordedRide;
 import io.github.jakobfa.webtechproject.model.ExtraRide;
 import io.github.jakobfa.webtechproject.model.PlannedWorkout;
 import io.github.jakobfa.webtechproject.model.TrainingPlan;
@@ -40,14 +41,15 @@ public class PlanResponseMapper {
 
 	private static ExtraRideResponse toResponse(ExtraRide ride) {
 		return new ExtraRideResponse(ride.getId(), ride.getDate(), ride.getDurationMinutes(), ride.getDistanceKm(),
-				ride.getTss(), ride.assessment());
+				ride.getTss(), ride.assessment(), RecordedRide.stravaUrl(ride.getActivityId()));
 	}
 
 	public PlannedWorkoutResponse toResponse(PlannedWorkout planned) {
 		var workout = workoutLibrary.resolve(planned.getWorkoutId(), planned.getDurationMinutes()).orElseThrow();
 		var actual = planned.getActivityId() == null ? null
 				: new PlannedWorkoutResponse.Actual(planned.getActualDurationMinutes(), planned.getActualDistanceKm(),
-						planned.getActualTss(), adaptation.assess(planned), planned.getActivityConfirmed());
+						planned.getActualTss(), adaptation.assess(planned), planned.getActivityConfirmed(),
+						RecordedRide.stravaUrl(planned.getActivityId()));
 		var adjustment = planned.getAdjustmentNote() == null ? null
 				: new PlannedWorkoutResponse.Adjustment(planned.getAdjustmentNote(), planned.getOriginalTitle());
 		return new PlannedWorkoutResponse(planned.getId(), planned.getDate(), planned.getPhase(),

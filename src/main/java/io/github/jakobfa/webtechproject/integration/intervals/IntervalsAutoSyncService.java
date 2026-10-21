@@ -1,12 +1,15 @@
 package io.github.jakobfa.webtechproject.integration.intervals;
 
+import java.util.LinkedHashSet;
 import java.util.Optional;
+import java.util.Set;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
 import io.github.jakobfa.webtechproject.integration.intervals.IntervalsSyncService.SyncResult;
+import io.github.jakobfa.webtechproject.integration.strava.StravaService;
 import io.github.jakobfa.webtechproject.model.Athlete;
 import io.github.jakobfa.webtechproject.service.AthleteService;
 
@@ -29,13 +32,15 @@ public class IntervalsAutoSyncService {
 	private final IntervalsSyncService syncService;
 	private final AthleteService athleteService;
 	private final ActivityImportService activityImport;
+	private final StravaService stravaService;
 
 	public IntervalsAutoSyncService(IntervalsConnectionService connectionService, IntervalsSyncService syncService,
-			AthleteService athleteService, ActivityImportService activityImport) {
+			AthleteService athleteService, ActivityImportService activityImport, StravaService stravaService) {
 		this.connectionService = connectionService;
 		this.syncService = syncService;
 		this.athleteService = athleteService;
 		this.activityImport = activityImport;
+		this.stravaService = stravaService;
 	}
 
 	/** Sendet die nächsten Tage eines Nutzers und merkt sich den Zeitpunkt. Leer, wenn nichts zu senden war. */
@@ -63,18 +68,26 @@ public class IntervalsAutoSyncService {
 		}
 	}
 
-	/** Nächtlicher Lauf: erst gefahrene Einheiten abholen, dann die nächsten Tage senden. */
+	/**
+	 * Nächtlicher Lauf: erst gefahrene Einheiten abholen (intervals.icu mit Auto-Sync und alle Strava-Nutzer),
+	 * dann die nächsten Tage an intervals.icu senden.
+	 */
 	public SyncAllResult syncAll() {
 		int users = 0;
 		int uploaded = 0;
 		int imported = 0;
 		int failed = 0;
-		for (Long userId : connectionService.usersWithAutoSync()) {
+		Set<Long> autoSyncUsers = new LinkedHashSet<>(connectionService.usersWithAutoSync());
+		Set<Long> allUsers = new LinkedHashSet<>(autoSyncUsers);
+		allUsers.addAll(stravaService.connectedUsers());
+		for (Long userId : allUsers) {
 			users++;
 			try {
 				imported += activityImport.importRecent(userId)
 						.map(result -> result.matched() + result.extra()).orElse(0);
-				uploaded += syncUser(userId).map(SyncResult::uploaded).orElse(0);
+				if (autoSyncUsers.contains(userId)) {
+					uploaded += syncUser(userId).map(SyncResult::uploaded).orElse(0);
+				}
 			} catch (RuntimeException e) {
 				failed++;
 				log.warn("Nächtlicher intervals.icu-Sync für Nutzer {} fehlgeschlagen: {}", userId, e.getMessage());
