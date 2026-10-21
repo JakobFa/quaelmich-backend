@@ -115,6 +115,14 @@ class TrainingPlanControllerTest {
 	}
 
 	@Test
+	void planTellsHowTheEventIsJudged() throws Exception {
+		String token = registerWithProfile(mockMvc); // 227 km, 5500 hm, ambitioniert
+		mockMvc.perform(post("/me/plan").header("Authorization", token))
+				.andExpect(jsonPath("$.eventProfile.focus").value("LONG_CLIMBING"))
+				.andExpect(jsonPath("$.eventProfile.estimatedMinutes").value(greaterThan(480)));
+	}
+
+	@Test
 	void progressNeedsAProfile() throws Exception {
 		mockMvc.perform(get("/me/progress").header("Authorization", registerNewUser(mockMvc)))
 				.andExpect(status().isNotFound());

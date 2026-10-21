@@ -36,6 +36,8 @@ public class WorkoutLibrary {
 
 			longRide(180),
 
+			longRideWithTempo(240),
+
 			// ---------- Tempo ----------
 			new Workout(12L, "Tempo 2 × 15", WorkoutType.TEMPO,
 					"Zwei Blöcke knapp unter der Schwelle – der Einstieg ins Tempotraining.",
@@ -141,6 +143,12 @@ public class WorkoutLibrary {
 							cooldown())),
 
 			// ---------- Sprint & Test ----------
+			new Workout(28L, "Opener 35 min", WorkoutType.SPRINT,
+					"Für den Tag vor dem Event: kurz locker, dazu ein paar Antritte, damit die Beine wach sind.",
+					steps(warmup(), steady(STEADY, min(5), 65),
+							repeat(3, steady(INTERVAL, min(1), 105), steady(RECOVERY, min(2), 55)),
+							repeat(2, steady(INTERVAL, 10, 150), steady(RECOVERY, 50, 55)), cooldown())),
+
 			new Workout(10L, "Sprints 6 × 15 s", WorkoutType.SPRINT,
 					"Maximale Sprints, eingebettet in eine lockere Grundlage.",
 					steps(warmup(), steady(STEADY, min(20), 65),
@@ -189,6 +197,7 @@ public class WorkoutLibrary {
 			case 1 -> Optional.of(recovery(durationMinutes));
 			case 2 -> Optional.of(endurance(durationMinutes));
 			case 3 -> Optional.of(longRide(durationMinutes));
+			case 27 -> Optional.of(longRideWithTempo(durationMinutes));
 			default -> findById(id);
 		};
 	}
@@ -212,6 +221,28 @@ public class WorkoutLibrary {
 				"Lange Grundlage – gewöhnt den Körper an die Belastung langer Event-Distanzen.",
 				steps(ramp(WARMUP, min(15), 50, 68), steady(STEADY, min(minutes - 30), 68),
 						ramp(COOLDOWN, min(15), 65, 50)));
+	}
+
+	/**
+	 * Lange Ausfahrt mit Tempo-Blöcken im "Renntempo" (85 % FTP) – für lange Events im Aufbau:
+	 * 2 Blöcke à 20 min, ab 3:30 h drei. Dazwischen Grundlage.
+	 */
+	public static Workout longRideWithTempo(int minutes) {
+		int blocks = minutes >= 210 ? 3 : 2;
+		int easy = minutes - 30 - blocks * 20;
+		int between = easy / (blocks + 1);
+		List<Object> parts = new ArrayList<>();
+		parts.add(ramp(WARMUP, min(15), 50, 68));
+		for (int i = 0; i < blocks; i++) {
+			parts.add(steady(STEADY, min(between), 68));
+			parts.add(steady(INTERVAL, min(20), 85));
+		}
+		parts.add(steady(STEADY, min(easy - between * blocks), 68));
+		parts.add(ramp(COOLDOWN, min(15), 65, 50));
+		return new Workout(27L, "Lange Ausfahrt " + formatMinutes(minutes) + " mit Tempo", WorkoutType.LONG_RIDE,
+				"Lange Grundlage mit %d × 20 min im Renntempo – übt das gleichmäßige Fahren über Stunden."
+						.formatted(blocks),
+				steps(parts.toArray()));
 	}
 
 	/** 45 → "45 min", 180 → "3 h", 210 → "3:30 h" */

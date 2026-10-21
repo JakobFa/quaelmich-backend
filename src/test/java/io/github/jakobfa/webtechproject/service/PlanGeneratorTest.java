@@ -14,6 +14,7 @@ import org.junit.jupiter.api.Test;
 
 import io.github.jakobfa.webtechproject.model.Athlete;
 import io.github.jakobfa.webtechproject.model.Event;
+import io.github.jakobfa.webtechproject.model.EventType;
 import io.github.jakobfa.webtechproject.model.Level;
 import io.github.jakobfa.webtechproject.model.Phase;
 import io.github.jakobfa.webtechproject.model.PlannedWorkout;
@@ -28,8 +29,12 @@ class PlanGeneratorTest {
 	private final WorkoutLibrary library = new WorkoutLibrary();
 	private final PlanGenerator generator = new PlanGenerator(library);
 
-	/** Di 1,5 h · Do 1,5 h · Sa 3 h · So 2 h */
+	/** Di 1,5 h · Do 1,5 h · Sa 3 h · So 2 h, Event 200 km / 3000 hm */
 	private static Athlete athlete(Level level, LocalDate eventDate) {
+		return athlete(level, eventDate, 200.0, 3000, null);
+	}
+
+	private static Athlete athlete(Level level, LocalDate eventDate, double km, int meters, EventType type) {
 		WeeklyAvailability availability = new WeeklyAvailability();
 		availability.setTuesday(1.5);
 		availability.setThursday(1.5);
@@ -39,8 +44,9 @@ class PlanGeneratorTest {
 		Event event = new Event();
 		event.setName("Testevent");
 		event.setDate(eventDate);
-		event.setDistanceKm(200.0);
-		event.setElevationMeters(3000);
+		event.setDistanceKm(km);
+		event.setElevationMeters(meters);
+		event.setType(type);
 
 		Athlete athlete = new Athlete();
 		athlete.setFtp(250);
@@ -73,17 +79,20 @@ class PlanGeneratorTest {
 	}
 
 	@Test
-	void startsAtStartDateAndRestsOnEventDayAndTheDayBefore() {
+	void startsAtStartDateAndEndsWithRestDayAndOpener() {
 		LocalDate eventSunday = MONDAY.plusWeeks(8).plusDays(6);
 		LocalDate startWednesday = MONDAY.plusDays(2);
 
 		List<PlannedWorkout> plan = generator.generate(athlete(Level.HOBBY, eventSunday), startWednesday);
 
-		assertThat(plan).extracting(PlannedWorkout::getDate)
-				.allSatisfy(date -> {
-					assertThat(date).isAfterOrEqualTo(startWednesday);
-					assertThat(date).isBefore(eventSunday.minusDays(1));
-				});
+		assertThat(plan).extracting(PlannedWorkout::getDate).allSatisfy(date -> {
+			assertThat(date).isAfterOrEqualTo(startWednesday);
+			assertThat(date).isBefore(eventSunday);
+			assertThat(date).as("zwei Tage vorher Ruhe").isNotEqualTo(eventSunday.minusDays(2));
+		});
+		PlannedWorkout dayBefore = plan.getLast();
+		assertThat(dayBefore.getDate()).isEqualTo(eventSunday.minusDays(1));
+		assertThat(workoutOf(dayBefore).getTitle()).startsWith("Opener");
 	}
 
 	@Test
@@ -150,8 +159,9 @@ class PlanGeneratorTest {
 
 		assertThat(phasePerWeek.get(0L)).isEqualTo(Phase.BASE);
 		assertThat(phasePerWeek.get(3L)).isEqualTo(Phase.RECOVERY);
-		assertThat(phasePerWeek.get(6L)).isEqualTo(Phase.BUILD);
-		assertThat(phasePerWeek.get(12L)).isEqualTo(Phase.PEAK);
+		assertThat(phasePerWeek.get(8L)).isEqualTo(Phase.BUILD);
+		assertThat(phasePerWeek.get(11L)).isEqualTo(Phase.PEAK);
+		assertThat(phasePerWeek.get(13L)).isEqualTo(Phase.PEAK);
 		assertThat(phasePerWeek.get(14L)).isEqualTo(Phase.TAPER);
 		assertThat(phasePerWeek.get(15L)).isEqualTo(Phase.TAPER);
 	}
@@ -185,6 +195,98 @@ class PlanGeneratorTest {
 				Collectors.averagingInt(p -> workoutOf(p).getDurationInMinutes())));
 
 		assertThat(avgMinutes.get(Phase.TAPER)).isLessThan(avgMinutes.get(Phase.BUILD));
+	}
+
+
+	// ---------- neue Trainingslogik ----------
+
+	@Test
+	void phasesAreCountedBackwardsAndNoRecoveryRightBeforeThePeak() {
+		for (int weeks = 1; weeks <= 30; weeks++) {
+			List<Phase> phases = PlanGenerator.phasesFor(weeks);
+			assertThat(phases).hasSize(weeks);
+			assertThat(phases.getLast()).isEqualTo(Phase.TAPER);
+			int firstPeak = phases.indexOf(Phase.PEAK);
+			if (firstPeak > 0) {
+				assertThat(phases.get(firstPeak - 1)).as("%d Wochen", weeks).isNotEqualTo(Phase.RECOVERY);
+			}
+		}
+		// 16 Wochen: Grundlage, Aufbau, 3 Wochen Spitze, 2 Wochen Tapering
+		assertThat(PlanGenerator.phasesFor(16).subList(11, 16))
+				.containsExactly(Phase.PEAK, Phase.PEAK, Phase.PEAK, Phase.TAPER, Phase.TAPER);
+	}
+
+	@Test
+	void volumeStartsLowAndRises() {
+		assertThat(PlanGenerator.volumeFactor(Phase.BASE, 0)).isEqualTo(0.7);
+		assertThat(PlanGenerator.volumeFactor(Phase.BASE, 4)).isGreaterThan(0.85);
+		assertThat(PlanGenerator.volumeFactor(Phase.BUILD, 20)).isEqualTo(1.0);
+		assertThat(PlanGenerator.volumeFactor(Phase.RECOVERY, 4)).isLessThan(PlanGenerator.volumeFactor(Phase.BASE, 3));
+	}
+
+	@Test
+	void longRideGrowsTowardsTheEventDuration() {
+		var oetztaler = new EventProfile(585, EventProfile.Focus.LONG_CLIMBING);
+
+		int first = PlanGenerator.longRideMinutes(oetztaler, Phase.BASE, 0, 12);
+		int last = PlanGenerator.longRideMinutes(oetztaler, Phase.PEAK, 11, 12);
+
+		assertThat(first).isEqualTo((int) (585 * 0.4));
+		assertThat(last).isEqualTo(PlanGenerator.MAX_LONG_RIDE); // 75 % wären 7:18 h → gedeckelt auf 6 h
+		assertThat(PlanGenerator.longRideMinutes(oetztaler, Phase.RECOVERY, 6, 12))
+				.isLessThan(PlanGenerator.longRideMinutes(oetztaler, Phase.BASE, 6, 12));
+	}
+
+	@Test
+	void climbingEventTrainsThresholdAndCriteriumTrainsIntensity() {
+		LocalDate event = MONDAY.plusWeeks(16).plusDays(6);
+		List<WorkoutType> climbing = hardTypes(generator.generate(
+				athlete(Level.AMBITIOUS, event, 227, 5500, EventType.GRAN_FONDO), MONDAY));
+		List<WorkoutType> crit = hardTypes(generator.generate(
+				athlete(Level.AMBITIOUS, event, 40, 100, EventType.CRITERIUM), MONDAY));
+
+		assertThat(climbing).contains(WorkoutType.SWEET_SPOT, WorkoutType.THRESHOLD)
+				.doesNotContain(WorkoutType.ANAEROBIC);
+		assertThat(crit).contains(WorkoutType.VO2MAX, WorkoutType.ANAEROBIC);
+	}
+
+	@Test
+	void longEventsGetTempoBlocksInTheLongRide() {
+		List<PlannedWorkout> plan = generator.generate(
+				athlete(Level.AMBITIOUS, MONDAY.plusWeeks(16).plusDays(6), 227, 5500, EventType.GRAN_FONDO), MONDAY);
+
+		assertThat(plan).map(this::workoutOf).anySatisfy(w -> assertThat(w.getTitle()).endsWith("mit Tempo"));
+	}
+
+	@Test
+	void beginnersNeverGetAnaerobicOrSprintIntervals() {
+		List<WorkoutType> types = hardTypes(generator.generate(
+				athlete(Level.BEGINNER, MONDAY.plusWeeks(16).plusDays(6), 40, 100, EventType.CRITERIUM), MONDAY));
+
+		assertThat(types).doesNotContain(WorkoutType.ANAEROBIC, WorkoutType.OVER_UNDER);
+	}
+
+	@Test
+	void ftpIsRetestedWhenTheBuildPhaseStarts() {
+		LocalDate event = MONDAY.plusWeeks(15).plusDays(6);
+		List<PlannedWorkout> plan = generator.generate(athlete(Level.HOBBY, event), MONDAY);
+
+		assertThat(plan).filteredOn(p -> workoutOf(p).getType() == WorkoutType.FTP_TEST).hasSize(2);
+	}
+
+	@Test
+	void noWeekRepeatsTheSameHardWorkoutType() {
+		List<PlannedWorkout> plan = generator.generate(
+				athlete(Level.PERFORMANCE, MONDAY.plusWeeks(20), 227, 5500, EventType.GRAN_FONDO), MONDAY);
+
+		Map<LocalDate, List<WorkoutType>> perWeek = plan.stream().filter(p -> isHard(workoutOf(p)))
+				.collect(Collectors.groupingBy(p -> p.getDate().with(DayOfWeek.MONDAY),
+						Collectors.mapping(p -> workoutOf(p).getType(), Collectors.toList())));
+		assertThat(perWeek.values()).allSatisfy(types -> assertThat(types).doesNotHaveDuplicates());
+	}
+
+	private List<WorkoutType> hardTypes(List<PlannedWorkout> plan) {
+		return plan.stream().map(this::workoutOf).filter(PlanGeneratorTest::isHard).map(Workout::getType).toList();
 	}
 
 }

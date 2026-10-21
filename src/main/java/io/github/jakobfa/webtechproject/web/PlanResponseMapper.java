@@ -10,6 +10,7 @@ import io.github.jakobfa.webtechproject.model.ExtraRide;
 import io.github.jakobfa.webtechproject.model.PlannedWorkout;
 import io.github.jakobfa.webtechproject.model.TrainingPlan;
 import io.github.jakobfa.webtechproject.repository.ExtraRideRepository;
+import io.github.jakobfa.webtechproject.service.EventProfile;
 import io.github.jakobfa.webtechproject.service.PlanAdaptationService;
 import io.github.jakobfa.webtechproject.service.WorkoutLibrary;
 import io.github.jakobfa.webtechproject.web.dto.ExtraRideResponse;
@@ -42,7 +43,8 @@ public class PlanResponseMapper {
 						// mitten in der Woche neu erstellt wurde
 						.findByAthleteIdAndDateGreaterThanEqualOrderByDate(plan.getAthlete().getId(),
 								plan.getStartDate().with(TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY)))
-						.stream().map(PlanResponseMapper::toResponse).toList());
+						.stream().map(PlanResponseMapper::toResponse).toList(),
+				EventProfile.of(plan.getAthlete()));
 	}
 
 	private static ExtraRideResponse toResponse(ExtraRide ride) {

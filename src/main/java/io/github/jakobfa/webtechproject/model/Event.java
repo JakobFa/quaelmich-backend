@@ -3,6 +3,8 @@ package io.github.jakobfa.webtechproject.model;
 import java.time.LocalDate;
 
 import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
@@ -43,5 +45,9 @@ public class Event {
 	@NotNull
 	@PositiveOrZero
 	private Integer elevationMeters;
+
+	/** Art des Events, optional – ohne Angabe wird der Schwerpunkt aus Dauer und Höhenmetern geschätzt */
+	@Enumerated(EnumType.STRING)
+	private EventType type;
 
 }
