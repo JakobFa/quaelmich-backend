@@ -38,3 +38,8 @@ out/
 
 ### macOS ###
 .DS_Store
+
+### Lokale Geheimnisse – nie committen ###
+.env
+.env.*
+*.local
