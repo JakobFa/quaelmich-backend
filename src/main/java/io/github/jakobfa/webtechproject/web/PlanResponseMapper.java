@@ -1,5 +1,8 @@
 package io.github.jakobfa.webtechproject.web;
 
+import java.time.DayOfWeek;
+import java.time.temporal.TemporalAdjusters;
+
 import org.springframework.stereotype.Component;
 
 import io.github.jakobfa.webtechproject.integration.RecordedRide;
@@ -35,7 +38,10 @@ public class PlanResponseMapper {
 		return new TrainingPlanResponse(plan.getId(), plan.getStartDate(), event.getName(), event.getDate(),
 				plan.getWorkouts().stream().map(this::toResponse).toList(),
 				extraRideRepository
-						.findByAthleteIdAndDateGreaterThanEqualOrderByDate(plan.getAthlete().getId(), plan.getStartDate())
+						// ab Montag der ersten Planwoche – so bleiben Fahrten sichtbar, auch wenn der Plan
+						// mitten in der Woche neu erstellt wurde
+						.findByAthleteIdAndDateGreaterThanEqualOrderByDate(plan.getAthlete().getId(),
+								plan.getStartDate().with(TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY)))
 						.stream().map(PlanResponseMapper::toResponse).toList());
 	}
 

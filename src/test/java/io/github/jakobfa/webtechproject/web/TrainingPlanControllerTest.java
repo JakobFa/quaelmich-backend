@@ -8,6 +8,12 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import java.time.DayOfWeek;
+import java.time.LocalDate;
+import java.time.ZoneId;
+import java.time.temporal.TemporalAdjusters;
+import java.util.Base64;
+
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -16,12 +22,43 @@ import org.springframework.test.web.servlet.MockMvc;
 
 import com.jayway.jsonpath.JsonPath;
 
+import io.github.jakobfa.webtechproject.model.ExtraRide;
+import io.github.jakobfa.webtechproject.repository.ExtraRideRepository;
+import io.github.jakobfa.webtechproject.service.AthleteService;
+
 @SpringBootTest
 @AutoConfigureMockMvc
 class TrainingPlanControllerTest {
 
 	@Autowired
 	private MockMvc mockMvc;
+
+	@Autowired
+	private AthleteService athleteService;
+
+	@Autowired
+	private ExtraRideRepository extraRides;
+
+	/** Nutzer-ID steht im JWT ("sub") */
+	private static Long userIdOf(String bearer) {
+		String payload = new String(Base64.getUrlDecoder().decode(bearer.substring(7).split("\\.")[1]));
+		return Long.valueOf(JsonPath.read(payload, "$.sub").toString());
+	}
+
+	@Test
+	void showsExtraRidesFromTheMondayOfTheFirstWeek() throws Exception {
+		String token = registerWithProfile(mockMvc);
+		mockMvc.perform(post("/me/plan").header("Authorization", token));
+		LocalDate monday = LocalDate.now(ZoneId.of("Europe/Berlin"))
+				.with(TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY));
+		ExtraRide commute = new ExtraRide(athleteService.findByOwner(userIdOf(token)).orElseThrow(), "strava-1");
+		commute.setDate(monday);
+		commute.setDurationMinutes(25);
+		extraRides.save(commute);
+
+		mockMvc.perform(get("/me/plan").header("Authorization", token))
+				.andExpect(jsonPath("$.extraRides[0].date").value(monday.toString()));
+	}
 
 	@Test
 	void generatesAndLoadsOwnPlanWithDatedWorkouts() throws Exception {
