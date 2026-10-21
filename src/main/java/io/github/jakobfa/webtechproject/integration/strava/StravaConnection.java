@@ -48,4 +48,11 @@ public class StravaConnection {
 
 	private Instant connectedAt;
 
+	/** Von Strava erteilte Erlaubnisse, z. B. "read,activity:read_all,profile:read_all" */
+	private String scope;
+
+	public boolean canReadProfile() {
+		return scope != null && scope.contains("profile:read_all");
+	}
+
 }

@@ -18,6 +18,7 @@ import io.github.jakobfa.webtechproject.auth.CurrentUser;
 import io.github.jakobfa.webtechproject.integration.strava.StravaConnection;
 import io.github.jakobfa.webtechproject.integration.strava.StravaService;
 import io.github.jakobfa.webtechproject.integration.strava.StravaService.NotConfiguredException;
+import io.github.jakobfa.webtechproject.integration.strava.StravaService.ProfileSuggestion;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
@@ -29,7 +30,8 @@ import jakarta.validation.constraints.Size;
 @RestController
 public class StravaController {
 
-	public record ConnectRequest(@NotBlank @Size(max = 200) String code) {
+	/** scope: die von Strava im Rücksprung gemeldeten Erlaubnisse */
+	public record ConnectRequest(@NotBlank @Size(max = 200) String code, @Size(max = 200) String scope) {
 	}
 
 	/**
@@ -57,12 +59,27 @@ public class StravaController {
 			@Valid @RequestBody ConnectRequest request) {
 		Long userId = CurrentUser.id(jwt);
 		try {
-			stravaService.connect(userId, request.code());
+			stravaService.connect(userId, request.code(), request.scope());
 			return ResponseEntity.ok(statusOf(userId));
 		} catch (NotConfiguredException e) {
 			return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE).build();
 		} catch (HttpClientErrorException e) {
 			return ResponseEntity.unprocessableContent().build();
+		} catch (RestClientException e) {
+			return ResponseEntity.status(HttpStatus.BAD_GATEWAY).build();
+		}
+	}
+
+	/**
+	 * FTP, Gewicht und geschätzter Schwellenpuls aus Strava – zum Übernehmen ins eigene Profil.
+	 * 404, wenn nicht verbunden; 502, wenn Strava nicht antwortet.
+	 */
+	@GetMapping(path = "/me/strava/profile")
+	public ResponseEntity<ProfileSuggestion> profileSuggestion(@AuthenticationPrincipal Jwt jwt) {
+		try {
+			return stravaService.profileSuggestion(CurrentUser.id(jwt))
+					.map(ResponseEntity::ok)
+					.orElse(ResponseEntity.notFound().build());
 		} catch (RestClientException e) {
 			return ResponseEntity.status(HttpStatus.BAD_GATEWAY).build();
 		}

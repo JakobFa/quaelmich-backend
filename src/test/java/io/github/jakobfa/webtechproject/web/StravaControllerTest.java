@@ -32,7 +32,11 @@ import org.springframework.web.client.HttpClientErrorException;
 
 import io.github.jakobfa.webtechproject.integration.strava.StravaActivity;
 import io.github.jakobfa.webtechproject.integration.strava.StravaClient;
+import io.github.jakobfa.webtechproject.integration.strava.StravaClient.HeartRateZones;
 import io.github.jakobfa.webtechproject.integration.strava.StravaClient.StravaAthlete;
+import io.github.jakobfa.webtechproject.integration.strava.StravaClient.StravaProfile;
+import io.github.jakobfa.webtechproject.integration.strava.StravaClient.ZoneRange;
+import io.github.jakobfa.webtechproject.integration.strava.StravaClient.Zones;
 import io.github.jakobfa.webtechproject.integration.strava.StravaClient.TokenResponse;
 
 /**
@@ -51,8 +55,13 @@ class StravaControllerTest {
 	private StravaClient client;
 
 	private ResultActions connect(String token) throws Exception {
+		return connect(token, "read,activity:read_all");
+	}
+
+	private ResultActions connect(String token, String scope) throws Exception {
 		return mockMvc.perform(post("/me/strava").header("Authorization", token)
-				.contentType(MediaType.APPLICATION_JSON).content("{ \"code\": \"abc\" }"));
+				.contentType(MediaType.APPLICATION_JSON)
+				.content("{ \"code\": \"abc\", \"scope\": \"%s\" }".formatted(scope)));
 	}
 
 	/** Strava liefert einen schon abgelaufenen Token → beim ersten Abruf muss erneuert werden */
@@ -108,6 +117,35 @@ class StravaControllerTest {
 				.andExpect(jsonPath("$.connected").value(false));
 		mockMvc.perform(get("/me/plan").header("Authorization", token))
 				.andExpect(content().string(not(containsString("strava.com/activities/778"))));
+	}
+
+	@Test
+	void suggestsFtpWeightAndThresholdHeartRateFromStrava() throws Exception {
+		String token = registerNewUser(mockMvc);
+		stravaAcceptsTheCode();
+		when(client.profile("neu")).thenReturn(new StravaProfile(260, 71.84));
+		when(client.zones("neu")).thenReturn(new Zones(new HeartRateZones(false, List.of(
+				new ZoneRange(0, 120), new ZoneRange(120, 150), new ZoneRange(150, 165), new ZoneRange(165, 178),
+				new ZoneRange(178, -1)))));
+		connect(token, "read,activity:read_all,profile:read_all");
+
+		mockMvc.perform(get("/me/strava/profile").header("Authorization", token))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.profileAccess").value(true))
+				.andExpect(jsonPath("$.ftp").value(260))
+				.andExpect(jsonPath("$.weightKg").value(71.8))
+				.andExpect(jsonPath("$.thresholdHeartRate").value(178));
+	}
+
+	@Test
+	void withoutProfilePermissionAsksToReconnect() throws Exception {
+		String token = registerNewUser(mockMvc);
+		stravaAcceptsTheCode();
+		connect(token);
+
+		mockMvc.perform(get("/me/strava/profile").header("Authorization", token))
+				.andExpect(jsonPath("$.profileAccess").value(false))
+				.andExpect(jsonPath("$.ftp").doesNotExist());
 	}
 
 	@Test

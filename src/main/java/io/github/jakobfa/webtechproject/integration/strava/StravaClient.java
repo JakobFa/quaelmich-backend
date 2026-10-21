@@ -38,6 +38,23 @@ public class StravaClient {
 	public record StravaAthlete(Long id, String firstname) {
 	}
 
+	/** Profilwerte aus GET /athlete – nur mit Erlaubnis profile:read_all gefüllt, 0 heißt "nicht eingetragen" */
+	@JsonIgnoreProperties(ignoreUnknown = true)
+	public record StravaProfile(Integer ftp, Double weight) {
+	}
+
+	@JsonIgnoreProperties(ignoreUnknown = true)
+	public record ZoneRange(Integer min, Integer max) {
+	}
+
+	@JsonIgnoreProperties(ignoreUnknown = true)
+	public record HeartRateZones(@JsonProperty("custom_zones") Boolean customZones, List<ZoneRange> zones) {
+	}
+
+	@JsonIgnoreProperties(ignoreUnknown = true)
+	public record Zones(@JsonProperty("heart_rate") HeartRateZones heartRate) {
+	}
+
 	private final StravaProperties properties;
 	private final RestClient restClient;
 
@@ -85,6 +102,23 @@ public class StravaClient {
 				.body(new ParameterizedTypeReference<List<StravaActivity>>() {
 				});
 		return activities == null ? List.of() : activities;
+	}
+
+	public StravaProfile profile(String accessToken) {
+		return restClient.get()
+				.uri("/api/v3/athlete")
+				.header(HttpHeaders.AUTHORIZATION, "Bearer " + accessToken)
+				.retrieve()
+				.body(StravaProfile.class);
+	}
+
+	/** Puls- und Leistungszonen (braucht profile:read_all) */
+	public Zones zones(String accessToken) {
+		return restClient.get()
+				.uri("/api/v3/athlete/zones")
+				.header(HttpHeaders.AUTHORIZATION, "Bearer " + accessToken)
+				.retrieve()
+				.body(Zones.class);
 	}
 
 	/** Entzieht quaelmich den Zugriff auf das Strava-Konto */

@@ -28,6 +28,19 @@ import io.github.jakobfa.webtechproject.service.AthleteService;
 @Service
 public class StravaService {
 
+	/**
+	 * Vorschlag fürs eigene Profil aus Strava. Werte sind null, wenn sie bei Strava nicht eingetragen sind.
+	 *
+	 * @param profileAccess false = ohne Erlaubnis profile:read_all verbunden → neu verbinden
+	 * @param thresholdHeartRate geschätzt: Obergrenze der Schwellen-Pulszone (Zone 4)
+	 */
+	public record ProfileSuggestion(boolean profileAccess, Integer ftp, Double weightKg, Integer thresholdHeartRate) {
+
+		static ProfileSuggestion noAccess() {
+			return new ProfileSuggestion(false, null, null, null);
+		}
+	}
+
 	/** Wird geworfen, wenn die Strava-Anbindung auf dem Server nicht eingerichtet ist. */
 	public static class NotConfiguredException extends RuntimeException {
 	}
@@ -89,7 +102,7 @@ public class StravaService {
 	 * Lehnt Strava den Code ab, wirft der Client eine {@link HttpClientErrorException}.
 	 */
 	@Transactional
-	public StravaConnection connect(Long userId, String code) {
+	public StravaConnection connect(Long userId, String code, String scope) {
 		if (!isConfigured()) {
 			throw new NotConfiguredException();
 		}
@@ -105,6 +118,7 @@ public class StravaService {
 			connection.setAthleteName(tokens.athlete().firstname());
 		}
 		connection.setConnectedAt(clock.instant());
+		connection.setScope(scope);
 		return repository.save(connection);
 	}
 
@@ -150,6 +164,48 @@ public class StravaService {
 			log.warn("Strava-Fahrten für Nutzer {} nicht abrufbar: {}", userId, e.getMessage());
 			return Optional.empty();
 		}
+	}
+
+	/**
+	 * Liest FTP, Gewicht und Pulszonen aus Strava. Leer, wenn nicht verbunden.
+	 * Fehler beim Abruf werden weitergereicht (RestClientException).
+	 */
+	@Transactional
+	public Optional<ProfileSuggestion> profileSuggestion(Long userId) {
+		if (!isConfigured()) {
+			return Optional.empty();
+		}
+		var connection = repository.findByOwnerId(userId);
+		if (connection.isEmpty()) {
+			return Optional.empty();
+		}
+		if (!connection.get().canReadProfile()) {
+			return Optional.of(ProfileSuggestion.noAccess());
+		}
+		String accessToken = validAccessToken(userId, connection.get());
+		if (accessToken == null) {
+			return Optional.empty();
+		}
+		StravaClient.StravaProfile profile = client.profile(accessToken);
+		Integer ftp = profile != null && profile.ftp() != null && profile.ftp() > 0 ? profile.ftp() : null;
+		Double weight = profile != null && profile.weight() != null && profile.weight() > 0
+				? Math.round(profile.weight() * 10) / 10.0
+				: null;
+		return Optional.of(new ProfileSuggestion(true, ftp, weight, thresholdFromZones(client.zones(accessToken))));
+	}
+
+	/**
+	 * Strava teilt den Puls in 5 Zonen; Zone 4 heißt dort "Schwelle". Ihre Obergrenze liegt nah am
+	 * Schwellenpuls und taugt als Vorschlag – genauer ist ein eigener Test.
+	 */
+	static Integer thresholdFromZones(StravaClient.Zones zones) {
+		if (zones == null || zones.heartRate() == null || zones.heartRate().zones() == null
+				|| zones.heartRate().zones().size() < 4) {
+			return null;
+		}
+		var thresholdZone = zones.heartRate().zones().get(3);
+		Integer max = thresholdZone.max();
+		return max != null && max >= 100 && max <= 220 ? max : null;
 	}
 
 	/** Liefert einen gültigen Access-Token; null, wenn der Nutzer den Zugriff bei Strava entzogen hat. */
