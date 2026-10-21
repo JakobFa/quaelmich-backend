@@ -86,7 +86,7 @@ class StravaControllerTest {
 		mockMvc.perform(post("/me/plan").header("Authorization", token));
 		stravaAcceptsTheCode();
 		when(client.listActivities(eq("neu"), any(), any())).thenReturn(List.of(
-				new StravaActivity(777L, "Ride", TODAY + "T07:30:00Z", 1800, 9800.0, null, null, null)));
+				new StravaActivity(777L, "Ride", TODAY + "T07:30:00Z", 1800, 9800.0, null, null, null, null)));
 
 		connect(token)
 				.andExpect(status().isOk())
@@ -106,7 +106,7 @@ class StravaControllerTest {
 		mockMvc.perform(post("/me/plan").header("Authorization", token));
 		stravaAcceptsTheCode();
 		when(client.listActivities(any(), any(), any())).thenReturn(List.of(
-				new StravaActivity(778L, "Ride", TODAY + "T07:30:00Z", 1800, 9800.0, null, null, null)));
+				new StravaActivity(778L, "Ride", TODAY + "T07:30:00Z", 1800, 9800.0, null, null, null, null)));
 		connect(token);
 		mockMvc.perform(post("/me/activities/import").header("Authorization", token));
 
@@ -125,8 +125,9 @@ class StravaControllerTest {
 		stravaAcceptsTheCode();
 		when(client.profile("neu")).thenReturn(new StravaProfile(260, 71.84));
 		when(client.zones("neu")).thenReturn(new Zones(new HeartRateZones(false, List.of(
-				new ZoneRange(0, 120), new ZoneRange(120, 150), new ZoneRange(150, 165), new ZoneRange(165, 178),
-				new ZoneRange(178, -1)))));
+				// Standardzonen von Strava bei Maximalpuls 189
+				new ZoneRange(0, 123), new ZoneRange(123, 153), new ZoneRange(153, 168), new ZoneRange(168, 183),
+				new ZoneRange(183, -1)))));
 		connect(token, "read,activity:read_all,profile:read_all");
 
 		mockMvc.perform(get("/me/strava/profile").header("Authorization", token))
@@ -134,7 +135,27 @@ class StravaControllerTest {
 				.andExpect(jsonPath("$.profileAccess").value(true))
 				.andExpect(jsonPath("$.ftp").value(260))
 				.andExpect(jsonPath("$.weightKg").value(71.8))
-				.andExpect(jsonPath("$.thresholdHeartRate").value(178));
+				.andExpect(jsonPath("$.thresholdHeartRate").value(168))
+				.andExpect(jsonPath("$.thresholdSource").value("ZONES"));
+	}
+
+	@Test
+	void withoutHeartRateZonesEstimatesFromTheHighestHeartRate() throws Exception {
+		String token = registerNewUser(mockMvc);
+		stravaAcceptsTheCode();
+		when(client.profile("neu")).thenReturn(new StravaProfile(0, 0.0));
+		when(client.zones("neu")).thenThrow(new org.springframework.web.client.RestClientException("kaputt"));
+		when(client.listActivities(eq("neu"), any(), any(), eq(200))).thenReturn(List.of(
+				new StravaActivity(1L, "Ride", TODAY + "T07:30:00Z", 1800, 9800.0, null, null, 130.0, 171.0),
+				new StravaActivity(2L, "Run", TODAY + "T18:00:00Z", 2400, 6000.0, null, null, 160.0, 190.0)));
+		connect(token, "read,activity:read_all,profile:read_all");
+
+		mockMvc.perform(get("/me/strava/profile").header("Authorization", token))
+				.andExpect(jsonPath("$.ftp").doesNotExist())
+				.andExpect(jsonPath("$.weightKg").doesNotExist())
+				.andExpect(jsonPath("$.maxHeartRateObserved").value(190))
+				.andExpect(jsonPath("$.thresholdHeartRate").value(171))
+				.andExpect(jsonPath("$.thresholdSource").value("ACTIVITIES"));
 	}
 
 	@Test

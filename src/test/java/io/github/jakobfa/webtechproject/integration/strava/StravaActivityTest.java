@@ -7,11 +7,11 @@ import org.junit.jupiter.api.Test;
 class StravaActivityTest {
 
 	private static StravaActivity ride(String type, Integer weightedWatts, Boolean deviceWatts) {
-		return new StravaActivity(1L, type, "2026-10-21T07:30:00Z", 3600, 30000.0, weightedWatts, deviceWatts, null);
+		return new StravaActivity(1L, type, "2026-10-21T07:30:00Z", 3600, 30000.0, weightedWatts, deviceWatts, null, null);
 	}
 
 	private static StravaActivity commute(Double averageHeartRate) {
-		return new StravaActivity(2L, "Ride", "2026-10-21T07:30:00Z", 1800, 9000.0, null, null, averageHeartRate);
+		return new StravaActivity(2L, "Ride", "2026-10-21T07:30:00Z", 1800, 9000.0, null, null, averageHeartRate, null);
 	}
 
 	@Test
@@ -25,7 +25,7 @@ class StravaActivityTest {
 
 	@Test
 	void powerBeatsHeartRate() {
-		var withPower = new StravaActivity(3L, "Ride", "2026-10-21T07:30:00Z", 3600, 30000.0, 250, true, 150.0)
+		var withPower = new StravaActivity(3L, "Ride", "2026-10-21T07:30:00Z", 3600, 30000.0, 250, true, 150.0, null)
 				.toRecordedRide(250, 170);
 
 		assertThat(withPower.tss()).isEqualTo(100);

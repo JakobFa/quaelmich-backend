@@ -31,15 +31,27 @@ public class StravaService {
 	/**
 	 * Vorschlag fürs eigene Profil aus Strava. Werte sind null, wenn sie bei Strava nicht eingetragen sind.
 	 *
-	 * @param profileAccess false = ohne Erlaubnis profile:read_all verbunden → neu verbinden
-	 * @param thresholdHeartRate geschätzt: Obergrenze der Schwellen-Pulszone (Zone 4)
+	 * @param profileAccess        false = ohne Erlaubnis profile:read_all verbunden → neu verbinden
+	 * @param thresholdHeartRate   geschätzter Schwellenpuls
+	 * @param thresholdSource      ZONES (Strava-Pulszonen) oder ACTIVITIES (höchster Puls der letzten 90 Tage)
+	 * @param maxHeartRateObserved höchster gemessener Puls, wenn aus den Aktivitäten geschätzt wurde
 	 */
-	public record ProfileSuggestion(boolean profileAccess, Integer ftp, Double weightKg, Integer thresholdHeartRate) {
+	public record ProfileSuggestion(boolean profileAccess, Integer ftp, Double weightKg, Integer thresholdHeartRate,
+			ThresholdSource thresholdSource, Integer maxHeartRateObserved) {
 
 		static ProfileSuggestion noAccess() {
-			return new ProfileSuggestion(false, null, null, null);
+			return new ProfileSuggestion(false, null, null, null, null, null);
 		}
 	}
+
+	public enum ThresholdSource {
+		ZONES, ACTIVITIES
+	}
+
+	/** So weit zurück wird nach dem höchsten Puls gesucht */
+	static final int MAX_HEART_RATE_DAYS = 90;
+	/** Schwellenpuls ≈ 90 % des Maximalpulses */
+	static final double THRESHOLD_SHARE_OF_MAX = 0.9;
 
 	/** Wird geworfen, wenn die Strava-Anbindung auf dem Server nicht eingerichtet ist. */
 	public static class NotConfiguredException extends RuntimeException {
@@ -191,21 +203,47 @@ public class StravaService {
 		Double weight = profile != null && profile.weight() != null && profile.weight() > 0
 				? Math.round(profile.weight() * 10) / 10.0
 				: null;
-		return Optional.of(new ProfileSuggestion(true, ftp, weight, thresholdFromZones(client.zones(accessToken))));
+
+		Integer fromZones = null;
+		try {
+			fromZones = thresholdFromZones(client.zones(accessToken));
+		} catch (RestClientException e) {
+			log.warn("Strava-Pulszonen für Nutzer {} nicht lesbar: {}", userId, e.getMessage());
+		}
+		if (fromZones != null) {
+			return Optional.of(new ProfileSuggestion(true, ftp, weight, fromZones, ThresholdSource.ZONES, null));
+		}
+		// ohne Pulszonen bei Strava: höchster gemessener Puls der letzten Wochen
+		Integer maxSeen = maxHeartRateSeen(accessToken);
+		Integer fromActivities = maxSeen == null ? null : (int) Math.round(maxSeen * THRESHOLD_SHARE_OF_MAX);
+		return Optional.of(new ProfileSuggestion(true, ftp, weight, fromActivities,
+				fromActivities == null ? null : ThresholdSource.ACTIVITIES, maxSeen));
+	}
+
+	/** Höchster Puls aller Aktivitäten (auch Läufe) der letzten 90 Tage; null ohne Pulsdaten */
+	private Integer maxHeartRateSeen(String accessToken) {
+		Instant now = clock.instant();
+		return client.listActivities(accessToken, now.minus(java.time.Duration.ofDays(MAX_HEART_RATE_DAYS)), now, 200)
+				.stream()
+				.map(StravaActivity::maxHeartRate)
+				.filter(hr -> hr != null && hr >= 120 && hr <= 230)
+				.max(Double::compare)
+				.map(hr -> (int) Math.round(hr))
+				.orElse(null);
 	}
 
 	/**
-	 * Strava teilt den Puls in 5 Zonen; Zone 4 heißt dort "Schwelle". Ihre Obergrenze liegt nah am
-	 * Schwellenpuls und taugt als Vorschlag – genauer ist ein eigener Test.
+	 * Strava teilt den Puls in 5 Zonen; Zone 4 heißt dort "Schwelle". Ihre Untergrenze liegt bei den
+	 * Standardzonen bei ca. 89 % des Maximalpulses – nah am Schwellenpuls (ca. 90 %).
+	 * Genauer ist ein eigener Test.
 	 */
 	static Integer thresholdFromZones(StravaClient.Zones zones) {
 		if (zones == null || zones.heartRate() == null || zones.heartRate().zones() == null
 				|| zones.heartRate().zones().size() < 4) {
 			return null;
 		}
-		var thresholdZone = zones.heartRate().zones().get(3);
-		Integer max = thresholdZone.max();
-		return max != null && max >= 100 && max <= 220 ? max : null;
+		Integer lowerBound = zones.heartRate().zones().get(3).min();
+		return lowerBound != null && lowerBound >= 100 && lowerBound <= 220 ? lowerBound : null;
 	}
 
 	/** Liefert einen gültigen Access-Token; null, wenn der Nutzer den Zugriff bei Strava entzogen hat. */

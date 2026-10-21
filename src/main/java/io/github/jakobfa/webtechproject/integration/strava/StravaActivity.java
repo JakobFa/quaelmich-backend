@@ -22,7 +22,8 @@ public record StravaActivity(
 		Double distance,
 		@JsonProperty("weighted_average_watts") Integer weightedAverageWatts,
 		@JsonProperty("device_watts") Boolean deviceWatts,
-		@JsonProperty("average_heartrate") Double averageHeartRate) {
+		@JsonProperty("average_heartrate") Double averageHeartRate,
+		@JsonProperty("max_heartrate") Double maxHeartRate) {
 
 	private static final Set<String> RIDE_TYPES = Set.of("Ride", "VirtualRide", "GravelRide", "MountainBikeRide");
 

@@ -94,9 +94,14 @@ public class StravaClient {
 
 	/** Aktivitäten, die zwischen den beiden Zeitpunkten gestartet sind (höchstens 100) */
 	public List<StravaActivity> listActivities(String accessToken, Instant after, Instant before) {
+		return listActivities(accessToken, after, before, 100);
+	}
+
+	/** Wie oben, mit eigener Seitengröße (Strava erlaubt bis 200) */
+	public List<StravaActivity> listActivities(String accessToken, Instant after, Instant before, int perPage) {
 		List<StravaActivity> activities = restClient.get()
-				.uri("/api/v3/athlete/activities?after={after}&before={before}&per_page=100", after.getEpochSecond(),
-						before.getEpochSecond())
+				.uri("/api/v3/athlete/activities?after={after}&before={before}&per_page={perPage}",
+						after.getEpochSecond(), before.getEpochSecond(), perPage)
 				.header(HttpHeaders.AUTHORIZATION, "Bearer " + accessToken)
 				.retrieve()
 				.body(new ParameterizedTypeReference<List<StravaActivity>>() {
