@@ -8,6 +8,7 @@ import java.util.List;
 import org.junit.jupiter.api.Test;
 
 import io.github.jakobfa.webtechproject.model.Assessment;
+import io.github.jakobfa.webtechproject.model.ExtraRide;
 import io.github.jakobfa.webtechproject.model.Phase;
 import io.github.jakobfa.webtechproject.model.PlannedWorkout;
 import io.github.jakobfa.webtechproject.model.WorkoutType;
@@ -108,6 +109,39 @@ class PlanAdaptationServiceTest {
 		PlannedWorkout second = planned(MONDAY.plusDays(2), 8L);
 		assertThat(adaptation.adaptAfter(ridden, List.of(first, second))).isEmpty();
 		assertThat(second.getAdjustmentNote()).isNull();
+	}
+
+	private static ExtraRide extraRide(int tss) {
+		ExtraRide ride = new ExtraRide(null, "x1");
+		ride.setDate(MONDAY);
+		ride.setTss(tss);
+		return ride;
+	}
+
+	@Test
+	void shortExtraRideChangesNothing() {
+		PlannedWorkout next = planned(MONDAY.plusDays(1), 5L);
+
+		assertThat(adaptation.adaptAfter(extraRide(49), List.of(next))).isEmpty();
+		assertThat(next.getWorkoutId()).isEqualTo(5L);
+	}
+
+	@Test
+	void extraRideFromFiftyTssMakesNextHardSessionOneStepEasier() {
+		PlannedWorkout next = planned(MONDAY.plusDays(1), 5L);
+
+		assertThat(adaptation.adaptAfter(extraRide(50), List.of(next))).contains(next);
+		assertThat(next.getWorkoutId()).isEqualTo(14L);
+		assertThat(next.getAdjustmentNote()).isEqualTo("Angepasst: Am Mo., 19.10. bist du zusätzlich 50 TSS gefahren – mehr Erholung.");
+	}
+
+	@Test
+	void extraRideFromNinetyTssMeansRecovery() {
+		PlannedWorkout next = planned(MONDAY.plusDays(2), 8L);
+
+		adaptation.adaptAfter(extraRide(90), List.of(next));
+
+		assertThat(next.getWorkoutId()).isEqualTo(1L);
 	}
 
 	@Test

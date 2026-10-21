@@ -72,8 +72,8 @@ public class IntervalsAutoSyncService {
 		for (Long userId : connectionService.usersWithAutoSync()) {
 			users++;
 			try {
-				imported += activityImport.importRecent(userId).map(ActivityImportService.ImportResult::matched)
-						.orElse(0);
+				imported += activityImport.importRecent(userId)
+						.map(result -> result.matched() + result.extra()).orElse(0);
 				uploaded += syncUser(userId).map(SyncResult::uploaded).orElse(0);
 			} catch (RuntimeException e) {
 				failed++;

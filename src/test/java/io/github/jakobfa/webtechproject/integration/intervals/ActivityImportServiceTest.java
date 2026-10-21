@@ -18,9 +18,12 @@ import java.util.Optional;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
+import io.github.jakobfa.webtechproject.model.Assessment;
 import io.github.jakobfa.webtechproject.model.Athlete;
+import io.github.jakobfa.webtechproject.model.ExtraRide;
 import io.github.jakobfa.webtechproject.model.Phase;
 import io.github.jakobfa.webtechproject.model.PlannedWorkout;
+import io.github.jakobfa.webtechproject.repository.ExtraRideRepository;
 import io.github.jakobfa.webtechproject.repository.PlannedWorkoutRepository;
 import io.github.jakobfa.webtechproject.service.AthleteService;
 import io.github.jakobfa.webtechproject.service.PlanAdaptationService;
@@ -39,9 +42,10 @@ class ActivityImportServiceTest {
 	private final IntervalsIcuClient client = mock(IntervalsIcuClient.class);
 	private final AthleteService athleteService = mock(AthleteService.class);
 	private final PlannedWorkoutRepository repository = mock(PlannedWorkoutRepository.class);
+	private final ExtraRideRepository extraRides = mock(ExtraRideRepository.class);
 	private final WorkoutLibrary library = new WorkoutLibrary();
 	private final ActivityImportService service = new ActivityImportService(connectionService, client,
-			athleteService, repository, new PlanAdaptationService(library), CLOCK);
+			athleteService, repository, extraRides, new PlanAdaptationService(library), CLOCK);
 
 	@BeforeEach
 	void connectedUserWithProfile() {
@@ -118,6 +122,78 @@ class ActivityImportServiceTest {
 
 		assertThat(open.isCompleted()).isFalse();
 		assertThat(open.getActivityId()).isNull();
+	}
+
+	@Test
+	void rideOnARestDayBecomesAnExtraRide() {
+		givenPlan();
+		when(client.listActivities(any(), any(), any())).thenReturn(List.of(ride("i7", TODAY, 75, 40)));
+
+		var result = service.importRecent(1L).orElseThrow();
+
+		assertThat(result.extra()).isEqualTo(1);
+		var saved = org.mockito.ArgumentCaptor.forClass(ExtraRide.class);
+		verify(extraRides).save(saved.capture());
+		assertThat(saved.getValue().getActivityId()).isEqualTo("i7");
+		assertThat(saved.getValue().getDate()).isEqualTo(TODAY);
+		assertThat(saved.getValue().getTss()).isEqualTo(40);
+		assertThat(saved.getValue().assessment()).as("lockere Runde").isNull();
+	}
+
+	@Test
+	void secondRideOnAPlannedDayIsAlsoAnExtraRide() {
+		PlannedWorkout today = planned(TODAY);
+		givenPlan(today);
+		when(client.listActivities(any(), any(), any())).thenReturn(List.of(
+				ride("kurz", TODAY, 30, 20), ride("lang", TODAY, 90, 65)));
+
+		var result = service.importRecent(1L).orElseThrow();
+
+		assertThat(today.getActivityId()).isEqualTo("lang");
+		assertThat(result.extra()).isEqualTo(1);
+	}
+
+	@Test
+	void hardExtraRideMakesTheNextHardSessionEasier() {
+		PlannedWorkout tomorrow = planned(TODAY.plusDays(1)); // Sweet Spot 3 × 12
+		givenPlan(tomorrow);
+		when(client.listActivities(any(), any(), any())).thenReturn(List.of(ride("i8", TODAY, 150, 110)));
+
+		var result = service.importRecent(1L).orElseThrow();
+
+		assertThat(result.adjusted()).isEqualTo(1);
+		assertThat(tomorrow.getWorkoutId()).isEqualTo(1L); // ≥ 90 TSS → Ausrollen
+		assertThat(tomorrow.getAdjustmentNote()).contains("zusätzlich 110 TSS");
+	}
+
+	@Test
+	void knownExtraRideIsUpdatedNotDuplicatedAndAdaptsOnlyOnce() {
+		PlannedWorkout tomorrow = planned(TODAY.plusDays(1));
+		givenPlan(tomorrow);
+		ExtraRide known = new ExtraRide(new Athlete(), "i8");
+		known.setDate(TODAY);
+		known.setAdaptationApplied(true);
+		when(extraRides.findByAthleteIdAndDateBetween(eq(7L), any(), any())).thenReturn(List.of(known));
+		when(client.listActivities(any(), any(), any())).thenReturn(List.of(ride("i8", TODAY, 150, 110)));
+
+		var result = service.importRecent(1L).orElseThrow();
+
+		assertThat(result.extra()).isZero();
+		assertThat(known.assessment()).isEqualTo(Assessment.MUCH_HARDER);
+		assertThat(tomorrow.getAdjustmentNote()).isNull();
+		verify(extraRides).save(known);
+	}
+
+	@Test
+	void extraRideDeletedInIntervalsIsRemoved() {
+		givenPlan();
+		ExtraRide gone = new ExtraRide(new Athlete(), "weg");
+		when(extraRides.findByAthleteIdAndDateBetween(eq(7L), any(), any())).thenReturn(List.of(gone));
+		when(client.listActivities(any(), any(), any())).thenReturn(List.of());
+
+		service.importRecent(1L);
+
+		verify(extraRides).deleteAll(List.of(gone));
 	}
 
 	@Test

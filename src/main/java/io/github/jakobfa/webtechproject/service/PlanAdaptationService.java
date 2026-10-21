@@ -11,6 +11,7 @@ import java.util.Set;
 import org.springframework.stereotype.Service;
 
 import io.github.jakobfa.webtechproject.model.Assessment;
+import io.github.jakobfa.webtechproject.model.ExtraRide;
 import io.github.jakobfa.webtechproject.model.PlannedWorkout;
 import io.github.jakobfa.webtechproject.model.Workout;
 import io.github.jakobfa.webtechproject.model.WorkoutType;
@@ -59,20 +60,42 @@ public class PlanAdaptationService {
 			return Optional.empty();
 		}
 		ridden.setAdaptationApplied(true);
+		String note = "Angepasst: Am %s bist du %s gefahren statt %d TSS geplant – mehr Erholung."
+				.formatted(DAY.format(ridden.getDate()), describeLoad(ridden.getActualTss(),
+						ridden.getActualDurationMinutes()), workoutOf(ridden).getTss());
+		return adaptNextHardSession(ridden.getDate(), assessment, note, upcoming);
+	}
 
-		LocalDate until = ridden.getDate().plusDays(DAYS_AHEAD);
+	/**
+	 * Wie oben, aber für eine Fahrt ohne geplantes Workout (z. B. am Ruhetag).
+	 * Lockere Runden unter 50 TSS ändern nichts.
+	 */
+	public Optional<PlannedWorkout> adaptAfter(ExtraRide ride, List<PlannedWorkout> upcoming) {
+		Assessment assessment = ride.assessment();
+		if (ride.isAdaptationApplied() || assessment == null) {
+			return Optional.empty();
+		}
+		ride.setAdaptationApplied(true);
+		String note = "Angepasst: Am %s bist du zusätzlich %s gefahren – mehr Erholung."
+				.formatted(DAY.format(ride.getDate()), describeLoad(ride.getTss(), ride.getDurationMinutes()));
+		return adaptNextHardSession(ride.getDate(), assessment, note, upcoming);
+	}
+
+	private Optional<PlannedWorkout> adaptNextHardSession(LocalDate rideDate, Assessment assessment, String note,
+			List<PlannedWorkout> upcoming) {
+		LocalDate until = rideDate.plusDays(DAYS_AHEAD);
 		return upcoming.stream()
-				.filter(next -> next.getDate().isAfter(ridden.getDate()) && !next.getDate().isAfter(until))
+				.filter(next -> next.getDate().isAfter(rideDate) && !next.getDate().isAfter(until))
 				.filter(next -> !next.isCompleted() && next.getAdjustmentNote() == null)
 				.filter(next -> !EASY_TYPES.contains(workoutOf(next).getType()))
 				.min(Comparator.comparing(PlannedWorkout::getDate))
 				.map(next -> {
-					replace(next, ridden, assessment);
+					replace(next, assessment, note);
 					return next;
 				});
 	}
 
-	private void replace(PlannedWorkout next, PlannedWorkout ridden, Assessment assessment) {
+	private void replace(PlannedWorkout next, Assessment assessment, String note) {
 		Workout original = workoutOf(next);
 		Workout replacement = assessment == Assessment.MUCH_HARDER
 				? null
@@ -87,14 +110,11 @@ public class PlanAdaptationService {
 			next.setWorkoutId(replacement.getId());
 			next.setDurationMinutes(null);
 		}
-		next.setAdjustmentNote("Angepasst: Am %s bist du %s gefahren statt %d TSS geplant – mehr Erholung."
-				.formatted(DAY.format(ridden.getDate()), describeLoad(ridden), workoutOf(ridden).getTss()));
+		next.setAdjustmentNote(note);
 	}
 
-	private static String describeLoad(PlannedWorkout ridden) {
-		return ridden.getActualTss() != null
-				? ridden.getActualTss() + " TSS"
-				: ridden.getActualDurationMinutes() + " min";
+	private static String describeLoad(Integer tss, Integer minutes) {
+		return tss != null ? tss + " TSS" : minutes + " min";
 	}
 
 	private Workout workoutOf(PlannedWorkout planned) {
