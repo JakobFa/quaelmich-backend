@@ -421,6 +421,62 @@ class ActivityImportServiceTest {
 	}
 
 	@Test
+	void wednesdayCaseBothCommutesShowUpAsExtraRides() {
+		// FTP-Test (65 min, 64 TSS) war früher automatisch mit der 55-min-Pendelfahrt verknüpft
+		when(connectionService.credentialsOf(1L)).thenReturn(Optional.empty());
+		PlannedWorkout ftpTest = new PlannedWorkout(TODAY, library.findById(11L).orElseThrow(), null, Phase.BASE);
+		ftpTest.setActivityId("strava-55");
+		ftpTest.setCompleted(true);
+		givenPlan(ftpTest);
+		givenStrava(
+				new RecordedActivity("strava-55", Sport.RIDE, java.time.LocalDateTime.parse(TODAY + "T17:10:00"), 3300,
+						22400.0, 25, true, false, false),
+				new RecordedActivity("strava-36", Sport.RIDE, java.time.LocalDateTime.parse(TODAY + "T07:40:00"), 2160,
+						14200.0, 34, true, false, false));
+
+		var result = service.importRecent(1L).orElseThrow();
+
+		assertThat(ftpTest.getActivityId()).isNull();
+		assertThat(ftpTest.isCompleted()).isFalse();
+		var saved = org.mockito.ArgumentCaptor.forClass(ExtraRide.class);
+		verify(extraRides, org.mockito.Mockito.times(2)).save(saved.capture());
+		assertThat(saved.getAllValues()).extracting(ExtraRide::getActivityId)
+				.containsExactlyInAnyOrder("strava-55", "strava-36");
+		assertThat(result.extra()).isEqualTo(2);
+	}
+
+	@Test
+	void rejectedRideIsNeverMatchedAgain() {
+		PlannedWorkout today = planned(TODAY);
+		today.setRejectedActivityId("i5");
+		givenPlan(today);
+		// würde perfekt passen – aber der Nutzer hat gesagt: anderes Training
+		when(client.listActivities(any(), any(), any())).thenReturn(List.of(ride("i5", TODAY, 71, 67)));
+
+		var result = service.importRecent(1L).orElseThrow();
+
+		assertThat(today.getActivityId()).isNull();
+		assertThat(result.extra()).isEqualTo(1);
+	}
+
+	@Test
+	void oldNoAnswerIsConvertedIntoARejection() {
+		when(connectionService.credentialsOf(1L)).thenReturn(Optional.empty());
+		PlannedWorkout ftpTest = new PlannedWorkout(TODAY, library.findById(11L).orElseThrow(), null, Phase.BASE);
+		ftpTest.setActivityId("strava-55");
+		ftpTest.setActivityConfirmed(false); // so hat "Nein, anderes Training" früher gespeichert
+		givenPlan(ftpTest);
+		givenStrava(new RecordedActivity("strava-55", Sport.RIDE, java.time.LocalDateTime.parse(TODAY + "T17:10:00"),
+				3300, 22400.0, 25, true, false, false));
+
+		var result = service.importRecent(1L).orElseThrow();
+
+		assertThat(ftpTest.getActivityId()).isNull();
+		assertThat(ftpTest.getRejectedActivityId()).isEqualTo("strava-55");
+		assertThat(result.extra()).as("die Pendelfahrt steht jetzt sichtbar am Tag").isEqualTo(1);
+	}
+
+	@Test
 	void doesNothingWithoutConnection() {
 		when(connectionService.credentialsOf(1L)).thenReturn(Optional.empty());
 

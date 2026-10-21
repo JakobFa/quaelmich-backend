@@ -109,7 +109,15 @@ public class ActivityImportService {
 		int adjusted = 0;
 		for (PlannedWorkout planned : window) {
 			String linkedId = planned.getActivityId();
-			// vom Nutzer beantwortet ("Ja, das war's" / "Nein, anderes Training") → Zuordnung bleibt
+			// früher hieß "Nein, anderes Training": Fahrt bleibt am Workout hängen → jetzt als Ablehnung merken
+			// und lösen, damit die Fahrt unten zur Zusatzfahrt wird
+			if (linkedId != null && Boolean.FALSE.equals(planned.getActivityConfirmed())) {
+				planned.setRejectedActivityId(linkedId);
+				planned.clearActivity();
+				planned.setCompleted(false);
+				continue;
+			}
+			// vom Nutzer bestätigt ("Ja, das war's" oder selbst zugeordnet) → Zuordnung bleibt
 			if (linkedId != null && planned.getActivityConfirmed() != null) {
 				if (byId.containsKey(linkedId)) {
 					updateValues(planned, byId.get(linkedId));
@@ -119,6 +127,7 @@ public class ActivityImportService {
 			// die längste Fahrt des Tages, die zum Workout passt
 			Workout workout = library.resolve(planned.getWorkoutId(), planned.getDurationMinutes()).orElseThrow();
 			RecordedActivity ride = ridesPerDay.getOrDefault(planned.getDate(), List.of()).stream()
+					.filter(candidate -> !candidate.id().equals(planned.getRejectedActivityId()))
 					.filter(candidate -> fitsWorkout(candidate, workout))
 					.max(Comparator.comparingInt(RecordedActivity::movingSeconds))
 					.orElse(null);

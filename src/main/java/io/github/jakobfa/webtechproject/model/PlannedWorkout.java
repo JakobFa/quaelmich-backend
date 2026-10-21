@@ -71,6 +71,9 @@ public class PlannedWorkout {
 	/** Vom Nutzer bestätigt, dass die erkannte Fahrt das geplante Training war (null = noch nicht gefragt) */
 	private Boolean activityConfirmed;
 
+	/** Fahrt, die der Nutzer für dieses Workout abgelehnt hat ("anderes Training") – wird nie wieder zugeordnet */
+	private String rejectedActivityId;
+
 	/** Wurde der Plan wegen dieser Fahrt schon angepasst? (verhindert doppelte Anpassung) */
 	@Column(nullable = false)
 	@ColumnDefault("false")

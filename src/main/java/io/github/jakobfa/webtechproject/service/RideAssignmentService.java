@@ -53,11 +53,47 @@ public class RideAssignmentService {
 							planned.setActualTssFromHeartRate(ride.isTssFromHeartRate());
 							planned.setCompleted(true);
 							planned.setActivityConfirmed(true); // selbst zugeordnet = bestätigt
+							if (ride.getActivityId().equals(planned.getRejectedActivityId())) {
+								planned.setRejectedActivityId(null); // doch das Training gewesen
+							}
 							// hat die Fahrt den Plan schon angepasst, nicht nochmal
 							planned.setAdaptationApplied(ride.isAdaptationApplied());
 							extraRideRepository.delete(ride);
 							return plannedWorkoutRepository.save(planned);
 						}));
+	}
+
+	/**
+	 * "Nein, anderes Training": Die Fahrt wird vom Workout gelöst und zur Zusatzfahrt – sie zählt weiter als
+	 * Belastung. Das Workout ist wieder offen, und genau diese Fahrt wird ihm nie wieder automatisch zugeordnet.
+	 * Leer, wenn das Workout fremd ist oder keine Fahrt verknüpft ist.
+	 */
+	@Transactional
+	public Optional<PlannedWorkout> reject(Long plannedId, Long userId) {
+		return plannedWorkoutService.findOwned(plannedId, userId)
+				.filter(planned -> planned.getActivityId() != null)
+				.map(planned -> {
+					extraRideRepository.save(extraRideFrom(planned));
+					planned.setRejectedActivityId(planned.getActivityId());
+					planned.clearActivity();
+					planned.setCompleted(false);
+					planned.setRating(null);
+					return plannedWorkoutRepository.save(planned);
+				});
+	}
+
+	/** Macht aus der am Workout hängenden Fahrt eine Zusatzfahrt am selben Tag */
+	public static ExtraRide extraRideFrom(PlannedWorkout planned) {
+		ExtraRide ride = new ExtraRide(planned.getPlan().getAthlete(), planned.getActivityId());
+		ride.setDate(planned.getDate());
+		ride.setDurationMinutes(planned.getActualDurationMinutes());
+		ride.setDistanceKm(planned.getActualDistanceKm());
+		ride.setTss(planned.getActualTss());
+		ride.setTssFromHeartRate(planned.isActualTssFromHeartRate());
+		ride.setSport(Sport.RIDE);
+		// hat die Fahrt den Plan schon angepasst, nicht nochmal
+		ride.setAdaptationApplied(planned.isAdaptationApplied());
+		return ride;
 	}
 
 	private List<ExtraRide> ridesOnTheSameDay(PlannedWorkout planned) {

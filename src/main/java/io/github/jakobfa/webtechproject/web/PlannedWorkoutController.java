@@ -131,11 +131,18 @@ public class PlannedWorkoutController {
 	public record ActivityConfirmation(boolean matchesPlan) {
 	}
 
-	/** "War das das geplante Training?" – 404, wenn keine Fahrt verknüpft ist oder das Workout fremd ist */
+	/**
+	 * "War das das geplante Training?" Ja = bestätigt; Nein = die Fahrt wird zur Zusatzfahrt und das Workout
+	 * ist wieder offen. 404, wenn keine Fahrt verknüpft ist oder das Workout fremd ist.
+	 */
 	@PutMapping(path = "/planned-workouts/{id}/activity-confirmation")
 	public ResponseEntity<PlannedWorkoutResponse> confirmActivity(@AuthenticationPrincipal Jwt jwt,
 			@PathVariable Long id, @RequestBody ActivityConfirmation confirmation) {
-		return plannedWorkoutService.confirmActivity(id, CurrentUser.id(jwt), confirmation.matchesPlan())
+		Long userId = CurrentUser.id(jwt);
+		var result = confirmation.matchesPlan()
+				? plannedWorkoutService.confirmActivity(id, userId, true)
+				: rideAssignment.reject(id, userId);
+		return result
 				.map(planned -> ResponseEntity.ok(mapper.toResponse(planned)))
 				.orElse(ResponseEntity.notFound().build());
 	}

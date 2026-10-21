@@ -209,14 +209,19 @@ class PlannedWorkoutControllerTest {
 	}
 
 	@Test
-	void otherTrainingKeepsTheRideButUnchecksTheWorkout() throws Exception {
+	void otherTrainingTurnsTheRideIntoAnExtraRide() throws Exception {
 		linkRide();
 
 		confirm(token, false)
 				.andExpect(status().isOk())
 				.andExpect(jsonPath("$.completed").value(false))
-				.andExpect(jsonPath("$.actual.confirmed").value(false))
-				.andExpect(jsonPath("$.actual.tss").value(500));
+				.andExpect(jsonPath("$.actual").value(nullValue()));
+
+		assertThat(repository.findById(plannedId).orElseThrow().getRejectedActivityId()).isEqualTo("i1");
+		// die Fahrt steht jetzt als Zusatzfahrt am Tag – und lässt sich bei Bedarf doch wieder zuordnen
+		mockMvc.perform(get("/planned-workouts/" + plannedId + "/candidate-rides").header("Authorization", token))
+				.andExpect(jsonPath("$.length()").value(1))
+				.andExpect(jsonPath("$[0].tss").value(500));
 	}
 
 	@Test
