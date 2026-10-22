@@ -10,6 +10,7 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RestController;
 
 import io.github.jakobfa.webtechproject.auth.AuthService.EmailAlreadyRegisteredException;
+import io.github.jakobfa.webtechproject.auth.AuthService.InvalidInvitationException;
 import io.github.jakobfa.webtechproject.auth.PasswordResetService.InvalidTokenException;
 import io.github.jakobfa.webtechproject.model.AppUser;
 import jakarta.servlet.http.HttpServletRequest;
@@ -21,7 +22,12 @@ import jakarta.validation.constraints.Size;
 @RestController
 public class AuthController {
 
-	public record RegisterRequest(@NotBlank @Email String email, @NotBlank @Size(min = 8, max = 72) String password) {
+	/** inviteCode nur nötig, wenn auf dem Server ein Einladungscode gesetzt ist */
+	public record RegisterRequest(@NotBlank @Email String email, @NotBlank @Size(min = 8, max = 72) String password,
+			@Size(max = 100) String inviteCode) {
+	}
+
+	public record RegistrationInfo(boolean inviteRequired) {
 	}
 
 	public record LoginRequest(@NotBlank String email, @NotBlank String password) {
@@ -44,16 +50,24 @@ public class AuthController {
 	private final TokenService tokenService;
 	private final PasswordResetService passwordResetService;
 	private final RateLimiter rateLimiter;
+	private final InvitationService invitations;
 
 	public AuthController(AuthService authService, TokenService tokenService,
-			PasswordResetService passwordResetService, RateLimiter rateLimiter) {
+			PasswordResetService passwordResetService, RateLimiter rateLimiter, InvitationService invitations) {
 		this.authService = authService;
 		this.tokenService = tokenService;
 		this.passwordResetService = passwordResetService;
 		this.rateLimiter = rateLimiter;
+		this.invitations = invitations;
 	}
 
-	/** 429 = zu viele Versuche von dieser Adresse */
+	/** Braucht die Registrierung gerade einen Einladungscode? (für das Formular) */
+	@GetMapping(path = "/auth/registration")
+	public RegistrationInfo registrationInfo() {
+		return new RegistrationInfo(invitations.isInviteOnly());
+	}
+
+	/** 403 = Einladungscode fehlt, stimmt nicht oder ist schon benutzt; 429 = zu viele Versuche */
 	@PostMapping(path = "/auth/register")
 	public ResponseEntity<AuthResponse> register(@Valid @RequestBody RegisterRequest request,
 			HttpServletRequest http) {
@@ -61,10 +75,12 @@ public class AuthController {
 			return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS).build();
 		}
 		try {
-			AppUser user = authService.register(request.email(), request.password());
+			AppUser user = authService.register(request.email(), request.password(), request.inviteCode());
 			return ResponseEntity.status(HttpStatus.CREATED).body(toResponse(user));
 		} catch (EmailAlreadyRegisteredException e) {
 			return ResponseEntity.status(HttpStatus.CONFLICT).build();
+		} catch (InvalidInvitationException e) {
+			return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
 		}
 	}
 

@@ -18,21 +18,36 @@ public class AuthService {
 	public static class EmailAlreadyRegisteredException extends RuntimeException {
 	}
 
+	/** Wird geworfen, wenn ein nötiger Einladungscode fehlt, falsch oder schon benutzt ist. */
+	public static class InvalidInvitationException extends RuntimeException {
+	}
+
 	private final AppUserRepository userRepository;
 	private final PasswordEncoder passwordEncoder;
 	private final Clock clock;
+	private final InvitationService invitations;
 
-	public AuthService(AppUserRepository userRepository, PasswordEncoder passwordEncoder, Clock clock) {
+	public AuthService(AppUserRepository userRepository, PasswordEncoder passwordEncoder, Clock clock,
+			InvitationService invitations) {
 		this.userRepository = userRepository;
 		this.passwordEncoder = passwordEncoder;
 		this.clock = clock;
+		this.invitations = invitations;
 	}
 
-	@Transactional
 	public AppUser register(String email, String password) {
+		return register(email, password, null);
+	}
+
+	/** Code und Konto in einer Transaktion: Schlägt das Konto fehl, bleibt der Code unbenutzt. */
+	@Transactional
+	public AppUser register(String email, String password, String inviteCode) {
 		String normalized = normalize(email);
 		if (userRepository.existsByEmail(normalized)) {
 			throw new EmailAlreadyRegisteredException();
+		}
+		if (!invitations.redeemIfRequired(inviteCode)) {
+			throw new InvalidInvitationException();
 		}
 		return userRepository.save(new AppUser(normalized, passwordEncoder.encode(password), clock.instant()));
 	}

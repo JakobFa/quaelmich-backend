@@ -102,4 +102,13 @@ class AuthControllerTest {
 		mockMvc.perform(get("/workouts")).andExpect(status().isOk());
 	}
 
+
+	@Test
+	void registrationIsOpenWithoutInviteCode() throws Exception {
+		mockMvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get("/auth/registration"))
+				.andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.status().isOk())
+				.andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath("$.inviteRequired")
+						.value(false));
+	}
+
 }
