@@ -14,6 +14,6 @@ public interface InvitationRepository extends JpaRepository<Invitation, Long> {
 	@Lock(LockModeType.PESSIMISTIC_WRITE)
 	Optional<Invitation> findByCodeHash(String codeHash);
 
-	List<Invitation> findByCreatedByIdOrderByCreatedAtDesc(Long userId);
+	List<Invitation> findAllByOrderByCreatedAtDesc();
 
 }

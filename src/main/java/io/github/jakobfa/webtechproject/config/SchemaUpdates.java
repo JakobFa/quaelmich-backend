@@ -26,6 +26,8 @@ public class SchemaUpdates implements ApplicationRunner {
 	public void run(ApplicationArguments args) {
 		// FTP ist seit dem Puls-Modus optional (Training ohne Wattmesser)
 		execute("ALTER TABLE athlete ALTER COLUMN ftp DROP NOT NULL");
+		// Einladungen erstellt jetzt nur noch der Betreiber (scripts/invite.sh), nicht mehr einzelne Nutzer
+		execute("ALTER TABLE invitation ALTER COLUMN created_by_id DROP NOT NULL");
 	}
 
 	private void execute(String sql) {

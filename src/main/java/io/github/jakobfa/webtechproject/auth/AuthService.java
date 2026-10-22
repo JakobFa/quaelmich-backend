@@ -51,7 +51,9 @@ public class AuthService {
 		Optional<Invitation> invitation = invitations.redeemIfRequired(inviteCode);
 		AppUser user = userRepository.save(new AppUser(normalized, passwordEncoder.encode(password), clock.instant()));
 		invitation.ifPresent(used -> used.setUsedBy(user));
-		notifier.newRegistration(user, invitation.map(used -> used.getCreatedBy().getEmail()).orElse(null));
+		notifier.newRegistration(user, invitation.map(used -> used.getNote() == null
+				? "Code …" + used.getLastChars()
+				: "Code …" + used.getLastChars() + " (" + used.getNote() + ")").orElse(null));
 		return user;
 	}
 

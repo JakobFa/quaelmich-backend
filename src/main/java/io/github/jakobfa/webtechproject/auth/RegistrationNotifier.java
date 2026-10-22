@@ -29,13 +29,13 @@ public class RegistrationNotifier {
 		this.adminEmail = adminEmail == null ? "" : adminEmail.trim();
 	}
 
-	/** @param invitedBy E-Mail des Einladenden, null ohne Einladung */
-	public void newRegistration(AppUser user, String invitedBy) {
+	/** @param invitation welcher Einladungscode benutzt wurde (mit Notiz), null ohne Code */
+	public void newRegistration(AppUser user, String invitation) {
 		if (adminEmail.isEmpty()) {
 			return;
 		}
 		String when = TIME.format(user.getCreatedAt());
-		String via = invitedBy == null ? "ohne Einladungscode" : "eingeladen von " + invitedBy;
+		String via = invitation == null ? "ohne Einladungscode" : "mit " + invitation;
 		String text = "Neues Konto bei quaelmich:\n\n%s\nam %s Uhr, %s\n".formatted(user.getEmail(), when, via);
 		String html = "<p>Neues Konto bei quaelmich:</p><p><strong>%s</strong><br>am %s Uhr, %s</p>"
 				.formatted(escape(user.getEmail()), when, escape(via));

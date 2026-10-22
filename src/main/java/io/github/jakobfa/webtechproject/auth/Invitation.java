@@ -13,7 +13,8 @@ import lombok.NoArgsConstructor;
 import lombok.Setter;
 
 /**
- * Ein Einladungscode, der genau einmal für eine Registrierung funktioniert.
+ * Ein Einladungscode, der genau einmal für eine Registrierung funktioniert. Erstellt vom Betreiber
+ * über die internen Routen (scripts/invite.sh).
  * Gespeichert wird nur der SHA-256-Hash; die letzten vier Zeichen helfen dem Ersteller beim Wiedererkennen.
  */
 @Entity
@@ -26,8 +27,8 @@ public class Invitation {
 	@GeneratedValue
 	private Long id;
 
-	@ManyToOne(optional = false)
-	private AppUser createdBy;
+	/** Notiz des Betreibers, z. B. "für Lina" */
+	private String note;
 
 	@Column(nullable = false, unique = true, length = 64)
 	private String codeHash;
@@ -51,8 +52,8 @@ public class Invitation {
 	/** gesetzt, wenn der Ersteller den Code zurückgezogen hat */
 	private Instant revokedAt;
 
-	public Invitation(AppUser createdBy, String codeHash, String lastChars, Instant createdAt, Instant expiresAt) {
-		this.createdBy = createdBy;
+	public Invitation(String note, String codeHash, String lastChars, Instant createdAt, Instant expiresAt) {
+		this.note = note;
 		this.codeHash = codeHash;
 		this.lastChars = lastChars;
 		this.createdAt = createdAt;

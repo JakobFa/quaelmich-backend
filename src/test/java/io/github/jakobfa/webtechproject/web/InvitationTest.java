@@ -7,7 +7,6 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-import java.time.Instant;
 import java.util.UUID;
 
 import org.junit.jupiter.api.Test;
@@ -15,125 +14,102 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.http.MediaType;
-import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.ResultActions;
 
 import com.jayway.jsonpath.JsonPath;
 
-import io.github.jakobfa.webtechproject.model.AppUser;
-import io.github.jakobfa.webtechproject.repository.AppUserRepository;
-
-/** "Nur mit Einladung": jeder Code genau einmal */
+/**
+ * "Nur mit Einladung": Der Betreiber erstellt Codes über die internen Routen, jeder Code gilt genau einmal.
+ * Das Geheimnis ist in den Tests "test-sync-token" (siehe test/resources/application.properties).
+ */
 @SpringBootTest(properties = "app.registration.invite-only=true")
 @AutoConfigureMockMvc
 class InvitationTest {
 
+	private static final String TOKEN = "test-sync-token";
+
 	@Autowired
 	private MockMvc mockMvc;
 
-	@Autowired
-	private AppUserRepository users;
-
-	@Autowired
-	private PasswordEncoder passwordEncoder;
-
-	@Autowired
-	private io.github.jakobfa.webtechproject.auth.InvitationRepository invitations;
-
-	/** Ein vorhandenes Konto – direkt angelegt, weil die Registrierung hier einen Code braucht */
-	private String existingUser() throws Exception {
-		String email = "inviter-" + UUID.randomUUID() + "@example.com";
-		users.save(new AppUser(email, passwordEncoder.encode("geheim1234"), Instant.now()));
-		return "Bearer " + JsonPath.read(mockMvc.perform(post("/auth/login").contentType(MediaType.APPLICATION_JSON)
-				.content("{ \"email\": \"%s\", \"password\": \"geheim1234\" }".formatted(email))).andReturn()
-				.getResponse().getContentAsString(), "$.token");
+	private ResultActions createCode(String note) throws Exception {
+		return mockMvc.perform(post("/internal/invitations").header("X-Sync-Token", TOKEN)
+				.contentType(MediaType.APPLICATION_JSON).content("{ \"note\": \"%s\" }".formatted(note)));
 	}
 
-	private String newCode(String token) throws Exception {
-		String body = mockMvc.perform(post("/me/invitations").header("Authorization", token))
-				.andExpect(status().isCreated()).andReturn().getResponse().getContentAsString();
-		return JsonPath.read(body, "$.code");
+	private String newCode(String note) throws Exception {
+		return JsonPath.read(createCode(note).andExpect(status().isCreated()).andReturn().getResponse()
+				.getContentAsString(), "$.code");
 	}
 
-	private ResultActions register(String code) throws Exception {
+	private ResultActions register(String email, String code) throws Exception {
 		String codeJson = code == null ? "" : ", \"inviteCode\": \"%s\"".formatted(code);
 		return mockMvc.perform(post("/auth/register").contentType(MediaType.APPLICATION_JSON)
-				.content("{ \"email\": \"guest-%s@example.com\", \"password\": \"geheim1234\"%s }"
-						.formatted(UUID.randomUUID(), codeJson)));
+				.content("{ \"email\": \"%s\", \"password\": \"geheim1234\"%s }".formatted(email, codeJson)));
+	}
+
+	private static String someEmail() {
+		return "gast-" + UUID.randomUUID() + "@example.com";
 	}
 
 	@Test
 	void eachCodeWorksExactlyOnce() throws Exception {
-		String code = newCode(existingUser());
+		String code = newCode("für Lina");
 		assertThat(code).matches("QUAL-[A-Z2-9]{4}-[A-Z2-9]{4}");
 
-		register(code).andExpect(status().isCreated());
-		register(code).andExpect(status().isForbidden()); // zweites Konto mit demselben Code
+		register(someEmail(), code).andExpect(status().isCreated());
+		register(someEmail(), code).andExpect(status().isForbidden()); // zweites Konto mit demselben Code
 	}
 
 	@Test
 	void withoutOrWithWrongCodeThereIsNoAccount() throws Exception {
 		mockMvc.perform(get("/auth/registration")).andExpect(jsonPath("$.inviteRequired").value(true));
-		register(null).andExpect(status().isForbidden());
-		register("QUAL-AAAA-BBBB").andExpect(status().isForbidden());
+		register(someEmail(), null).andExpect(status().isForbidden());
+		register(someEmail(), "QUAL-AAAA-BBBB").andExpect(status().isForbidden());
 	}
 
 	@Test
 	void typingIsForgiving() throws Exception {
-		String code = newCode(existingUser());
+		String code = newCode("Tippfehler-Test");
 
-		register(code.toLowerCase().replace("-", " ")).andExpect(status().isCreated());
+		register(someEmail(), code.toLowerCase().replace("-", " ")).andExpect(status().isCreated());
 	}
 
 	@Test
-	void atMostThreeOpenCodesAndUsedOnesShowUp() throws Exception {
-		String token = existingUser();
-		String first = newCode(token);
-		newCode(token);
-		newCode(token);
-		mockMvc.perform(post("/me/invitations").header("Authorization", token)).andExpect(status().isConflict());
+	void listShowsNoteStatusAndWhoUsedIt() throws Exception {
+		String email = someEmail();
+		String code = newCode("für Tom");
+		register(email, code);
 
-		register(first).andExpect(status().isCreated());
-		newCode(token); // wieder Platz, weil einer benutzt ist
-
-		mockMvc.perform(get("/me/invitations").header("Authorization", token))
-				.andExpect(jsonPath("$.length()").value(4))
-				.andExpect(jsonPath("$[?(@.status == 'USED')].lastChars").value(first.substring(first.length() - 4)))
-				.andExpect(jsonPath("$[0].code").doesNotExist());
+		mockMvc.perform(get("/internal/invitations").header("X-Sync-Token", TOKEN))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$[?(@.note == 'für Tom')].status").value("USED"))
+				.andExpect(jsonPath("$[?(@.note == 'für Tom')].usedBy").value(email))
+				.andExpect(jsonPath("$[?(@.note == 'für Tom')].code").value((Object) null));
 	}
 
 	@Test
-	void revokedCodeNoLongerWorksAndOthersCannotRevoke() throws Exception {
-		String token = existingUser();
-		String body = mockMvc.perform(post("/me/invitations").header("Authorization", token)).andReturn()
-				.getResponse().getContentAsString();
+	void revokedCodeNoLongerWorks() throws Exception {
+		String body = createCode("doch nicht").andReturn().getResponse().getContentAsString();
 		Number id = JsonPath.read(body, "$.id");
 		String code = JsonPath.read(body, "$.code");
 
-		mockMvc.perform(delete("/me/invitations/" + id).header("Authorization", existingUser()))
-				.andExpect(status().isNotFound());
-		mockMvc.perform(delete("/me/invitations/" + id).header("Authorization", token))
+		mockMvc.perform(delete("/internal/invitations/" + id).header("X-Sync-Token", TOKEN))
 				.andExpect(status().isOk())
 				.andExpect(jsonPath("$.status").value("REVOKED"));
-		register(code).andExpect(status().isForbidden());
+		register(someEmail(), code).andExpect(status().isForbidden());
 	}
 
 	@Test
-	void theInvitationRemembersWhoUsedIt() throws Exception {
-		String token = existingUser();
-		String code = newCode(token);
-		register(code);
-
-		mockMvc.perform(get("/me/invitations").header("Authorization", token))
-				.andExpect(jsonPath("$[0].status").value("USED"));
-		org.assertj.core.api.Assertions.assertThat(invitations.findAll()).anySatisfy(invitation -> {
-			org.assertj.core.api.Assertions.assertThat(invitation.getUsedBy()).isNotNull();
-		});
+	void withoutTheSecretTheRoutesDoNotExist() throws Exception {
+		mockMvc.perform(post("/internal/invitations").contentType(MediaType.APPLICATION_JSON).content("{}"))
+				.andExpect(status().isNotFound());
+		mockMvc.perform(get("/internal/invitations").header("X-Sync-Token", "falsch"))
+				.andExpect(status().isNotFound());
 	}
 
 	@Test
-	void needsLogin() throws Exception {
+	void normalUsersCannotCreateCodes() throws Exception {
 		mockMvc.perform(post("/me/invitations")).andExpect(status().isUnauthorized());
 	}
 

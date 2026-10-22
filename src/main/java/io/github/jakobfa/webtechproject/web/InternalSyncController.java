@@ -1,8 +1,5 @@
 package io.github.jakobfa.webtechproject.web;
 
-import java.nio.charset.StandardCharsets;
-import java.security.MessageDigest;
-
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -11,7 +8,6 @@ import org.springframework.web.bind.annotation.RestController;
 
 import io.github.jakobfa.webtechproject.integration.intervals.IntervalsAutoSyncService;
 import io.github.jakobfa.webtechproject.integration.intervals.IntervalsAutoSyncService.SyncAllResult;
-import io.github.jakobfa.webtechproject.integration.intervals.IntervalsProperties;
 
 /**
  * Nächtlicher Sync für alle Nutzer mit Auto-Sync. Wird von GitHub Actions per Zeitplan aufgerufen
@@ -23,28 +19,22 @@ import io.github.jakobfa.webtechproject.integration.intervals.IntervalsPropertie
 public class InternalSyncController {
 
 	private final IntervalsAutoSyncService autoSync;
-	private final IntervalsProperties properties;
+	private final InternalAccess access;
 
-	public InternalSyncController(IntervalsAutoSyncService autoSync, IntervalsProperties properties) {
+	public InternalSyncController(IntervalsAutoSyncService autoSync, InternalAccess access) {
 		this.autoSync = autoSync;
-		this.properties = properties;
+		this.access = access;
 	}
 
 	@PostMapping(path = "/internal/intervals/sync-all")
 	public ResponseEntity<SyncAllResult> syncAll(@RequestHeader(name = "X-Sync-Token", required = false) String token) {
-		String expected = properties.syncToken();
-		if (expected == null || expected.isBlank()) {
+		if (!access.isEnabled()) {
 			return ResponseEntity.notFound().build(); // ohne konfiguriertes Geheimnis gibt es die Route nicht
 		}
-		if (token == null || !constantTimeEquals(token, expected)) {
+		if (!access.accepts(token)) {
 			return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
 		}
 		return ResponseEntity.ok(autoSync.syncAll());
-	}
-
-	/** Vergleich in konstanter Zeit, damit das Geheimnis nicht über Antwortzeiten erraten werden kann */
-	private static boolean constantTimeEquals(String a, String b) {
-		return MessageDigest.isEqual(a.getBytes(StandardCharsets.UTF_8), b.getBytes(StandardCharsets.UTF_8));
 	}
 
 }

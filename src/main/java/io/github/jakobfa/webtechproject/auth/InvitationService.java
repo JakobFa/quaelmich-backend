@@ -11,39 +11,31 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import io.github.jakobfa.webtechproject.repository.AppUserRepository;
 
 /**
- * Einladungscodes: jeder Code gilt einmal und 14 Tage. Ist "nur mit Einladung" eingeschaltet
+ * Einladungscodes vom Betreiber: jeder Code gilt einmal und 14 Tage. Ist "nur mit Einladung" eingeschaltet
  * (REGISTRATION_INVITE_ONLY=true), braucht jede Registrierung einen offenen Code.
  */
 @Service
 public class InvitationService {
 
 	static final Duration VALIDITY = Duration.ofDays(14);
-	static final int MAX_OPEN_PER_USER = 3;
 
 	/** Ohne leicht verwechselbare Zeichen (0/O, 1/I/L) */
 	private static final String ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
-
-	/** Wird geworfen, wenn jemand schon die erlaubte Zahl offener Codes hat. */
-	public static class TooManyOpenInvitationsException extends RuntimeException {
-	}
 
 	/** Ein frisch erzeugter Code – nur in diesem Moment im Klartext sichtbar */
 	public record CreatedInvitation(Invitation invitation, String code) {
 	}
 
 	private final InvitationRepository repository;
-	private final AppUserRepository userRepository;
 	private final Clock clock;
 	private final boolean inviteOnly;
 	private final SecureRandom random = new SecureRandom();
 
-	public InvitationService(InvitationRepository repository, AppUserRepository userRepository, Clock clock,
+	public InvitationService(InvitationRepository repository, Clock clock,
 			@Value("${app.registration.invite-only:false}") boolean inviteOnly) {
 		this.repository = repository;
-		this.userRepository = userRepository;
 		this.clock = clock;
 		this.inviteOnly = inviteOnly;
 	}
@@ -52,31 +44,26 @@ public class InvitationService {
 		return inviteOnly;
 	}
 
+	/** @param note z. B. "für Lina" – nur zur eigenen Übersicht */
 	@Transactional
-	public CreatedInvitation create(Long userId) {
+	public CreatedInvitation create(String note) {
 		Instant now = clock.instant();
-		long open = repository.findByCreatedByIdOrderByCreatedAtDesc(userId).stream()
-				.filter(invitation -> invitation.isOpen(now)).count();
-		if (open >= MAX_OPEN_PER_USER) {
-			throw new TooManyOpenInvitationsException();
-		}
 		String code = newCode();
-		Invitation invitation = repository.save(new Invitation(userRepository.getReferenceById(userId),
+		Invitation invitation = repository.save(new Invitation(note == null || note.isBlank() ? null : note.trim(),
 				PasswordResetService.hash(normalize(code)), code.substring(code.length() - 4), now,
 				now.plus(VALIDITY)));
 		return new CreatedInvitation(invitation, code);
 	}
 
-	public List<Invitation> listOwn(Long userId) {
-		return repository.findByCreatedByIdOrderByCreatedAtDesc(userId);
+	public List<Invitation> listAll() {
+		return repository.findAllByOrderByCreatedAtDesc();
 	}
 
-	/** Zieht einen offenen Code zurück. Leer, wenn er fremd ist oder nicht mehr offen. */
+	/** Zieht einen offenen Code zurück. Leer, wenn es ihn nicht gibt oder er nicht mehr offen ist. */
 	@Transactional
-	public Optional<Invitation> revoke(Long userId, Long invitationId) {
+	public Optional<Invitation> revoke(Long invitationId) {
 		Instant now = clock.instant();
 		return repository.findById(invitationId)
-				.filter(invitation -> invitation.getCreatedBy().getId().equals(userId))
 				.filter(invitation -> invitation.isOpen(now))
 				.map(invitation -> {
 					invitation.setRevokedAt(now);
