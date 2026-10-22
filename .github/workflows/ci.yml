@@ -22,7 +22,7 @@ jobs:
           java-version: 25
 
       - name: Gradle einrichten (mit Cache)
-        uses: gradle/actions/setup-gradle@v4
+        uses: gradle/actions/setup-gradle@v6
 
       - name: Bauen und testen
         run: ./gradlew build
