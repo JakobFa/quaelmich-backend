@@ -92,6 +92,26 @@ public class PlannedWorkoutController {
 		}
 	}
 
+	public record ReplacementRequest(@NotNull Long workoutId, Integer durationMinutes) {
+	}
+
+	/**
+	 * Heute lieber etwas anderes: ein Workout aus der Bibliothek statt des geplanten.
+	 * 409, wenn das nicht geht (schon erledigt, unbekanntes Workout oder unpassende Dauer).
+	 */
+	@PutMapping(path = "/planned-workouts/{id}/workout")
+	public ResponseEntity<PlannedWorkoutResponse> replace(@AuthenticationPrincipal Jwt jwt, @PathVariable Long id,
+			@Valid @RequestBody ReplacementRequest request) {
+		Long userId = CurrentUser.id(jwt);
+		try {
+			return customization.replace(id, userId, request.workoutId(), request.durationMinutes())
+					.map(planned -> syncedResponse(userId, planned))
+					.orElse(ResponseEntity.notFound().build());
+		} catch (NotPossibleException e) {
+			return ResponseEntity.status(HttpStatus.CONFLICT).build();
+		}
+	}
+
 	/** Zurück zum ursprünglich geplanten Workout */
 	@DeleteMapping(path = "/planned-workouts/{id}/adjustment")
 	public ResponseEntity<PlannedWorkoutResponse> resetAdjustment(@AuthenticationPrincipal Jwt jwt,

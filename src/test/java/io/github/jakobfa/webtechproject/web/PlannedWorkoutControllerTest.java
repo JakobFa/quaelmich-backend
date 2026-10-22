@@ -293,6 +293,48 @@ class PlannedWorkoutControllerTest {
 				.andExpect(status().isNotFound());
 	}
 
+	private ResultActions replace(String body) throws Exception {
+		return mockMvc.perform(put("/planned-workouts/" + plannedId + "/workout").header("Authorization", token)
+				.contentType(MediaType.APPLICATION_JSON).content(body));
+	}
+
+	@Test
+	void anyLibraryWorkoutCanReplaceTheDay() throws Exception {
+		makeItEndurance();
+
+		replace("{ \"workoutId\": 8 }")
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.workout.title").value("VO2max 5 × 4"))
+				.andExpect(jsonPath("$.adjustment.note").value("Von dir getauscht."))
+				.andExpect(jsonPath("$.adjustment.originalTitle").value("Grundlage 90 min"));
+
+		mockMvc.perform(delete("/planned-workouts/" + plannedId + "/adjustment").header("Authorization", token))
+				.andExpect(jsonPath("$.workout.title").value("Grundlage 90 min"));
+	}
+
+	@Test
+	void replacementWithVariableDuration() throws Exception {
+		makeItEndurance();
+
+		replace("{ \"workoutId\": 3, \"durationMinutes\": 150 }")
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.workout.durationInMinutes").value(150));
+		replace("{ \"workoutId\": 1, \"durationMinutes\": 10 }").andExpect(status().isConflict());
+		replace("{ \"workoutId\": 999 }").andExpect(status().isConflict());
+	}
+
+	@Test
+	void completedOrForeignWorkoutsCannotBeReplaced() throws Exception {
+		replace("{ \"workoutId\": 8 }").andExpect(status().isOk());
+		mockMvc.perform(put("/planned-workouts/" + plannedId + "/workout")
+				.header("Authorization", registerWithProfile(mockMvc))
+				.contentType(MediaType.APPLICATION_JSON).content("{ \"workoutId\": 5 }"))
+				.andExpect(status().isNotFound());
+
+		saveProgress(token, true, 5);
+		replace("{ \"workoutId\": 5 }").andExpect(status().isConflict());
+	}
+
 	@Test
 	void needsLogin() throws Exception {
 		mockMvc.perform(get("/planned-workouts/" + plannedId)).andExpect(status().isUnauthorized());

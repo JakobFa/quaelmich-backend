@@ -82,26 +82,52 @@ public class WorkoutCustomizationService {
 			}
 			Workout current = workoutOf(planned);
 			Choice choice = choiceFor(current, direction).orElseThrow(NotPossibleException::new);
-
-			if (planned.getOriginalWorkoutId() == null) {
-				planned.setOriginalWorkoutId(planned.getWorkoutId());
-				planned.setOriginalDurationMinutes(planned.getDurationMinutes());
-			}
-			if (planned.getOriginalTitle() == null) {
-				planned.setOriginalTitle(current.getTitle());
-			}
-			planned.setWorkoutId(choice.workoutId());
-			planned.setDurationMinutes(choice.durationMinutes());
-
-			// wieder beim Original gelandet → als nicht angepasst behandeln
-			if (choice.workoutId() == planned.getOriginalWorkoutId()
-					&& java.util.Objects.equals(choice.durationMinutes(), planned.getOriginalDurationMinutes())) {
-				clearAdjustment(planned);
-			} else {
-				planned.setAdjustmentNote("Von dir angepasst: " + label(direction) + ".");
-			}
-			return repository.save(planned);
+			return apply(planned, current, choice, "Von dir angepasst: " + label(direction) + ".");
 		});
+	}
+
+	/**
+	 * Heute etwas ganz anderes fahren: ein beliebiges Workout aus der Bibliothek statt des geplanten.
+	 * Bei Workouts mit variabler Dauer (Ausrollen, Grundlage, lange Ausfahrt) kann die Dauer mitgegeben werden,
+	 * sonst gilt die Standarddauer.
+	 */
+	@Transactional
+	public Optional<PlannedWorkout> replace(Long id, Long userId, Long workoutId, Integer durationMinutes) {
+		return plannedWorkoutService.findOwned(id, userId).map(planned -> {
+			if (planned.isCompleted()) {
+				throw new NotPossibleException();
+			}
+			Workout chosen = library.findById(workoutId).orElseThrow(NotPossibleException::new);
+			Integer minutes = null;
+			if (isVariable(workoutId)) {
+				minutes = durationMinutes != null ? durationMinutes : chosen.getDurationInMinutes();
+				if (minutes < minimumMinutes(workoutId) || minutes > MAX_MINUTES || minutes % 15 != 0) {
+					throw new NotPossibleException();
+				}
+			}
+			return apply(planned, workoutOf(planned), new Choice(workoutId, minutes), "Von dir getauscht.");
+		});
+	}
+
+	private PlannedWorkout apply(PlannedWorkout planned, Workout current, Choice choice, String note) {
+		if (planned.getOriginalWorkoutId() == null) {
+			planned.setOriginalWorkoutId(planned.getWorkoutId());
+			planned.setOriginalDurationMinutes(planned.getDurationMinutes());
+		}
+		if (planned.getOriginalTitle() == null) {
+			planned.setOriginalTitle(current.getTitle());
+		}
+		planned.setWorkoutId(choice.workoutId());
+		planned.setDurationMinutes(choice.durationMinutes());
+
+		// wieder beim Original gelandet → als nicht angepasst behandeln
+		if (choice.workoutId() == planned.getOriginalWorkoutId()
+				&& java.util.Objects.equals(choice.durationMinutes(), planned.getOriginalDurationMinutes())) {
+			clearAdjustment(planned);
+		} else {
+			planned.setAdjustmentNote(note);
+		}
+		return repository.save(planned);
 	}
 
 	/** Zurück zum ursprünglich geplanten Workout */
@@ -139,7 +165,7 @@ public class WorkoutCustomizationService {
 	Optional<Choice> choiceFor(Workout current, Direction direction) {
 		long id = current.getId();
 		int minutes = current.getDurationInMinutes();
-		boolean variable = id == RECOVERY || id == ENDURANCE || id == LONG_RIDE || id == LONG_RIDE_WITH_TEMPO;
+		boolean variable = isVariable(id);
 		if (current.getType() == WorkoutType.FTP_TEST) {
 			return Optional.empty(); // ein Test bleibt ein Test
 		}
@@ -190,7 +216,12 @@ public class WorkoutCustomizationService {
 		};
 	}
 
-	private static int minimumMinutes(long id) {
+	/** Ausrollen, Grundlage und lange Ausfahrten gibt es in jeder Länge */
+	static boolean isVariable(long id) {
+		return id == RECOVERY || id == ENDURANCE || id == LONG_RIDE || id == LONG_RIDE_WITH_TEMPO;
+	}
+
+	static int minimumMinutes(long id) {
 		if (id == RECOVERY) {
 			return 30;
 		}
