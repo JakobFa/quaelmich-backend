@@ -85,25 +85,25 @@ public class InvitationService {
 	}
 
 	/**
-	 * Für die Registrierung: Ist kein Code nötig, true. Sonst wird ein offener Code verbraucht –
+	 * Für die Registrierung: Ist kein Code nötig, leer. Sonst wird ein offener Code verbraucht –
 	 * in derselben Transaktion wie das neue Konto, damit er nur einmal wirkt.
+	 *
+	 * @throws AuthService.InvalidInvitationException wenn ein Code nötig ist und fehlt, falsch oder verbraucht ist
 	 */
 	@Transactional
-	public boolean redeemIfRequired(String code) {
+	public Optional<Invitation> redeemIfRequired(String code) {
 		if (!inviteOnly) {
-			return true;
+			return Optional.empty();
 		}
 		if (code == null || code.isBlank()) {
-			return false;
+			throw new AuthService.InvalidInvitationException();
 		}
 		Instant now = clock.instant();
-		return repository.findByCodeHash(PasswordResetService.hash(normalize(code)))
-				.filter(invitation -> invitation.isOpen(now))
-				.map(invitation -> {
-					invitation.setUsedAt(now);
-					return true;
-				})
-				.orElse(false);
+		Invitation invitation = repository.findByCodeHash(PasswordResetService.hash(normalize(code)))
+				.filter(candidate -> candidate.isOpen(now))
+				.orElseThrow(AuthService.InvalidInvitationException::new);
+		invitation.setUsedAt(now);
+		return Optional.of(invitation);
 	}
 
 	/** z. B. "QUAL-7KX4-M9PD" */

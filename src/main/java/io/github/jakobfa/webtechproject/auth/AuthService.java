@@ -26,13 +26,15 @@ public class AuthService {
 	private final PasswordEncoder passwordEncoder;
 	private final Clock clock;
 	private final InvitationService invitations;
+	private final RegistrationNotifier notifier;
 
 	public AuthService(AppUserRepository userRepository, PasswordEncoder passwordEncoder, Clock clock,
-			InvitationService invitations) {
+			InvitationService invitations, RegistrationNotifier notifier) {
 		this.userRepository = userRepository;
 		this.passwordEncoder = passwordEncoder;
 		this.clock = clock;
 		this.invitations = invitations;
+		this.notifier = notifier;
 	}
 
 	public AppUser register(String email, String password) {
@@ -46,10 +48,11 @@ public class AuthService {
 		if (userRepository.existsByEmail(normalized)) {
 			throw new EmailAlreadyRegisteredException();
 		}
-		if (!invitations.redeemIfRequired(inviteCode)) {
-			throw new InvalidInvitationException();
-		}
-		return userRepository.save(new AppUser(normalized, passwordEncoder.encode(password), clock.instant()));
+		Optional<Invitation> invitation = invitations.redeemIfRequired(inviteCode);
+		AppUser user = userRepository.save(new AppUser(normalized, passwordEncoder.encode(password), clock.instant()));
+		invitation.ifPresent(used -> used.setUsedBy(user));
+		notifier.newRegistration(user, invitation.map(used -> used.getCreatedBy().getEmail()).orElse(null));
+		return user;
 	}
 
 	/** Leer, wenn E-Mail unbekannt oder Passwort falsch – bewusst ohne zu verraten, was davon. */

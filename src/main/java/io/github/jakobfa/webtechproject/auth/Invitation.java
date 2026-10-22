@@ -44,6 +44,10 @@ public class Invitation {
 	/** gesetzt, sobald sich jemand damit registriert hat */
 	private Instant usedAt;
 
+	/** das Konto, das mit diesem Code entstanden ist */
+	@ManyToOne
+	private AppUser usedBy;
+
 	/** gesetzt, wenn der Ersteller den Code zurückgezogen hat */
 	private Instant revokedAt;
 

@@ -38,6 +38,9 @@ class InvitationTest {
 	@Autowired
 	private PasswordEncoder passwordEncoder;
 
+	@Autowired
+	private io.github.jakobfa.webtechproject.auth.InvitationRepository invitations;
+
 	/** Ein vorhandenes Konto – direkt angelegt, weil die Registrierung hier einen Code braucht */
 	private String existingUser() throws Exception {
 		String email = "inviter-" + UUID.randomUUID() + "@example.com";
@@ -114,6 +117,19 @@ class InvitationTest {
 				.andExpect(status().isOk())
 				.andExpect(jsonPath("$.status").value("REVOKED"));
 		register(code).andExpect(status().isForbidden());
+	}
+
+	@Test
+	void theInvitationRemembersWhoUsedIt() throws Exception {
+		String token = existingUser();
+		String code = newCode(token);
+		register(code);
+
+		mockMvc.perform(get("/me/invitations").header("Authorization", token))
+				.andExpect(jsonPath("$[0].status").value("USED"));
+		org.assertj.core.api.Assertions.assertThat(invitations.findAll()).anySatisfy(invitation -> {
+			org.assertj.core.api.Assertions.assertThat(invitation.getUsedBy()).isNotNull();
+		});
 	}
 
 	@Test
