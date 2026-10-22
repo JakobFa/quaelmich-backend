@@ -477,6 +477,21 @@ class ActivityImportServiceTest {
 	}
 
 	@Test
+	void rejectedRideStaysLinkedWhileStravaIsDown() {
+		when(connectionService.credentialsOf(1L)).thenReturn(Optional.empty());
+		PlannedWorkout today = planned(TODAY);
+		today.setActivityId("strava-55");
+		today.setActivityConfirmed(false);
+		givenPlan(today);
+		when(strava.isConnected(1L)).thenReturn(true);
+		when(strava.recentRides(eq(1L), any(), any(), any(), any())).thenReturn(Optional.empty());
+
+		service.importRecent(1L);
+
+		assertThat(today.getActivityId()).as("erst lösen, wenn Strava wieder antwortet").isEqualTo("strava-55");
+	}
+
+	@Test
 	void doesNothingWithoutConnection() {
 		when(connectionService.credentialsOf(1L)).thenReturn(Optional.empty());
 

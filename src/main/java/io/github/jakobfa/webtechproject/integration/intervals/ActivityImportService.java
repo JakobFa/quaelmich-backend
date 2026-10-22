@@ -109,9 +109,12 @@ public class ActivityImportService {
 		int adjusted = 0;
 		for (PlannedWorkout planned : window) {
 			String linkedId = planned.getActivityId();
+			// nur lösen, wenn die Quelle der Fahrt gerade geantwortet hat – sonst wäre die Fahrt kurz unsichtbar
+			boolean sourceAnswered = RecordedActivity.isFromStrava(linkedId) ? stravaRides.isPresent()
+					: credentials.isPresent();
 			// früher hieß "Nein, anderes Training": Fahrt bleibt am Workout hängen → jetzt als Ablehnung merken
 			// und lösen, damit die Fahrt unten zur Zusatzfahrt wird
-			if (linkedId != null && Boolean.FALSE.equals(planned.getActivityConfirmed())) {
+			if (linkedId != null && Boolean.FALSE.equals(planned.getActivityConfirmed()) && sourceAnswered) {
 				planned.setRejectedActivityId(linkedId);
 				planned.clearActivity();
 				planned.setCompleted(false);
@@ -133,8 +136,6 @@ public class ActivityImportService {
 					.orElse(null);
 			if (ride == null) {
 				// früher automatisch zugeordnet, passt aber nicht (mehr) → wieder freigeben, wird Zusatzfahrt
-				boolean sourceAnswered = RecordedActivity.isFromStrava(linkedId) ? stravaRides.isPresent()
-						: credentials.isPresent();
 				if (linkedId != null && sourceAnswered) {
 					planned.clearActivity();
 				}
