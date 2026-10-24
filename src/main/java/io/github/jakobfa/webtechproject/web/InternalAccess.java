@@ -9,7 +9,7 @@ import io.github.jakobfa.webtechproject.integration.intervals.IntervalsPropertie
 
 /**
  * Prüft das Geheimnis INTERVALS_SYNC_TOKEN im Header "X-Sync-Token" für interne Routen
- * (nächtlicher Sync, Einladungscodes). Nur der Betreiber kennt es.
+ * (nächtlicher Sync). Liegt bei Render und als GitHub-Secret für den nächtlichen Workflow.
  */
 @Component
 public class InternalAccess {
@@ -30,7 +30,7 @@ public class InternalAccess {
 	}
 
 	/** Vergleich in konstanter Zeit, damit das Geheimnis nicht über Antwortzeiten erraten werden kann */
-	private static boolean constantTimeEquals(String a, String b) {
+	static boolean constantTimeEquals(String a, String b) {
 		return MessageDigest.isEqual(a.getBytes(StandardCharsets.UTF_8), b.getBytes(StandardCharsets.UTF_8));
 	}
 

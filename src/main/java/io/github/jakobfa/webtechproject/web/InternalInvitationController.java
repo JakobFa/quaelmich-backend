@@ -21,7 +21,7 @@ import jakarta.validation.constraints.Size;
 
 /**
  * Einladungscodes zentral verwalten – nur für den Betreiber, per Terminal (scripts/invite.sh).
- * Ohne oder mit falschem X-Sync-Token antworten alle Routen mit 404, damit man nicht sieht, dass es sie gibt.
+ * Ohne oder mit falschem X-Admin-Token antworten alle Routen mit 404, damit man nicht sieht, dass es sie gibt.
  */
 @RestController
 public class InternalInvitationController {
@@ -39,17 +39,17 @@ public class InternalInvitationController {
 	}
 
 	private final InvitationService invitations;
-	private final InternalAccess access;
+	private final AdminAccess access;
 	private final Clock clock;
 
-	public InternalInvitationController(InvitationService invitations, InternalAccess access, Clock clock) {
+	public InternalInvitationController(InvitationService invitations, AdminAccess access, Clock clock) {
 		this.invitations = invitations;
 		this.access = access;
 		this.clock = clock;
 	}
 
 	@PostMapping(path = "/internal/invitations")
-	public ResponseEntity<InvitationResponse> create(@RequestHeader(name = "X-Sync-Token", required = false) String token,
+	public ResponseEntity<InvitationResponse> create(@RequestHeader(name = "X-Admin-Token", required = false) String token,
 			@Valid @RequestBody(required = false) CreateRequest request) {
 		if (!access.accepts(token)) {
 			return ResponseEntity.notFound().build();
@@ -60,7 +60,7 @@ public class InternalInvitationController {
 
 	@GetMapping(path = "/internal/invitations")
 	public ResponseEntity<List<InvitationResponse>> list(
-			@RequestHeader(name = "X-Sync-Token", required = false) String token) {
+			@RequestHeader(name = "X-Admin-Token", required = false) String token) {
 		if (!access.accepts(token)) {
 			return ResponseEntity.notFound().build();
 		}
@@ -69,7 +69,7 @@ public class InternalInvitationController {
 
 	/** Offenen Code ungültig machen; 404 auch, wenn er schon benutzt oder abgelaufen ist */
 	@DeleteMapping(path = "/internal/invitations/{id}")
-	public ResponseEntity<InvitationResponse> revoke(@RequestHeader(name = "X-Sync-Token", required = false) String token,
+	public ResponseEntity<InvitationResponse> revoke(@RequestHeader(name = "X-Admin-Token", required = false) String token,
 			@PathVariable Long id) {
 		if (!access.accepts(token)) {
 			return ResponseEntity.notFound().build();

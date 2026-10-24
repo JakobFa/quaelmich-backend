@@ -21,19 +21,19 @@ import com.jayway.jsonpath.JsonPath;
 
 /**
  * "Nur mit Einladung": Der Betreiber erstellt Codes über die internen Routen, jeder Code gilt genau einmal.
- * Das Geheimnis ist in den Tests "test-sync-token" (siehe test/resources/application.properties).
+ * Das Geheimnis ist in den Tests "test-admin-token" (siehe test/resources/application.properties).
  */
 @SpringBootTest(properties = "app.registration.invite-only=true")
 @AutoConfigureMockMvc
 class InvitationTest {
 
-	private static final String TOKEN = "test-sync-token";
+	private static final String TOKEN = "test-admin-token";
 
 	@Autowired
 	private MockMvc mockMvc;
 
 	private ResultActions createCode(String note) throws Exception {
-		return mockMvc.perform(post("/internal/invitations").header("X-Sync-Token", TOKEN)
+		return mockMvc.perform(post("/internal/invitations").header("X-Admin-Token", TOKEN)
 				.contentType(MediaType.APPLICATION_JSON).content("{ \"note\": \"%s\" }".formatted(note)));
 	}
 
@@ -81,7 +81,7 @@ class InvitationTest {
 		String code = newCode("für Tom");
 		register(email, code);
 
-		mockMvc.perform(get("/internal/invitations").header("X-Sync-Token", TOKEN))
+		mockMvc.perform(get("/internal/invitations").header("X-Admin-Token", TOKEN))
 				.andExpect(status().isOk())
 				.andExpect(jsonPath("$[?(@.note == 'für Tom')].status").value("USED"))
 				.andExpect(jsonPath("$[?(@.note == 'für Tom')].usedBy").value(email))
@@ -94,7 +94,7 @@ class InvitationTest {
 		Number id = JsonPath.read(body, "$.id");
 		String code = JsonPath.read(body, "$.code");
 
-		mockMvc.perform(delete("/internal/invitations/" + id).header("X-Sync-Token", TOKEN))
+		mockMvc.perform(delete("/internal/invitations/" + id).header("X-Admin-Token", TOKEN))
 				.andExpect(status().isOk())
 				.andExpect(jsonPath("$.status").value("REVOKED"));
 		register(someEmail(), code).andExpect(status().isForbidden());
@@ -104,7 +104,12 @@ class InvitationTest {
 	void withoutTheSecretTheRoutesDoNotExist() throws Exception {
 		mockMvc.perform(post("/internal/invitations").contentType(MediaType.APPLICATION_JSON).content("{}"))
 				.andExpect(status().isNotFound());
-		mockMvc.perform(get("/internal/invitations").header("X-Sync-Token", "falsch"))
+		mockMvc.perform(get("/internal/invitations").header("X-Admin-Token", "falsch"))
+				.andExpect(status().isNotFound());
+		// das Sync-Token (liegt auch bei GitHub) reicht nicht
+		mockMvc.perform(get("/internal/invitations").header("X-Sync-Token", "test-sync-token"))
+				.andExpect(status().isNotFound());
+		mockMvc.perform(get("/internal/invitations").header("X-Admin-Token", "test-sync-token"))
 				.andExpect(status().isNotFound());
 	}
 

@@ -5,8 +5,8 @@
 #   scripts/invite.sh liste              alle Codes mit Status anzeigen
 #   scripts/invite.sh zurueckziehen 7    offenen Code Nr. 7 ungültig machen
 #
-# Das Geheimnis (INTERVALS_SYNC_TOKEN von Render) wird aus dem macOS-Schlüsselbund gelesen:
-#   security add-generic-password -a "$USER" -s quaelmich-sync-token -w
+# Das Geheimnis (ADMIN_TOKEN von Render) wird aus dem macOS-Schlüsselbund gelesen:
+#   security add-generic-password -a "$USER" -s quaelmich-admin-token -w
 # Ist dort nichts hinterlegt, fragt das Skript verdeckt danach.
 set -euo pipefail
 
@@ -18,16 +18,16 @@ case "${1:-}" in
   *) sed -n '2,10p' "$0" | sed 's/^# \{0,1\}//'; exit 1 ;;
 esac
 
-token="$(security find-generic-password -s quaelmich-sync-token -w 2>/dev/null || true)"
+token="$(security find-generic-password -s quaelmich-admin-token -w 2>/dev/null || true)"
 if [[ -z "$token" ]]; then
-  read -rsp "Sync-Token: " token
+  read -rsp "Admin-Token: " token
   echo
 fi
 
 # Render schläft auf dem Free-Tier – der erste Aufruf kann bis zu einer Minute dauern.
 call() {
   local method="$1" path="$2" body="${3:-}"
-  local args=(-sS --max-time 90 -X "$method" -H "X-Sync-Token: $token" -w '\n%{http_code}')
+  local args=(-sS --max-time 90 -X "$method" -H "X-Admin-Token: $token" -w '\n%{http_code}')
   [[ -n "$body" ]] && args+=(-H 'Content-Type: application/json' -d "$body")
   local out
   out="$(curl "${args[@]}" "$API$path")"
