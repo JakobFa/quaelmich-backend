@@ -56,6 +56,9 @@ public class PlanGenerator {
 	static final double FEW_HOURS = 6;
 	static final double MANY_HOURS = 10;
 
+	/** Frühestens so viele Wochen nach dem letzten FTP-Test kommt der nächste */
+	static final int FTP_TEST_EVERY_WEEKS = 6;
+
 	/** Kurze Alternativen (je ≤ 1 h), wenn die geplante harte Einheit an keinem Tag Platz hat */
 	private static final List<WorkoutType> SHORT_FALLBACKS = List.of(WorkoutType.TEMPO, WorkoutType.VO2MAX);
 
@@ -89,13 +92,13 @@ public class PlanGenerator {
 		EventProfile profile = EventProfile.of(athlete);
 		List<Phase> phases = phasesFor(allWeeks);
 		int loadWeeksTotal = (int) phases.stream().filter(PlanGenerator::isLoadPhase).count();
-		int ftpRetestWeek = firstBuildLoadWeek(phases);
 
 		// Bei sehr weit entfernten Events nur das erste Jahr planen
 		int weeks = Math.min(allWeeks, MAX_WEEKS);
 		List<PlannedWorkout> plan = new ArrayList<>();
 		Map<Phase, Integer> weeksInPhase = new EnumMap<>(Phase.class);
 		int loadWeek = 0;
+		int lastFtpTest = -FTP_TEST_EVERY_WEEKS;
 		for (int weekIndex = 0; weekIndex < weeks; weekIndex++) {
 			LocalDate monday = firstMonday.plusWeeks(weekIndex);
 			WeeklyAvailability availability = weekAvailability.getOrDefault(monday, athlete.getAvailability());
@@ -113,6 +116,11 @@ public class PlanGenerator {
 				continue;
 			}
 
+			boolean ftpTest = isFtpTestWeek(phases, weekIndex, allWeeks, weeksUntilEvent, lastFtpTest);
+			if (ftpTest) {
+				lastFtpTest = weekIndex;
+			}
+
 			int step = progressionStep(athlete.getLevel(), phase, weeksInPhase.getOrDefault(phase, 0),
 					profile.goal());
 			weeksInPhase.merge(phase, 1, Integer::sum);
@@ -122,7 +130,7 @@ public class PlanGenerator {
 					longRideMinutes(profile, phase, loadWeek, loadWeeksTotal),
 					useTempoLongRide(profile, phase, loadWeek),
 					hardWorkoutsFor(athlete.getLevel(), profile.focus(), phase, weekIndex, weeksUntilEvent,
-							weeklyHours, weekIndex == 0 && allWeeks >= 6 || weekIndex == ftpRetestWeek,
+							weeklyHours, ftpTest,
 							profile.goal()));
 			plan.addAll(planWeek(availability, trainingDays, week));
 
@@ -175,8 +183,17 @@ public class PlanGenerator {
 	}
 
 	/** Erste Belastungswoche im Aufbau – dort wird die FTP neu getestet; -1, wenn es keinen Aufbau gibt */
-	private static int firstBuildLoadWeek(List<Phase> phases) {
-		return phases.indexOf(Phase.BUILD) > 0 ? phases.indexOf(Phase.BUILD) : -1;
+	/**
+	 * FTP-Test zu Beginn (bei Plänen ab 6 Wochen) und danach alle 6–8 Wochen – immer direkt nach einer
+	 * Erholungswoche, weil man dann frisch ist. In den letzten 3 Wochen vor dem Event nicht mehr.
+	 */
+	static boolean isFtpTestWeek(List<Phase> phases, int weekIndex, int allWeeks, int weeksUntilEvent,
+			int lastFtpTest) {
+		if (weekIndex == 0) {
+			return allWeeks >= 6;
+		}
+		boolean afterRecovery = phases.get(weekIndex - 1) == Phase.RECOVERY && isLoadPhase(phases.get(weekIndex));
+		return afterRecovery && weekIndex - lastFtpTest >= FTP_TEST_EVERY_WEEKS && weeksUntilEvent >= 3;
 	}
 
 	/**
@@ -405,7 +422,14 @@ public class PlanGenerator {
 			SHORT_FALLBACKS.stream().filter(fallback -> fallback != type)
 					.forEach(fallback -> options.add(library.variant(fallback, 0)));
 			for (Workout workout : options) {
-				var day = candidates.stream()
+				// der Test braucht gut eine Stunde: notfalls auch direkt neben der langen Ausfahrt –
+				// nicht ideal frisch, aber besser als gar kein Test
+				List<LocalDate> possibleDays = workout.getType() == WorkoutType.FTP_TEST
+						? java.util.stream.Stream.concat(candidates.stream(),
+								days.stream().filter(day -> !day.equals(longDay) && !candidates.contains(day)))
+								.toList()
+						: candidates;
+				var day = possibleDays.stream()
 						.filter(candidate -> !hardDays.contains(candidate))
 						.filter(candidate -> hardDays.stream()
 								.noneMatch(hard -> Math.abs(ChronoUnit.DAYS.between(hard, candidate)) == 1))

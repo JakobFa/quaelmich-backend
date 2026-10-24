@@ -89,6 +89,14 @@ class AthleteControllerTest {
 	}
 
 	@Test
+	void eventGoalIsSavedAndCanBeChanged() throws Exception {
+		save(athleteJson(250, "Rund um Sachsen", EVENT));
+		save(athleteJson(250, "Rund um Sachsen", EVENT).replace("\"elevationMeters\": 5500",
+				"\"elevationMeters\": 5500, \"goal\": \"FINISH\""))
+				.andExpect(jsonPath("$.event.goal").value("FINISH"));
+	}
+
+	@Test
 	void eachUserOnlySeesTheirOwnProfile() throws Exception {
 		save(athleteJson(250, "Mein Event", EVENT));
 		String otherUser = registerNewUser(mockMvc);

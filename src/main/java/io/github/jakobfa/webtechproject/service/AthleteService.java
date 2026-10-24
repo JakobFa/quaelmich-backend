@@ -65,6 +65,7 @@ public class AthleteService {
 		event.setDistanceKm(changes.getEvent().getDistanceKm());
 		event.setElevationMeters(changes.getEvent().getElevationMeters());
 		event.setType(changes.getEvent().getType());
+		event.setGoal(changes.getEvent().getGoal());
 
 		return athleteRepository.save(existing);
 	}

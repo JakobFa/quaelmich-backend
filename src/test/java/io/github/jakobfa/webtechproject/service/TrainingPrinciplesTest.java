@@ -269,6 +269,23 @@ class TrainingPrinciplesTest {
 		assertThat(finish).isLessThan(compete);
 	}
 
+	@ParameterizedTest(name = "{0}")
+	@MethodSource("riders")
+	void ftpIsTestedRegularlyButNotRightBeforeTheEvent(Rider rider) {
+		List<LocalDate> tests = rider.plan().stream()
+				.filter(planned -> workoutOf(planned).getType() == WorkoutType.FTP_TEST)
+				.map(PlannedWorkout::getDate).sorted().toList();
+		long planWeeks = ChronoUnit.WEEKS.between(START, rider.eventDate());
+		if (planWeeks >= 14 && rider.athlete().getLevel() != Level.BEGINNER) {
+			assertThat(tests).as("lange Pläne: mehr als ein Test").hasSizeGreaterThanOrEqualTo(2);
+		}
+		for (int i = 1; i < tests.size(); i++) {
+			assertThat(ChronoUnit.WEEKS.between(tests.get(i - 1), tests.get(i))).as("Abstand zwischen Tests")
+					.isGreaterThanOrEqualTo(5);
+		}
+		assertThat(tests).allMatch(date -> ChronoUnit.DAYS.between(date, rider.eventDate()) >= 14);
+	}
+
 	private static int hardTss(Rider rider) {
 		return tss(rider.plan().stream().filter(TrainingPrinciplesTest::isHard).toList());
 	}
