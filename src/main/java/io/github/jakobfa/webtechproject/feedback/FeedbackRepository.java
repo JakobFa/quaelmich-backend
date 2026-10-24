@@ -8,4 +8,7 @@ public interface FeedbackRepository extends JpaRepository<Feedback, Long> {
 
 	List<Feedback> findAllByOrderByCreatedAtDesc();
 
+
+	List<Feedback> findByAuthorId(Long authorId);
+
 }

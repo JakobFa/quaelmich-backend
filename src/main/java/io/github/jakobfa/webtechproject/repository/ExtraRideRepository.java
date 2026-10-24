@@ -15,4 +15,7 @@ public interface ExtraRideRepository extends JpaRepository<ExtraRide, Long> {
 
 	void deleteByAthleteIdAndActivityIdStartingWith(Long athleteId, String prefix);
 
+
+	List<ExtraRide> findByAthleteId(Long athleteId);
+
 }

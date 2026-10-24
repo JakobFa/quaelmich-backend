@@ -16,4 +16,7 @@ public interface InvitationRepository extends JpaRepository<Invitation, Long> {
 
 	List<Invitation> findAllByOrderByCreatedAtDesc();
 
+
+	List<Invitation> findByUsedById(Long userId);
+
 }

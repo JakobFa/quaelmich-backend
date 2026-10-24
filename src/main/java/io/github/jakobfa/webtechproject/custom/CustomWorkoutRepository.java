@@ -8,4 +8,7 @@ public interface CustomWorkoutRepository extends JpaRepository<CustomWorkout, Lo
 
 	List<CustomWorkout> findByOwnerIdAndDeletedFalseOrderByCreatedAtDesc(Long ownerId);
 
+
+	List<CustomWorkout> findByOwnerId(Long ownerId);
+
 }
