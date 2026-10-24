@@ -59,8 +59,9 @@ public class SecurityConfig {
 								"/auth/password-reset/confirm").permitAll()
 						// prüft selbst ein eigenes Geheimnis (X-Sync-Token), siehe InternalSyncController
 						.requestMatchers(HttpMethod.POST, "/internal/intervals/sync-all").permitAll()
-						// prüfen selbst das Geheimnis, siehe InternalInvitationController
+						// prüfen selbst das Geheimnis (X-Admin-Token), siehe InternalInvitationController und FeedbackController
 						.requestMatchers("/internal/invitations", "/internal/invitations/**").permitAll()
+						.requestMatchers("/internal/feedback", "/internal/feedback/**").permitAll()
 						.requestMatchers(HttpMethod.GET, "/workouts", "/workouts/**", "/auth/registration").permitAll()
 						.requestMatchers("/error").permitAll()
 						.anyRequest().authenticated())
