@@ -18,6 +18,7 @@ import io.github.jakobfa.webtechproject.model.Athlete;
 import io.github.jakobfa.webtechproject.model.Level;
 import io.github.jakobfa.webtechproject.model.Phase;
 import io.github.jakobfa.webtechproject.model.PlannedWorkout;
+import io.github.jakobfa.webtechproject.model.WeeklyAvailability;
 import io.github.jakobfa.webtechproject.model.Workout;
 import io.github.jakobfa.webtechproject.model.WorkoutType;
 import io.github.jakobfa.webtechproject.service.EventProfile.Focus;
@@ -64,6 +65,15 @@ public class PlanGenerator {
 	}
 
 	public List<PlannedWorkout> generate(Athlete athlete, LocalDate startDate) {
+		return generate(athlete, startDate, Map.of());
+	}
+
+	/**
+	 * Wie oben, aber mit abweichender Zeit für einzelne Wochen ("diese Woche habe ich weniger Zeit").
+	 * Schlüssel ist der Montag der Woche.
+	 */
+	public List<PlannedWorkout> generate(Athlete athlete, LocalDate startDate,
+			Map<LocalDate, WeeklyAvailability> weekAvailability) {
 		LocalDate eventDate = athlete.getEvent().getDate();
 		LocalDate firstMonday = startDate.with(previousOrSame(DayOfWeek.MONDAY));
 		LocalDate eventMonday = eventDate.with(previousOrSame(DayOfWeek.MONDAY));
@@ -76,7 +86,6 @@ public class PlanGenerator {
 		List<Phase> phases = phasesFor(allWeeks);
 		int loadWeeksTotal = (int) phases.stream().filter(PlanGenerator::isLoadPhase).count();
 		int ftpRetestWeek = firstBuildLoadWeek(phases);
-		double weeklyHours = athlete.getAvailability().totalHours();
 
 		// Bei sehr weit entfernten Events nur das erste Jahr planen
 		int weeks = Math.min(allWeeks, MAX_WEEKS);
@@ -85,16 +94,18 @@ public class PlanGenerator {
 		int loadWeek = 0;
 		for (int weekIndex = 0; weekIndex < weeks; weekIndex++) {
 			LocalDate monday = firstMonday.plusWeeks(weekIndex);
+			WeeklyAvailability availability = weekAvailability.getOrDefault(monday, athlete.getAvailability());
+			double weeklyHours = availability.totalHours();
 			Phase phase = phases.get(weekIndex);
 			int weeksUntilEvent = allWeeks - 1 - weekIndex;
 
 			List<LocalDate> trainingDays = monday.datesUntil(monday.plusWeeks(1))
 					.filter(day -> !day.isBefore(startDate) && day.isBefore(eventDate))
-					.filter(day -> availableMinutes(athlete, day) > 0)
+					.filter(day -> availableMinutes(availability, day) > 0)
 					.toList();
 
 			if (weeksUntilEvent == 0) {
-				plan.addAll(planEventWeek(athlete, trainingDays, eventDate, profile));
+				plan.addAll(planEventWeek(availability, trainingDays, eventDate, profile));
 				continue;
 			}
 
@@ -107,7 +118,7 @@ public class PlanGenerator {
 					useTempoLongRide(profile, phase, loadWeek),
 					hardWorkoutsFor(athlete.getLevel(), profile.focus(), phase, weekIndex, weeksUntilEvent,
 							weeklyHours, weekIndex == 0 && allWeeks >= 6 || weekIndex == ftpRetestWeek));
-			plan.addAll(planWeek(athlete, trainingDays, week));
+			plan.addAll(planWeek(availability, trainingDays, week));
 
 			if (isLoadPhase(phase)) {
 				loadWeek++;
@@ -322,21 +333,21 @@ public class PlanGenerator {
 
 	// ---------- Wochen zusammensetzen ----------
 
-	private List<PlannedWorkout> planWeek(Athlete athlete, List<LocalDate> days, WeekPlan plan) {
+	private List<PlannedWorkout> planWeek(WeeklyAvailability availability, List<LocalDate> days, WeekPlan plan) {
 		if (days.isEmpty()) {
 			return List.of();
 		}
 
 		// Tag mit der meisten Zeit wird die lange Ausfahrt (bei Gleichstand der spätere, meist Wochenende)
 		LocalDate longDay = days.stream()
-				.max(Comparator.comparingInt((LocalDate day) -> availableMinutes(athlete, day))
+				.max(Comparator.comparingInt((LocalDate day) -> availableMinutes(availability, day))
 						.thenComparing(Comparator.naturalOrder()))
 				.orElseThrow();
 
 		// Harte Einheiten nicht am Tag der langen Ausfahrt und nicht direkt davor oder danach
 		List<LocalDate> candidates = days.stream()
 				.filter(day -> Math.abs(ChronoUnit.DAYS.between(longDay, day)) > 1)
-				.sorted(Comparator.comparingInt((LocalDate day) -> availableMinutes(athlete, day)).reversed())
+				.sorted(Comparator.comparingInt((LocalDate day) -> availableMinutes(availability, day)).reversed())
 				.toList();
 
 		List<PlannedWorkout> week = new ArrayList<>();
@@ -350,7 +361,7 @@ public class PlanGenerator {
 						.filter(candidate -> !hardDays.contains(candidate))
 						.filter(candidate -> hardDays.stream()
 								.noneMatch(hard -> Math.abs(ChronoUnit.DAYS.between(hard, candidate)) == 1))
-						.filter(candidate -> availableMinutes(athlete, candidate) >= workout.getDurationInMinutes())
+						.filter(candidate -> availableMinutes(availability, candidate) >= workout.getDurationInMinutes())
 						.findFirst();
 				if (day.isPresent()) {
 					hardDays.add(day.get());
@@ -364,7 +375,7 @@ public class PlanGenerator {
 			if (hardDays.contains(day)) {
 				continue;
 			}
-			int available = availableMinutes(athlete, day);
+			int available = availableMinutes(availability, day);
 			if (day.equals(longDay)) {
 				week.add(longRide(day, Math.min(plan.longRideMinutes(), available), plan));
 			} else {
@@ -403,7 +414,7 @@ public class PlanGenerator {
 	 * Event-Woche: früh in der Woche eine kurze, knackige Einheit, sonst locker und kurz.
 	 * Zwei Tage vor dem Event Ruhe, am Vortag ein kurzer Opener.
 	 */
-	private List<PlannedWorkout> planEventWeek(Athlete athlete, List<LocalDate> days, LocalDate eventDate,
+	private List<PlannedWorkout> planEventWeek(WeeklyAvailability availability, List<LocalDate> days, LocalDate eventDate,
 			EventProfile profile) {
 		List<PlannedWorkout> week = new ArrayList<>();
 		LocalDate dayBefore = eventDate.minusDays(1);
@@ -416,7 +427,7 @@ public class PlanGenerator {
 
 		boolean sharpenerPlaced = false;
 		for (LocalDate day : days) {
-			int available = availableMinutes(athlete, day);
+			int available = availableMinutes(availability, day);
 			if (day.equals(restDay)) {
 				continue;
 			}
@@ -438,8 +449,8 @@ public class PlanGenerator {
 		return week;
 	}
 
-	private static int availableMinutes(Athlete athlete, LocalDate day) {
-		return (int) Math.round(athlete.getAvailability().hoursOn(day.getDayOfWeek()) * 60);
+	private static int availableMinutes(WeeklyAvailability availability, LocalDate day) {
+		return (int) Math.round(availability.hoursOn(day.getDayOfWeek()) * 60);
 	}
 
 	/** Abrunden, damit nie mehr Zeit geplant wird, als verfügbar ist */

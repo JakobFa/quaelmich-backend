@@ -9,6 +9,7 @@ import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -18,6 +19,7 @@ import io.github.jakobfa.webtechproject.auth.CurrentUser;
 import io.github.jakobfa.webtechproject.integration.intervals.IntervalsAutoSyncService;
 import io.github.jakobfa.webtechproject.model.Athlete;
 import io.github.jakobfa.webtechproject.model.TrainingPlan;
+import io.github.jakobfa.webtechproject.model.WeeklyAvailability;
 import io.github.jakobfa.webtechproject.service.AbsenceService;
 import io.github.jakobfa.webtechproject.service.AthleteService;
 import io.github.jakobfa.webtechproject.service.TrainingPlanService;
@@ -71,6 +73,35 @@ public class TrainingPlanController {
 					.orElse(ResponseEntity.notFound().build());
 		} catch (AbsenceService.NotPossibleException e) {
 			return ResponseEntity.status(HttpStatus.CONFLICT).build();
+		}
+	}
+
+	/**
+	 * Andere Zeit nur für eine Woche (Montag im Pfad): verteilt die Woche ab heute neu.
+	 * 400 bei keinem Montag oder vergangener Woche.
+	 */
+	@PutMapping(path = "/me/plan/weeks/{monday}/availability")
+	public ResponseEntity<TrainingPlanResponse> setWeekAvailability(@AuthenticationPrincipal Jwt jwt,
+			@PathVariable LocalDate monday, @Valid @RequestBody WeeklyAvailability availability) {
+		return changeWeek(CurrentUser.id(jwt), monday, availability);
+	}
+
+	/** Zurück zur normalen Verfügbarkeit für diese Woche */
+	@DeleteMapping(path = "/me/plan/weeks/{monday}/availability")
+	public ResponseEntity<TrainingPlanResponse> clearWeekAvailability(@AuthenticationPrincipal Jwt jwt,
+			@PathVariable LocalDate monday) {
+		return changeWeek(CurrentUser.id(jwt), monday, null);
+	}
+
+	private ResponseEntity<TrainingPlanResponse> changeWeek(Long userId, LocalDate monday,
+			WeeklyAvailability availability) {
+		try {
+			return athleteService.findByOwner(userId)
+					.flatMap(athlete -> planService.setWeekAvailability(athlete.getId(), monday, availability))
+					.map(plan -> syncedResponse(userId, plan))
+					.orElse(ResponseEntity.notFound().build());
+		} catch (IllegalArgumentException e) {
+			return ResponseEntity.badRequest().build();
 		}
 	}
 

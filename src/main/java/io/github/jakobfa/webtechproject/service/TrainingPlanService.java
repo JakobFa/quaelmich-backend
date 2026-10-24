@@ -1,7 +1,9 @@
 package io.github.jakobfa.webtechproject.service;
 
 import java.time.Clock;
+import java.time.DayOfWeek;
 import java.time.LocalDate;
+import java.time.temporal.TemporalAdjusters;
 import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Collectors;
@@ -10,6 +12,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import io.github.jakobfa.webtechproject.model.PlannedWorkout;
+import io.github.jakobfa.webtechproject.model.WeeklyAvailability;
 import io.github.jakobfa.webtechproject.model.TrainingPlan;
 import io.github.jakobfa.webtechproject.repository.AthleteRepository;
 import io.github.jakobfa.webtechproject.repository.TrainingPlanRepository;
@@ -48,21 +51,57 @@ public class TrainingPlanService {
 			}
 
 			TrainingPlan plan = existing.get();
-			plan.getWorkouts().removeIf(planned -> !planned.getDate().isBefore(today) && !isDone(planned));
-			Set<LocalDate> keptDays = plan.getWorkouts().stream().map(PlannedWorkout::getDate)
-					.collect(Collectors.toSet());
-			planGenerator.generate(athlete, plan.getStartDate()).stream()
-					.filter(planned -> !planned.getDate().isBefore(today))
-					.filter(planned -> !keptDays.contains(planned.getDate()))
-					.forEach(plan::addWorkout);
-			plan.sortByDate();
+			// vergangene Wochen-Ausnahmen braucht es nicht mehr
+			LocalDate thisMonday = today.with(TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY));
+			plan.getWeekAvailability().keySet().removeIf(monday -> monday.isBefore(thisMonday));
+			replan(plan, today, LocalDate.MAX);
 			return planRepository.save(plan);
 		});
 	}
 
-	/** Abgehakt oder schon mit einer gefahrenen Einheit verknüpft */
-	private static boolean isDone(PlannedWorkout planned) {
-		return planned.isCompleted() || planned.getActivityId() != null;
+	/**
+	 * "Diese Woche habe ich andere Zeit": nur diese Woche (ab heute) neu verteilen, die normale
+	 * Verfügbarkeit bleibt. availability null = Ausnahme entfernen. Leer ohne Plan;
+	 * IllegalArgumentException, wenn das kein Montag ist oder die Woche schon vorbei ist.
+	 */
+	@Transactional
+	public Optional<TrainingPlan> setWeekAvailability(Long athleteId, LocalDate monday,
+			WeeklyAvailability availability) {
+		LocalDate today = LocalDate.now(clock);
+		if (monday.getDayOfWeek() != DayOfWeek.MONDAY || monday.plusDays(6).isBefore(today)) {
+			throw new IllegalArgumentException("keine aktuelle oder kommende Woche");
+		}
+		return planRepository.findByAthleteId(athleteId).map(plan -> {
+			if (availability == null) {
+				plan.getWeekAvailability().remove(monday);
+			} else {
+				plan.getWeekAvailability().put(monday, availability);
+			}
+			LocalDate from = monday.isBefore(today) ? today : monday;
+			replan(plan, from, monday.plusDays(6));
+			return planRepository.save(plan);
+		});
+	}
+
+	/** Offene Workouts im Zeitraum neu verteilen; Erledigtes und Rückmeldungen ("nicht gemacht") bleiben */
+	private void replan(TrainingPlan plan, LocalDate from, LocalDate to) {
+		plan.getWorkouts().removeIf(planned -> inRange(planned.getDate(), from, to) && !isKept(planned));
+		Set<LocalDate> keptDays = plan.getWorkouts().stream().map(PlannedWorkout::getDate)
+				.collect(Collectors.toSet());
+		planGenerator.generate(plan.getAthlete(), plan.getStartDate(), plan.getWeekAvailability()).stream()
+				.filter(planned -> inRange(planned.getDate(), from, to))
+				.filter(planned -> !keptDays.contains(planned.getDate()))
+				.forEach(plan::addWorkout);
+		plan.sortByDate();
+	}
+
+	private static boolean inRange(LocalDate date, LocalDate from, LocalDate to) {
+		return !date.isBefore(from) && !date.isAfter(to);
+	}
+
+	/** Abgehakt, mit einer gefahrenen Einheit verknüpft oder mit Rückmeldung (nicht gemacht, Pause) */
+	private static boolean isKept(PlannedWorkout planned) {
+		return planned.isCompleted() || planned.getActivityId() != null || planned.getSkipReason() != null;
 	}
 
 	@Transactional(readOnly = true)

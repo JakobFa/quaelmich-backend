@@ -2,10 +2,16 @@ package io.github.jakobfa.webtechproject.model;
 
 import java.time.LocalDate;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 import jakarta.persistence.CascadeType;
+import jakarta.persistence.CollectionTable;
+import jakarta.persistence.ElementCollection;
+import jakarta.persistence.MapKeyColumn;
 import jakarta.persistence.Entity;
+import jakarta.persistence.FetchType;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.Id;
 import jakarta.persistence.OneToMany;
@@ -32,6 +38,12 @@ public class TrainingPlan {
 	private Athlete athlete;
 
 	private LocalDate startDate;
+
+	/** Abweichende Zeit für einzelne Wochen (Schlüssel: Montag der Woche) – sonst gilt die normale Verfügbarkeit */
+	@ElementCollection(fetch = FetchType.EAGER) // klein, wird bei jeder Plan-Antwort gebraucht
+	@CollectionTable(name = "plan_week_availability")
+	@MapKeyColumn(name = "week_start")
+	private Map<LocalDate, WeeklyAvailability> weekAvailability = new HashMap<>();
 
 	@OneToMany(mappedBy = "plan", cascade = CascadeType.ALL, orphanRemoval = true)
 	@OrderBy("date")

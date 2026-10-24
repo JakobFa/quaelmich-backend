@@ -47,7 +47,9 @@ public class PlanResponseMapper {
 						.findByAthleteIdAndDateGreaterThanEqualOrderByDate(plan.getAthlete().getId(),
 								plan.getStartDate().with(TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY)))
 						.stream().map(PlanResponseMapper::toResponse).toList(),
-				EventProfile.of(plan.getAthlete()));
+				EventProfile.of(plan.getAthlete()),
+				// Kopie, damit die Antwort nicht an der Hibernate-Collection hängt
+				new java.util.TreeMap<>(plan.getWeekAvailability()));
 	}
 
 	public static ExtraRideResponse toResponse(ExtraRide ride) {
