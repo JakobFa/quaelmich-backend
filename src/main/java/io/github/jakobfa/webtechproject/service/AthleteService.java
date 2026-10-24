@@ -21,6 +21,11 @@ public class AthleteService {
 		this.userRepository = userRepository;
 	}
 
+	/** Wartet, bis kein anderer Import für dieses Profil mehr läuft (nur innerhalb einer Transaktion) */
+	public void lockForImport(Long athleteId) {
+		athleteRepository.lockById(athleteId);
+	}
+
 	public Optional<Athlete> findByOwner(Long userId) {
 		return athleteRepository.findByOwnerId(userId);
 	}

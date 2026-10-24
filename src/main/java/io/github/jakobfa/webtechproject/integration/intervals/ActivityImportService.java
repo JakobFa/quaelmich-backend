@@ -4,6 +4,7 @@ import java.time.Clock;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -85,6 +86,8 @@ public class ActivityImportService {
 			return Optional.empty();
 		}
 		Long athleteId = athlete.get().getId();
+		// Plan-Seite zweimal schnell geöffnet → zwei Importe; ohne Sperre würde jede Fahrt doppelt gespeichert
+		athleteService.lockForImport(athleteId);
 
 		LocalDate today = LocalDate.now(clock);
 		LocalDate from = today.minusDays(DAYS_BACK);
@@ -157,8 +160,16 @@ public class ActivityImportService {
 		// alle Fahrten, die keinem Workout zugeordnet sind, als Zusatzfahrten speichern
 		Set<String> linked = window.stream().map(PlannedWorkout::getActivityId).filter(Objects::nonNull)
 				.collect(Collectors.toSet());
-		Map<String, ExtraRide> known = extraRideRepository.findByAthleteIdAndDateBetween(athleteId, from, today)
-				.stream().collect(Collectors.toMap(ExtraRide::getActivityId, Function.identity(), (a, b) -> a));
+		Map<String, ExtraRide> known = new HashMap<>();
+		List<ExtraRide> duplicates = new ArrayList<>();
+		for (ExtraRide stored : extraRideRepository.findByAthleteIdAndDateBetween(athleteId, from, today)) {
+			if (known.putIfAbsent(stored.getActivityId(), stored) != null) {
+				duplicates.add(stored); // dieselbe Fahrt doppelt gespeichert (früher bei gleichzeitigen Importen)
+			}
+		}
+		if (!duplicates.isEmpty()) {
+			extraRideRepository.deleteAll(duplicates);
+		}
 		int extra = 0;
 		for (RecordedActivity ride : rides) {
 			ExtraRide existing = known.remove(ride.id());

@@ -222,6 +222,22 @@ class ActivityImportServiceTest {
 	}
 
 	@Test
+	void rideStoredTwiceIsCleanedUp() {
+		givenPlan();
+		ExtraRide first = new ExtraRide(new Athlete(), "i9");
+		ExtraRide second = new ExtraRide(new Athlete(), "i9");
+		when(extraRides.findByAthleteIdAndDateBetween(eq(7L), any(), any())).thenReturn(List.of(first, second));
+		when(client.listActivities(any(), any(), any())).thenReturn(List.of(ride("i9", TODAY, 60, 40)));
+
+		var result = service.importRecent(1L).orElseThrow();
+
+		assertThat(result.extra()).isZero();
+		verify(extraRides).deleteAll(List.of(second));
+		verify(extraRides).save(first);
+		verify(athleteService).lockForImport(7L);
+	}
+
+	@Test
 	void extraRideDeletedInIntervalsIsRemoved() {
 		givenPlan();
 		ExtraRide gone = new ExtraRide(new Athlete(), "weg");
