@@ -121,13 +121,13 @@ public class PlanGenerator {
 		return target;
 	}
 
-	/** Die ersten Tage nach einem Event: harte Einheiten (auch ein FTP-Test) werden lockeres Ausrollen */
+	/** Die ersten Tage nach einem Event: alles wird kurzes, lockeres Ausrollen (auch Grundlage und FTP-Test) */
 	private List<PlannedWorkout> recoverAfterEvent(List<PlannedWorkout> segment, LocalDate firstDay) {
 		LocalDate until = firstDay.plusDays(RECOVERY_DAYS_AFTER_EVENT - 1L);
 		return segment.stream().map(planned -> {
 			Workout workout = library.resolve(planned.getWorkoutId(), planned.getDurationMinutes()).orElseThrow();
-			boolean easy = Set.of(WorkoutType.RECOVERY, WorkoutType.ENDURANCE).contains(workout.getType());
-			if (planned.getDate().isAfter(until) || easy) {
+			boolean shortRecovery = workout.getType() == WorkoutType.RECOVERY && workout.getDurationInMinutes() <= 45;
+			if (planned.getDate().isAfter(until) || shortRecovery) {
 				return planned;
 			}
 			int minutes = Math.max(30, Math.min(45, workout.getDurationInMinutes()));

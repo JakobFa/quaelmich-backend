@@ -339,8 +339,8 @@ class PlanGeneratorTest {
 		assertThat(season).anyMatch(p -> p.getDate().isAfter(first) && p.getDate().isBefore(second));
 		assertThat(season).noneMatch(p -> p.getDate().isAfter(second));
 		assertThat(season).filteredOn(p -> p.getDate().isAfter(first) && !p.getDate().isAfter(first.plusDays(3)))
-				.as("die Tage nach dem ersten Event locker")
-				.allMatch(p -> !isHard(workoutOf(p)));
+				.as("die Tage nach dem ersten Event: kurz und locker")
+				.allMatch(p -> workoutOf(p).getType() == WorkoutType.RECOVERY && workoutOf(p).getDurationInMinutes() <= 45);
 		var beforeSecond = season.stream().filter(p -> p.getDate().isBefore(second)).reduce((a, b) -> b).orElseThrow();
 		assertThat(beforeSecond.getDate()).as("Training bis in die Event-Woche").isAfter(second.minusDays(7));
 	}
