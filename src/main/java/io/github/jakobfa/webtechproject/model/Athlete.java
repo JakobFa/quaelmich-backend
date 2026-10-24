@@ -107,6 +107,31 @@ public class Athlete {
 		return true;
 	}
 
+	/**
+	 * Eigene Leistungszonen für ambitionierte Fahrer: Beginn von Zone 2–7 in % der FTP, z. B. aus einem
+	 * Leistungstest. Fehlen sie, gelten die klassischen Zonen nach Coggan (56/76/91/106/121/151 %).
+	 */
+	@Convert(converter = IntegerListConverter.class)
+	private List<Integer> powerZoneStarts;
+
+	@JsonIgnore
+	@AssertTrue(message = "Leistungszonen: 6 aufsteigende Werte zwischen 30 und 250 % FTP")
+	public boolean isPowerZoneStartsValid() {
+		if (powerZoneStarts == null || powerZoneStarts.isEmpty()) {
+			return true;
+		}
+		if (powerZoneStarts.size() != 6 || powerZoneStarts.stream().anyMatch(java.util.Objects::isNull)) {
+			return false;
+		}
+		for (int i = 0; i < 6; i++) {
+			int value = powerZoneStarts.get(i);
+			if (value < 30 || value > 250 || (i > 0 && value <= powerZoneStarts.get(i - 1))) {
+				return false;
+			}
+		}
+		return true;
+	}
+
 	/** Mit Wattmesser braucht es die FTP, ohne Wattmesser Maximalpuls oder Pulszonen */
 	@JsonIgnore
 	@AssertTrue(message = "Training nach Watt braucht die FTP, nach Puls den Maximalpuls oder Pulszonen")

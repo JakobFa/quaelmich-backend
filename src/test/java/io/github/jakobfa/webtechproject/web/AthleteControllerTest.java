@@ -97,6 +97,17 @@ class AthleteControllerTest {
 	}
 
 	@Test
+	void ownPowerZonesAreSavedAndChecked() throws Exception {
+		String withZones = athleteJson(250, "Test", EVENT).replace("\"ftp\": 250",
+				"\"ftp\": 250, \"powerZoneStarts\": [55, 75, 90, 105, 120, 150]");
+		save(withZones).andExpect(jsonPath("$.powerZoneStarts[5]").value(150));
+
+		save(athleteJson(250, "Test", EVENT).replace("\"ftp\": 250",
+				"\"ftp\": 250, \"powerZoneStarts\": [55, 75, 70, 105, 120, 150]"))
+				.andExpect(status().isBadRequest());
+	}
+
+	@Test
 	void eachUserOnlySeesTheirOwnProfile() throws Exception {
 		save(athleteJson(250, "Mein Event", EVENT));
 		String otherUser = registerNewUser(mockMvc);

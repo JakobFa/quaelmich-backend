@@ -70,6 +70,7 @@ public class AthleteService {
 		existing.setThresholdHeartRate(changes.getThresholdHeartRate());
 		existing.setMaxHeartRate(changes.getMaxHeartRate());
 		existing.setHeartRateZoneStarts(changes.getHeartRateZoneStarts());
+		existing.setPowerZoneStarts(changes.getPowerZoneStarts());
 		existing.setTrainingMode(changes.getTrainingMode() == null ? TrainingMode.POWER : changes.getTrainingMode());
 		existing.setWeightKg(changes.getWeightKg());
 		existing.setLevel(changes.getLevel());
