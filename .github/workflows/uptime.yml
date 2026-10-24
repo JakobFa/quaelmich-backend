@@ -1,0 +1,43 @@
+# Live-Überwachung: alle 15 Minuten prüfen, ob Seite und Backend erreichbar und schnell genug sind.
+# Schlägt ein Check fehl, schickt GitHub eine Mail (an wen den Zeitplan zuletzt geändert hat).
+# Keine Geheimnisse, keine Nutzerdaten – nur öffentliche Adressen.
+name: Live-Überwachung
+
+on:
+  schedule:
+    - cron: '*/15 * * * *'
+  workflow_dispatch:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Seite und Backend prüfen
+        run: |
+          set -u
+          failed=0
+          # Name | Adresse | erwartet im Inhalt | höchstens Sekunden
+          check() {
+            local name="$1" url="$2" expect="$3" max="$4"
+            local body status time
+            # zwei Versuche, damit ein einzelner Wackler keinen Alarm auslöst
+            for attempt in 1 2; do
+              body=$(curl -s -o - -w '\n%{http_code} %{time_total}' --max-time 30 "$url") || true
+              status=$(echo "$body" | tail -1 | cut -d' ' -f1)
+              time=$(echo "$body" | tail -1 | cut -d' ' -f2)
+              if [ "$status" = "200" ] && echo "$body" | grep -q "$expect" \
+                 && awk "BEGIN { exit !($time <= $max) }"; then
+                echo "✓ $name: $status in ${time}s"
+                return 0
+              fi
+              sleep 20
+            done
+            echo "✗ $name: Status $status in ${time}s (erwartet 200, \"$expect\", höchstens ${max}s)"
+            failed=1
+          }
+          check "Startseite"        https://quaelmich.com/                  "quaelmich"  5
+          check "Backend + Datenbank" https://api.quaelmich.com/health      '"UP"'       5
+          check "Workout-Bibliothek" https://api.quaelmich.com/workouts      "Sweet Spot" 5
+          check "Registrierung"      https://api.quaelmich.com/auth/registration "inviteRequired" 5
+          exit $failed

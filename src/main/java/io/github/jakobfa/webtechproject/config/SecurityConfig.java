@@ -64,6 +64,7 @@ public class SecurityConfig {
 						.requestMatchers("/internal/feedback", "/internal/feedback/**").permitAll()
 						.requestMatchers(HttpMethod.GET, "/workouts", "/workouts/**", "/auth/registration").permitAll()
 						.requestMatchers("/error").permitAll()
+						.requestMatchers(HttpMethod.GET, "/health").permitAll()
 						.anyRequest().authenticated())
 				.oauth2ResourceServer(oauth -> oauth.jwt(Customizer.withDefaults()))
 				.build();

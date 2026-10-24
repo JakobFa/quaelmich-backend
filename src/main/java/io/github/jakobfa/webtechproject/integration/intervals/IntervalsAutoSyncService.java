@@ -10,6 +10,7 @@ import org.springframework.stereotype.Service;
 
 import io.github.jakobfa.webtechproject.integration.intervals.IntervalsSyncService.SyncResult;
 import io.github.jakobfa.webtechproject.integration.strava.StravaService;
+import io.github.jakobfa.webtechproject.monitoring.ErrorReporter;
 import io.github.jakobfa.webtechproject.model.Athlete;
 import io.github.jakobfa.webtechproject.service.AthleteService;
 
@@ -33,9 +34,12 @@ public class IntervalsAutoSyncService {
 	private final AthleteService athleteService;
 	private final ActivityImportService activityImport;
 	private final StravaService stravaService;
+	private final ErrorReporter errorReporter;
 
 	public IntervalsAutoSyncService(IntervalsConnectionService connectionService, IntervalsSyncService syncService,
-			AthleteService athleteService, ActivityImportService activityImport, StravaService stravaService) {
+			AthleteService athleteService, ActivityImportService activityImport, StravaService stravaService,
+			ErrorReporter errorReporter) {
+		this.errorReporter = errorReporter;
 		this.connectionService = connectionService;
 		this.syncService = syncService;
 		this.athleteService = athleteService;
@@ -91,6 +95,7 @@ public class IntervalsAutoSyncService {
 			} catch (RuntimeException e) {
 				failed++;
 				log.warn("Nächtlicher intervals.icu-Sync für Nutzer {} fehlgeschlagen: {}", userId, e.getMessage());
+				errorReporter.report("Nächtlicher Sync", e);
 			}
 		}
 		log.info("intervals.icu-Sync: {} Nutzer, {} Workouts gesendet, {} Fahrten zugeordnet, {} fehlgeschlagen",
