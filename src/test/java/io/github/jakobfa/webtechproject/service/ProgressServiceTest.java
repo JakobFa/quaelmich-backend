@@ -105,4 +105,36 @@ class ProgressServiceTest {
 		assertThat(progress.totalWeeks()).isGreaterThan(12);
 	}
 
+	@Test
+	void loadCheckComparesTheLastSevenDaysWithThePlan() {
+		// geplant: 3 × Sweet Spot 3 × 12 (je 67 TSS) = 201 TSS
+		PlannedWorkout done = planned(TODAY.minusDays(5), true);
+		PlannedWorkout ridden = planned(TODAY.minusDays(3), false);
+		ridden.setActualTss(70);
+		PlannedWorkout missed = planned(TODAY.minusDays(1), false);
+		PlannedWorkout old = planned(TODAY.minusDays(9), true); // außerhalb der 7 Tage
+		PlannedWorkout upcoming = planned(TODAY.plusDays(1), false); // noch nicht fällig
+		var extra = new io.github.jakobfa.webtechproject.model.ExtraRide(new io.github.jakobfa.webtechproject.model.Athlete(), "x");
+		extra.setDate(TODAY.minusDays(2));
+		extra.setTss(40);
+
+		var check = service.loadCheck(java.util.List.of(done, ridden, missed, old, upcoming),
+				java.util.List.of(extra), TODAY);
+
+		assertThat(check.plannedTss()).isEqualTo(201);
+		assertThat(check.actualTss()).isEqualTo(67 + 70 + 40);
+		assertThat(check.status()).isEqualTo(ProgressService.LoadStatus.ON_TRACK);
+	}
+
+	@Test
+	void loadStatusThresholds() {
+		assertThat(ProgressService.statusOf(200, 100)).isEqualTo(ProgressService.LoadStatus.TOO_LITTLE);
+		assertThat(ProgressService.statusOf(200, 220)).isEqualTo(ProgressService.LoadStatus.ON_TRACK);
+		assertThat(ProgressService.statusOf(200, 260)).isEqualTo(ProgressService.LoadStatus.A_BIT_MUCH);
+		assertThat(ProgressService.statusOf(200, 330)).isEqualTo(ProgressService.LoadStatus.TOO_MUCH);
+		assertThat(ProgressService.statusOf(0, 0)).isEqualTo(ProgressService.LoadStatus.RESTING);
+		assertThat(ProgressService.statusOf(0, 150)).as("Pause, aber viel gefahren")
+				.isEqualTo(ProgressService.LoadStatus.TOO_MUCH);
+	}
+
 }

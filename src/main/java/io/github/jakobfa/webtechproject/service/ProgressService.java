@@ -41,9 +41,25 @@ public class ProgressService {
 			String eventName) {
 	}
 
-	/** nextLevel ist null, wenn es kein benanntes Level mehr darüber gibt */
-	public record Progress(int xp, Level level, Level nextLevel, int streakWeeks, PlanProgress plan) {
+	/** nextLevel ist null, wenn es kein benanntes Level mehr darüber gibt; load null ohne Plan */
+	public record Progress(int xp, Level level, Level nextLevel, int streakWeeks, PlanProgress plan,
+			LoadCheck load) {
 	}
+
+	/** Wie gut passt die Belastung der letzten 7 Tage zum Plan? */
+	public enum LoadStatus {
+		TOO_LITTLE, ON_TRACK, A_BIT_MUCH, TOO_MUCH, RESTING
+	}
+
+	/** Geplante und tatsächliche Belastung (TSS) der letzten 7 Tage inklusive heute */
+	public record LoadCheck(int plannedTss, int actualTss, LoadStatus status) {
+	}
+
+	static final int LOAD_DAYS = 7;
+	/** unter 70 % des Geplanten = zu wenig, bis 115 % = auf Kurs, bis 140 % = etwas viel, darüber zu viel */
+	static final double TOO_LITTLE_BELOW = 0.7;
+	static final double ON_TRACK_UP_TO = 1.15;
+	static final double A_BIT_MUCH_UP_TO = 1.4;
 
 	/** Level-Namen und Schwellen – die Abstände wachsen, damit es später nicht zu schnell geht */
 	static final List<Level> LEVELS = List.of(
@@ -97,7 +113,8 @@ public class ProgressService {
 					+ extras.stream().mapToInt(ProgressService::xpOf).sum();
 			LocalDate today = LocalDate.now(clock);
 			return new Progress(xp, levelFor(xp), nextLevel(xp), streakWeeks(workouts, today),
-					plan.map(p -> planProgress(p, athlete, today)).orElse(null));
+					plan.map(p -> planProgress(p, athlete, today)).orElse(null),
+					plan.map(p -> loadCheck(workouts, extras, today)).orElse(null));
 		});
 	}
 
@@ -195,6 +212,51 @@ public class ProgressService {
 	private static boolean isStrongWeek(List<PlannedWorkout> week) {
 		long done = week.stream().filter(PlannedWorkout::isCompleted).count();
 		return done >= Math.ceil(week.size() * STREAK_SHARE);
+	}
+
+	/**
+	 * Belastung der letzten 7 Tage: geplant ist, was bis heute fällig war (ohne Pausen); gefahren sind die
+	 * zugeordneten Fahrten, abgehakte Workouts ohne Fahrt mit ihrem geplanten TSS und alle Zusatzeinheiten.
+	 */
+	LoadCheck loadCheck(List<PlannedWorkout> workouts, List<ExtraRide> extras, LocalDate today) {
+		LocalDate from = today.minusDays(LOAD_DAYS - 1L);
+		int planned = 0;
+		int actual = 0;
+		for (PlannedWorkout workout : workouts) {
+			boolean inWindow = !workout.getDate().isBefore(from) && !workout.getDate().isAfter(today);
+			boolean due = workout.getDate().isBefore(today) || workout.isCompleted() || workout.getActualTss() != null;
+			if (!inWindow || !due || workout.getSkipReason() == SkipReason.PAUSE) {
+				continue;
+			}
+			int plannedTss = library.resolve(workout.getWorkoutId(), workout.getDurationMinutes())
+					.map(w -> w.getTss()).orElse(0);
+			planned += plannedTss;
+			if (workout.getActualTss() != null) {
+				actual += workout.getActualTss();
+			} else if (workout.isCompleted()) {
+				actual += plannedTss;
+			}
+		}
+		for (ExtraRide ride : extras) {
+			if (!ride.getDate().isBefore(from) && !ride.getDate().isAfter(today)) {
+				actual += xpOf(ride);
+			}
+		}
+		return new LoadCheck(planned, actual, statusOf(planned, actual));
+	}
+
+	static LoadStatus statusOf(int planned, int actual) {
+		if (planned == 0 && actual == 0) {
+			return LoadStatus.RESTING;
+		}
+		double ratio = (double) actual / Math.max(planned, 30);
+		if (ratio < TOO_LITTLE_BELOW) {
+			return LoadStatus.TOO_LITTLE;
+		}
+		if (ratio <= ON_TRACK_UP_TO) {
+			return LoadStatus.ON_TRACK;
+		}
+		return ratio <= A_BIT_MUCH_UP_TO ? LoadStatus.A_BIT_MUCH : LoadStatus.TOO_MUCH;
 	}
 
 	static PlanProgress planProgress(TrainingPlan plan, Athlete athlete, LocalDate today) {
