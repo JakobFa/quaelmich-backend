@@ -15,6 +15,7 @@ import java.util.Set;
 import org.springframework.stereotype.Component;
 
 import io.github.jakobfa.webtechproject.model.Athlete;
+import io.github.jakobfa.webtechproject.model.Event;
 import io.github.jakobfa.webtechproject.model.EventGoal;
 import io.github.jakobfa.webtechproject.model.Level;
 import io.github.jakobfa.webtechproject.model.Phase;
@@ -73,6 +74,66 @@ public class PlanGenerator {
 
 	public List<PlannedWorkout> generate(Athlete athlete, LocalDate startDate) {
 		return generate(athlete, startDate, Map.of());
+	}
+
+	/** Nach einem Event: so viele Tage ohne harte Einheit (stattdessen locker ausrollen) */
+	static final int RECOVERY_DAYS_AFTER_EVENT = 3;
+
+	/**
+	 * Saison mit mehreren gleich wichtigen Events: Abschnitt für Abschnitt auf das jeweils nächste hin –
+	 * bis zum ersten wie immer, danach jeweils vom Tag nach dem Event an, mit ein paar lockeren Tagen zur
+	 * Erholung. Ohne weitere Events genau derselbe Plan wie {@link #generate(Athlete, LocalDate, Map)}.
+	 */
+	public List<PlannedWorkout> generateSeason(Athlete athlete, LocalDate startDate,
+			Map<LocalDate, WeeklyAvailability> weekAvailability, List<Event> moreEvents) {
+		if (moreEvents.isEmpty()) {
+			return generate(athlete, startDate, weekAvailability);
+		}
+		List<Event> events = new ArrayList<>(moreEvents);
+		events.add(athlete.getEvent());
+		events.sort(Comparator.comparing(Event::getDate));
+
+		List<PlannedWorkout> season = new ArrayList<>();
+		LocalDate segmentStart = startDate;
+		boolean afterEvent = false;
+		for (Event event : events) {
+			if (!event.getDate().isAfter(segmentStart)) {
+				continue;
+			}
+			List<PlannedWorkout> segment = generate(withEvent(athlete, event), segmentStart, weekAvailability);
+			if (afterEvent) {
+				segment = recoverAfterEvent(segment, segmentStart);
+			}
+			season.addAll(segment);
+			segmentStart = event.getDate().plusDays(1);
+			afterEvent = true;
+		}
+		return season;
+	}
+
+	/** Gleicher Fahrer, anderes Ziel-Event (nur was der Generator braucht) */
+	private static Athlete withEvent(Athlete athlete, Event event) {
+		Athlete target = new Athlete();
+		target.setLevel(athlete.getLevel());
+		target.setAvailability(athlete.getAvailability());
+		target.setFtp(athlete.getFtp());
+		target.setEvent(event);
+		return target;
+	}
+
+	/** Die ersten Tage nach einem Event: harte Einheiten (auch ein FTP-Test) werden lockeres Ausrollen */
+	private List<PlannedWorkout> recoverAfterEvent(List<PlannedWorkout> segment, LocalDate firstDay) {
+		LocalDate until = firstDay.plusDays(RECOVERY_DAYS_AFTER_EVENT - 1L);
+		return segment.stream().map(planned -> {
+			Workout workout = library.resolve(planned.getWorkoutId(), planned.getDurationMinutes()).orElseThrow();
+			boolean easy = Set.of(WorkoutType.RECOVERY, WorkoutType.ENDURANCE).contains(workout.getType());
+			if (planned.getDate().isAfter(until) || easy) {
+				return planned;
+			}
+			int minutes = Math.max(30, Math.min(45, workout.getDurationInMinutes()));
+			return new PlannedWorkout(planned.getDate(), WorkoutLibrary.recovery(minutes), minutes,
+					planned.getPhase());
+		}).toList();
 	}
 
 	/**

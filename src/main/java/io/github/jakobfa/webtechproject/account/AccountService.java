@@ -45,11 +45,14 @@ public class AccountService {
 	private final StravaService strava;
 	private final IntervalsConnectionService intervals;
 	private final PlanResponseMapper planMapper;
+	private final io.github.jakobfa.webtechproject.repository.RaceEventRepository raceEvents;
 
 	public AccountService(AppUserRepository users, PasswordEncoder passwordEncoder, AthleteRepository athletes,
 			TrainingPlanRepository plans, ExtraRideRepository extraRides, CustomWorkoutRepository customWorkouts,
 			FeedbackRepository feedback, InvitationRepository invitations, PasswordResetTokenRepository resetTokens,
-			StravaService strava, IntervalsConnectionService intervals, PlanResponseMapper planMapper) {
+			StravaService strava, IntervalsConnectionService intervals, PlanResponseMapper planMapper,
+			io.github.jakobfa.webtechproject.repository.RaceEventRepository raceEvents) {
+		this.raceEvents = raceEvents;
 		this.users = users;
 		this.passwordEncoder = passwordEncoder;
 		this.athletes = athletes;
@@ -78,6 +81,7 @@ public class AccountService {
 		intervals.disconnect(userId);
 		athletes.findByOwnerId(userId).ifPresent(athlete -> {
 			plans.findByAthleteId(athlete.getId()).ifPresent(plans::delete);
+			raceEvents.deleteAll(raceEvents.findByAthleteIdOrderByDate(athlete.getId()));
 			extraRides.deleteAll(extraRides.findByAthleteId(athlete.getId()));
 			athletes.delete(athlete);
 		});
@@ -98,6 +102,7 @@ public class AccountService {
 			athletes.findByOwnerId(userId).ifPresent(athlete -> {
 				data.put("profil", athlete);
 				plans.findByAthleteId(athlete.getId()).ifPresent(plan -> data.put("plan", planMapper.toResponse(plan)));
+				data.put("weitereEvents", raceEvents.findByAthleteIdOrderByDate(athlete.getId()));
 				data.put("fahrten", extraRides.findByAthleteId(athlete.getId()).stream()
 						.map(PlanResponseMapper::toResponse).toList());
 			});

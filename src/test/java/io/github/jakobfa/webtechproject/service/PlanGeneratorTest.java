@@ -310,4 +310,39 @@ class PlanGeneratorTest {
 		assertThat(PlanGenerator.useTempoLongRide(ultraFinish, Phase.BUILD, 0)).isFalse();
 	}
 
+	@Test
+	void withoutMoreEventsTheSeasonIsExactlyTheOldPlan() {
+		Athlete athlete = athlete(Level.AMBITIOUS, MONDAY.plusWeeks(12).plusDays(5));
+		var old = generator.generate(athlete, MONDAY);
+		var season = generator.generateSeason(athlete, MONDAY, Map.of(), List.of());
+
+		assertThat(season).extracting(PlannedWorkout::getDate, PlannedWorkout::getWorkoutId,
+				PlannedWorkout::getDurationMinutes)
+				.containsExactlyElementsOf(old.stream().map(p -> org.assertj.core.groups.Tuple.tuple(p.getDate(),
+						p.getWorkoutId(), p.getDurationMinutes())).toList());
+	}
+
+	@Test
+	void secondEventGetsItsOwnBlockWithRecoveryFirst() {
+		LocalDate first = MONDAY.plusWeeks(8).plusDays(5); // Samstag
+		LocalDate second = first.plusWeeks(6);
+		Athlete athlete = athlete(Level.AMBITIOUS, first);
+		Event next = new Event();
+		next.setName("Zweites");
+		next.setDate(second);
+		next.setDistanceKm(150.0);
+		next.setElevationMeters(1500);
+
+		var season = generator.generateSeason(athlete, MONDAY, Map.of(), List.of(next));
+
+		assertThat(season).noneMatch(p -> p.getDate().equals(first) || p.getDate().equals(second));
+		assertThat(season).anyMatch(p -> p.getDate().isAfter(first) && p.getDate().isBefore(second));
+		assertThat(season).noneMatch(p -> p.getDate().isAfter(second));
+		assertThat(season).filteredOn(p -> p.getDate().isAfter(first) && !p.getDate().isAfter(first.plusDays(3)))
+				.as("die Tage nach dem ersten Event locker")
+				.allMatch(p -> !isHard(workoutOf(p)));
+		var beforeSecond = season.stream().filter(p -> p.getDate().isBefore(second)).reduce((a, b) -> b).orElseThrow();
+		assertThat(beforeSecond.getDate()).as("Training bis in die Event-Woche").isAfter(second.minusDays(7));
+	}
+
 }

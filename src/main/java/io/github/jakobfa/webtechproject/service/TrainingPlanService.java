@@ -4,6 +4,8 @@ import java.time.Clock;
 import java.time.DayOfWeek;
 import java.time.LocalDate;
 import java.time.temporal.TemporalAdjusters;
+import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Collectors;
@@ -11,10 +13,13 @@ import java.util.stream.Collectors;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import io.github.jakobfa.webtechproject.model.Event;
 import io.github.jakobfa.webtechproject.model.PlannedWorkout;
+import io.github.jakobfa.webtechproject.model.RaceEvent;
 import io.github.jakobfa.webtechproject.model.WeeklyAvailability;
 import io.github.jakobfa.webtechproject.model.TrainingPlan;
 import io.github.jakobfa.webtechproject.repository.AthleteRepository;
+import io.github.jakobfa.webtechproject.repository.RaceEventRepository;
 import io.github.jakobfa.webtechproject.repository.TrainingPlanRepository;
 
 @Service
@@ -23,10 +28,12 @@ public class TrainingPlanService {
 	private final AthleteRepository athleteRepository;
 	private final TrainingPlanRepository planRepository;
 	private final PlanGenerator planGenerator;
+	private final RaceEventRepository raceEvents;
 	private final Clock clock;
 
 	public TrainingPlanService(AthleteRepository athleteRepository, TrainingPlanRepository planRepository,
-			PlanGenerator planGenerator, Clock clock) {
+			PlanGenerator planGenerator, RaceEventRepository raceEvents, Clock clock) {
+		this.raceEvents = raceEvents;
 		this.athleteRepository = athleteRepository;
 		this.planRepository = planRepository;
 		this.planGenerator = planGenerator;
@@ -46,7 +53,7 @@ public class TrainingPlanService {
 			var existing = planRepository.findByAthleteId(athleteId);
 			if (existing.isEmpty()) {
 				TrainingPlan plan = new TrainingPlan(athlete, today);
-				planGenerator.generate(athlete, today).forEach(plan::addWorkout);
+				planGenerator.generateSeason(athlete, today, Map.of(), moreEventsOf(athleteId)).forEach(plan::addWorkout);
 				return planRepository.save(plan);
 			}
 
@@ -88,11 +95,17 @@ public class TrainingPlanService {
 		plan.getWorkouts().removeIf(planned -> inRange(planned.getDate(), from, to) && !isKept(planned));
 		Set<LocalDate> keptDays = plan.getWorkouts().stream().map(PlannedWorkout::getDate)
 				.collect(Collectors.toSet());
-		planGenerator.generate(plan.getAthlete(), plan.getStartDate(), plan.getWeekAvailability()).stream()
+		planGenerator.generateSeason(plan.getAthlete(), plan.getStartDate(), plan.getWeekAvailability(),
+				moreEventsOf(plan.getAthlete().getId())).stream()
 				.filter(planned -> inRange(planned.getDate(), from, to))
 				.filter(planned -> !keptDays.contains(planned.getDate()))
 				.forEach(plan::addWorkout);
 		plan.sortByDate();
+	}
+
+	/** weitere Events (zusätzlich zum ersten im Profil), als Event für den Generator */
+	private List<Event> moreEventsOf(Long athleteId) {
+		return raceEvents.findByAthleteIdOrderByDate(athleteId).stream().map(RaceEvent::toEvent).toList();
 	}
 
 	private static boolean inRange(LocalDate date, LocalDate from, LocalDate to) {

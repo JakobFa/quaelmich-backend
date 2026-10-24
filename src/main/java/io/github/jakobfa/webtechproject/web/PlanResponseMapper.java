@@ -27,10 +27,12 @@ public class PlanResponseMapper {
 	private final WorkoutLibrary workoutLibrary;
 	private final PlanAdaptationService adaptation;
 	private final ExtraRideRepository extraRideRepository;
+	private final io.github.jakobfa.webtechproject.repository.RaceEventRepository raceEvents;
 	private final WorkoutCustomizationService customization;
 
 	public PlanResponseMapper(WorkoutLibrary workoutLibrary, PlanAdaptationService adaptation,
-			ExtraRideRepository extraRideRepository, WorkoutCustomizationService customization) {
+			ExtraRideRepository extraRideRepository, WorkoutCustomizationService customization, io.github.jakobfa.webtechproject.repository.RaceEventRepository raceEvents) {
+		this.raceEvents = raceEvents;
 		this.workoutLibrary = workoutLibrary;
 		this.adaptation = adaptation;
 		this.extraRideRepository = extraRideRepository;
@@ -49,7 +51,8 @@ public class PlanResponseMapper {
 						.stream().map(PlanResponseMapper::toResponse).toList(),
 				EventProfile.of(plan.getAthlete()),
 				// Kopie, damit die Antwort nicht an der Hibernate-Collection hängt
-				new java.util.TreeMap<>(plan.getWeekAvailability()));
+				new java.util.TreeMap<>(plan.getWeekAvailability()),
+				raceEvents.findByAthleteIdOrderByDate(plan.getAthlete().getId()));
 	}
 
 	public static ExtraRideResponse toResponse(ExtraRide ride) {
