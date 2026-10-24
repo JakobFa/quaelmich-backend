@@ -16,6 +16,7 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RestController;
 
 import io.github.jakobfa.webtechproject.auth.CurrentUser;
+import io.github.jakobfa.webtechproject.demo.DemoData;
 import io.github.jakobfa.webtechproject.integration.intervals.IntervalsAutoSyncService;
 import io.github.jakobfa.webtechproject.model.Athlete;
 import io.github.jakobfa.webtechproject.model.TrainingPlan;
@@ -36,9 +37,11 @@ public class TrainingPlanController {
 	private final IntervalsAutoSyncService autoSync;
 
 	private final AbsenceService absence;
+	private final DemoData demoData;
 
 	public TrainingPlanController(TrainingPlanService planService, AthleteService athleteService,
-			PlanResponseMapper mapper, IntervalsAutoSyncService autoSync, AbsenceService absence) {
+			PlanResponseMapper mapper, IntervalsAutoSyncService autoSync, AbsenceService absence, DemoData demoData) {
+		this.demoData = demoData;
 		this.absence = absence;
 		this.planService = planService;
 		this.athleteService = athleteService;
@@ -54,6 +57,7 @@ public class TrainingPlanController {
 		if (plan.isEmpty()) {
 			return ResponseEntity.notFound().build();
 		}
+		demoData.fill(plan.get()); // nur auf der Test-Seite aktiv
 		// Neuen Plan gleich an intervals.icu senden, falls der Nutzer das eingeschaltet hat
 		autoSync.syncUserIfEnabled(userId);
 		return ResponseEntity.created(URI.create("/me/plan")).body(mapper.toResponse(plan.get()));
