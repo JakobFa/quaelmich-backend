@@ -231,7 +231,7 @@ class ActivityImportServiceTest {
 				// 1 h mit 200 W NP: IF 0,8 → 64 TSS – egal, was intervals.icu mit seiner FTP gerechnet hat
 				new IntervalsActivity("i20", TODAY + "T09:00:00", "Ride", 3600, 30000.0, 99, "WAHOO", true, 200,
 						150.0),
-				// ohne Wattmesser: 1 h mit Ø 153 bpm → (153/170)² × 100 ≈ 81
+				// ohne Wattmesser: 1 h mit Ø 153 bpm → ((153−60)/(170−60))² × 100 ≈ 71
 				new IntervalsActivity("i21", TODAY + "T17:00:00", "Ride", 3600, 25000.0, 40, "GARMIN", false, null,
 						153.0)));
 
@@ -243,7 +243,7 @@ class ActivityImportServiceTest {
 				.collect(java.util.stream.Collectors.toMap(ExtraRide::getActivityId, r -> r));
 		assertThat(byId.get("i20").getTss()).isEqualTo(64);
 		assertThat(byId.get("i20").isTssFromHeartRate()).isFalse();
-		assertThat(byId.get("i21").getTss()).isEqualTo(81);
+		assertThat(byId.get("i21").getTss()).isEqualTo(71);
 		assertThat(byId.get("i21").isTssFromHeartRate()).isTrue();
 	}
 

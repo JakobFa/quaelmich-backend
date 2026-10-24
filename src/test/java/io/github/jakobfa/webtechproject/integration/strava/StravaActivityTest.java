@@ -18,10 +18,10 @@ class StravaActivityTest {
 
 	@Test
 	void estimatesTssFromHeartRateWithoutPowerMeter() {
-		// 30 min bei 136 Schlägen, Schwellenpuls 170 → 0,5 h × 0,8² × 100 = 32
+		// 30 min bei 136 Schlägen, Schwellenpuls 170, Ruhepuls 60 → 0,5 h × (76/110)² × 100 ≈ 24
 		var ride = commute(136.0).toRecordedActivity(250, 170);
 
-		assertThat(ride.tss()).isEqualTo(32);
+		assertThat(ride.tss()).isEqualTo(24);
 		assertThat(ride.tssFromHeartRate()).isTrue();
 	}
 
@@ -83,8 +83,16 @@ class StravaActivityTest {
 		var run = new StravaActivity(4L, "Run", "2026-10-21T07:30:00Z", 3600, 10000.0, 250, true, 153.0, null, null)
 				.toRecordedActivity(250, 170);
 
-		assertThat(run.tss()).as("Watt zählen beim Laufen nicht, der Puls schon").isEqualTo(81);
+		assertThat(run.tss()).as("Watt zählen beim Laufen nicht, der Puls schon").isEqualTo(71);
 		assertThat(run.tssFromHeartRate()).isTrue();
+	}
+
+	@Test
+	void longEasyRideIsNotRatedAsHard() {
+		// die Gravel-Runde vom 24.10.: 2:34 h, Ø 120 bpm, Schwellenpuls 170 → früher 127 TSS, jetzt ≈ 76
+		var gravel = new StravaActivity(5L, "GravelRide", "2026-10-24T11:53:44Z", 9213, 62695.0, null, false, 119.9,
+				154.0, false);
+		assertThat(gravel.heartRateTss(170)).isBetween(70, 80);
 	}
 
 }

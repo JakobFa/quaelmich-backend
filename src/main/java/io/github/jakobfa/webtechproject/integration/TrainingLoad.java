@@ -22,17 +22,23 @@ public final class TrainingLoad {
 		return (int) Math.round(movingSeconds / 3600.0 * intensity * intensity * 100);
 	}
 
+	/** Typischer Ruhepuls – der Puls startet nicht bei null, sondern ungefähr hier */
+	static final int RESTING_HEART_RATE = 60;
+
 	/**
-	 * hrTSS = Stunden × (Ø-Puls / Schwellenpuls)² × 100 – dieselbe Formel wie beim Watt-TSS, nur mit Puls.
-	 * Mit dem Durchschnitt statt Pulszonen wird ein Intervalltraining eher unterschätzt; fürs Pendeln
-	 * oder lockere Fahrten passt es gut. Null ohne Pulsdaten oder ohne Schwellenpuls.
+	 * hrTSS = Stunden × IF² × 100 wie beim Watt-TSS, mit der Intensität aus der Herzfrequenz-Reserve:
+	 * IF = (Ø-Puls − Ruhepuls) / (Schwellenpuls − Ruhepuls). Ohne den Ruhepuls würden lockere Fahrten
+	 * stark überschätzt (120 bpm bei 170 Schwelle wären sonst IF 0,71 statt realistisch ~0,55).
+	 * Mit dem Durchschnitt wird ein Intervalltraining eher unterschätzt; fürs Pendeln und lockere Fahrten
+	 * passt es gut. Null ohne Pulsdaten oder ohne Schwellenpuls.
 	 */
 	public static Integer heartRateTss(int movingSeconds, Double averageHeartRate, Integer thresholdHeartRate) {
 		if (averageHeartRate == null || averageHeartRate <= 0 || thresholdHeartRate == null
-				|| thresholdHeartRate <= 0) {
+				|| thresholdHeartRate <= RESTING_HEART_RATE) {
 			return null;
 		}
-		double intensity = averageHeartRate / thresholdHeartRate;
+		double intensity = Math.max(0, averageHeartRate - RESTING_HEART_RATE)
+				/ (thresholdHeartRate - RESTING_HEART_RATE);
 		return (int) Math.round(movingSeconds / 3600.0 * intensity * intensity * 100);
 	}
 
