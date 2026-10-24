@@ -1,0 +1,44 @@
+# Nächtliche Freigabe: Was tagsüber auf "develop" gelandet ist, geht nachts gesammelt live –
+# aber nur, wenn die Tests für genau diesen Stand grün sind. Render liefert dann "main" aus.
+# Dringendes per Hand: Tab "Actions" → "Nächtliche Freigabe" → "Run workflow".
+name: Nächtliche Freigabe
+
+on:
+  schedule:
+    - cron: '0 2 * * *' # 02:00 UTC = 03:00 (Winter) bzw. 04:00 (Sommer) in Berlin
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  checks: read
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: develop nach main übernehmen, wenn die Tests grün sind
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          git fetch origin main develop
+          if [ "$(git rev-parse origin/main)" = "$(git rev-parse origin/develop)" ]; then
+            echo "Nichts Neues – main ist schon auf dem Stand von develop."
+            exit 0
+          fi
+          if ! git merge-base --is-ancestor origin/main origin/develop; then
+            echo "main enthält Commits, die nicht in develop sind – bitte erst develop aktualisieren."
+            exit 1
+          fi
+          sha=$(git rev-parse origin/develop)
+          result=$(gh api "repos/${GITHUB_REPOSITORY}/commits/${sha}/check-runs?check_name=build-and-test" \
+                     --jq '.check_runs[0].conclusion // "none"')
+          if [ "$result" != "success" ]; then
+            echo "Tests für ${sha:0:7} nicht grün ($result) – heute keine Freigabe."
+            exit 1
+          fi
+          git push origin "${sha}:refs/heads/main"
+          echo "Freigegeben: ${sha:0:7}"
+          git log --oneline origin/main..origin/develop
