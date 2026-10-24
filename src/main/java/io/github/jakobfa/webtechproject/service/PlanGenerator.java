@@ -56,6 +56,9 @@ public class PlanGenerator {
 	static final double FEW_HOURS = 6;
 	static final double MANY_HOURS = 10;
 
+	/** Kurze Alternativen (je ≤ 1 h), wenn die geplante harte Einheit an keinem Tag Platz hat */
+	private static final List<WorkoutType> SHORT_FALLBACKS = List.of(WorkoutType.TEMPO, WorkoutType.VO2MAX);
+
 	private static final Set<WorkoutType> TOO_HARD_FOR_BEGINNERS = Set.of(WorkoutType.ANAEROBIC,
 			WorkoutType.SPRINT, WorkoutType.OVER_UNDER);
 
@@ -212,7 +215,8 @@ public class PlanGenerator {
 		return switch (phase) {
 			case RECOVERY -> 0.6 * ramp; // Erholung: deutlich weniger als die Wochen davor
 			case TAPER -> 0.6;
-			case PEAK -> 1.0;
+			// Spitze: weiter steigern statt sprunghaft auf 100 % – sonst +30 % von einer Woche zur nächsten
+			case PEAK -> Math.min(1.0, ramp + VOLUME_STEP);
 			default -> ramp;
 		};
 	}
@@ -391,9 +395,16 @@ public class PlanGenerator {
 		List<LocalDate> hardDays = new ArrayList<>();
 
 		for (WorkoutType type : plan.hardWorkouts()) {
-			// passt die geplante Stufe nicht in die Zeit, wird es die nächstleichtere Variante
+			// passt die geplante Stufe nicht in die Zeit, wird es die nächstleichtere Variante –
+			// und passt gar keine, eine kürzere Trainingsart, damit kurze Tage nicht ohne Reiz bleiben
+			List<Workout> options = new ArrayList<>();
 			for (int step = plan.step(); step >= 0; step--) {
-				Workout workout = library.variant(type, step);
+				options.add(library.variant(type, step));
+			}
+			// passt nicht mal der FTP-Test, gibt es stattdessen eine normale kurze Einheit
+			SHORT_FALLBACKS.stream().filter(fallback -> fallback != type)
+					.forEach(fallback -> options.add(library.variant(fallback, 0)));
+			for (Workout workout : options) {
 				var day = candidates.stream()
 						.filter(candidate -> !hardDays.contains(candidate))
 						.filter(candidate -> hardDays.stream()
@@ -414,7 +425,14 @@ public class PlanGenerator {
 			}
 			int available = availableMinutes(availability, day);
 			if (day.equals(longDay)) {
-				week.add(longRide(day, Math.min(plan.longRideMinutes(), available), plan));
+				// Erholung und Tapering: auch kürzer als das, was am Wochenende sonst möglich ist –
+				// sonst wäre die lange Ausfahrt bei knapper Zeit genauso lang wie in normalen Wochen
+				int possible = (int) (available * switch (plan.phase()) {
+					case RECOVERY -> 0.75;
+					case TAPER -> 0.6;
+					default -> 1.0;
+				});
+				week.add(longRide(day, Math.min(plan.longRideMinutes(), possible), plan));
 			} else {
 				// lockere Tage nie länger als die lange Ausfahrt
 				int minutes = floorToQuarterHour(Math.min(available * plan.volume(), plan.longRideMinutes()));
