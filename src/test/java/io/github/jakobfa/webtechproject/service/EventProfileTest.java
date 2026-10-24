@@ -56,4 +56,22 @@ class EventProfileTest {
 		assertThat(EventProfile.focusFor(null, 14, 5)).isEqualTo(Focus.ULTRA);
 	}
 
+	@Test
+	void targetTimeShowsTheAmbition() {
+		Athlete athlete = athlete(Level.AMBITIOUS, 227, 5500, EventType.GRAN_FONDO);
+		int estimated = EventProfile.of(athlete).estimatedMinutes();
+
+		athlete.getEvent().setTargetMinutes((int) (estimated * 0.8));
+		var fast = EventProfile.of(athlete);
+		assertThat(fast.ambition()).isEqualTo(EventProfile.Ambition.AMBITIOUS);
+		assertThat(fast.plannedMinutes()).isEqualTo((int) (estimated * 0.8));
+
+		athlete.getEvent().setTargetMinutes(estimated * 2);
+		assertThat(EventProfile.of(athlete).ambition()).isEqualTo(EventProfile.Ambition.RELAXED);
+
+		athlete.getEvent().setTargetMinutes(null);
+		assertThat(EventProfile.of(athlete).ambition()).isEqualTo(EventProfile.Ambition.REALISTIC);
+		assertThat(EventProfile.of(athlete).plannedMinutes()).isEqualTo(estimated);
+	}
+
 }

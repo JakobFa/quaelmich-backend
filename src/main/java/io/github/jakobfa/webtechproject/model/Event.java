@@ -9,6 +9,7 @@ import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 import jakarta.validation.constraints.FutureOrPresent;
+import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Positive;
@@ -45,6 +46,11 @@ public class Event {
 	@NotNull
 	@PositiveOrZero
 	private Integer elevationMeters;
+
+	/** Zielzeit in Minuten, optional – zeigt, wie ambitioniert das Ziel ist (sonst gilt die Schätzung) */
+	@Positive
+	@Max(60 * 24 * 14)
+	private Integer targetMinutes;
 
 	/** Art des Events, optional – ohne Angabe wird der Schwerpunkt aus Dauer und Höhenmetern geschätzt */
 	@Enumerated(EnumType.STRING)

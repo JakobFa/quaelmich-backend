@@ -21,6 +21,7 @@ import io.github.jakobfa.webtechproject.model.PlannedWorkout;
 import io.github.jakobfa.webtechproject.model.WeeklyAvailability;
 import io.github.jakobfa.webtechproject.model.Workout;
 import io.github.jakobfa.webtechproject.model.WorkoutType;
+import io.github.jakobfa.webtechproject.service.EventProfile.Ambition;
 import io.github.jakobfa.webtechproject.service.EventProfile.Focus;
 
 /**
@@ -109,7 +110,8 @@ public class PlanGenerator {
 				continue;
 			}
 
-			int step = progressionStep(athlete.getLevel(), phase, weeksInPhase.getOrDefault(phase, 0));
+			int step = progressionStep(athlete.getLevel(), phase, weeksInPhase.getOrDefault(phase, 0),
+					profile.ambition());
 			weeksInPhase.merge(phase, 1, Integer::sum);
 
 			WeekPlan week = new WeekPlan(phase, weekIndex, step,
@@ -117,7 +119,8 @@ public class PlanGenerator {
 					longRideMinutes(profile, phase, loadWeek, loadWeeksTotal),
 					useTempoLongRide(profile, phase, loadWeek),
 					hardWorkoutsFor(athlete.getLevel(), profile.focus(), phase, weekIndex, weeksUntilEvent,
-							weeklyHours, weekIndex == 0 && allWeeks >= 6 || weekIndex == ftpRetestWeek));
+							weeklyHours, weekIndex == 0 && allWeeks >= 6 || weekIndex == ftpRetestWeek,
+							profile.ambition()));
 			plan.addAll(planWeek(availability, trainingDays, week));
 
 			if (isLoadPhase(phase)) {
@@ -179,6 +182,11 @@ public class PlanGenerator {
 	 * Einsteiger und Hobbyfahrer bleiben auf den leichteren Stufen.
 	 */
 	static int progressionStep(Level level, Phase phase, int weekInPhase) {
+		return progressionStep(level, phase, weekInPhase, Ambition.REALISTIC);
+	}
+
+	/** Ambitionierte Zielzeit: eine Stufe schwerer (auch über die Level-Grenze), entspannte: eine leichter */
+	static int progressionStep(Level level, Phase phase, int weekInPhase, Ambition ambition) {
 		int step = switch (phase) {
 			case PEAK -> 1 + weekInPhase / 2;
 			case TAPER -> 1;
@@ -189,7 +197,11 @@ public class PlanGenerator {
 			case HOBBY -> 2;
 			default -> 3;
 		};
-		return Math.min(step, maxStep);
+		return switch (ambition) {
+			case AMBITIOUS -> Math.min(step + 1, Math.min(maxStep + 1, 3));
+			case RELAXED -> Math.max(0, Math.min(step, maxStep) - 1);
+			case REALISTIC -> Math.min(step, maxStep);
+		};
 	}
 
 	// ---------- Umfang ----------
@@ -211,7 +223,7 @@ public class PlanGenerator {
 	 * Ultra: 25 % → 45 % (6 h sind ohnehin die Grenze).
 	 */
 	static int longRideMinutes(EventProfile profile, Phase phase, int loadWeek, int loadWeeksTotal) {
-		int eventMinutes = profile.estimatedMinutes();
+		int eventMinutes = profile.plannedMinutes();
 		double from;
 		double to;
 		if (profile.focus() == Focus.ULTRA) {
@@ -239,13 +251,33 @@ public class PlanGenerator {
 
 	/** Lange Events: im Aufbau und in der Spitze jede zweite lange Ausfahrt mit Tempo-Blöcken */
 	static boolean useTempoLongRide(EventProfile profile, Phase phase, int loadWeek) {
-		boolean longEvent = profile.focus() == Focus.LONG_CLIMBING || profile.focus() == Focus.LONG_FLAT;
-		return longEvent && (phase == Phase.BUILD || phase == Phase.PEAK) && loadWeek % 2 == 0;
+		boolean buildOrPeak = phase == Phase.BUILD || phase == Phase.PEAK;
+		return switch (profile.ambition()) {
+			// entspannt: ankommen zählt, lange Ausfahrten bleiben locker
+			case RELAXED -> false;
+			// ambitioniert: Renntempo üben – auch bei Ultras, und bei langen Events jede Woche
+			case AMBITIOUS -> buildOrPeak && (isLongEvent(profile) || profile.focus() == Focus.ULTRA);
+			case REALISTIC -> isLongEvent(profile) && buildOrPeak && loadWeek % 2 == 0;
+		};
+	}
+
+	private static boolean isLongEvent(EventProfile profile) {
+		return profile.focus() == Focus.LONG_CLIMBING || profile.focus() == Focus.LONG_FLAT;
 	}
 
 	// ---------- harte Workouts ----------
 
 	/** Harte Einheiten pro Woche nach Level und Wochenzeit */
+	/** Ambitioniert mit genug Zeit: eine harte Einheit mehr (höchstens 3); entspannt: eine weniger (mindestens 1) */
+	static int hardSessionsPerWeek(Level level, double weeklyHours, Ambition ambition) {
+		int base = hardSessionsPerWeek(level, weeklyHours);
+		return switch (ambition) {
+			case AMBITIOUS -> weeklyHours >= 7 ? Math.min(3, base + 1) : base;
+			case RELAXED -> Math.max(1, base - 1);
+			case REALISTIC -> base;
+		};
+	}
+
 	static int hardSessionsPerWeek(Level level, double weeklyHours) {
 		return switch (level) {
 			case BEGINNER -> weeklyHours >= MANY_HOURS ? 2 : 1;
@@ -257,6 +289,12 @@ public class PlanGenerator {
 
 	static List<WorkoutType> hardWorkoutsFor(Level level, Focus focus, Phase phase, int weekIndex,
 			int weeksUntilEvent, double weeklyHours, boolean ftpTest) {
+		return hardWorkoutsFor(level, focus, phase, weekIndex, weeksUntilEvent, weeklyHours, ftpTest,
+				Ambition.REALISTIC);
+	}
+
+	static List<WorkoutType> hardWorkoutsFor(Level level, Focus focus, Phase phase, int weekIndex,
+			int weeksUntilEvent, double weeklyHours, boolean ftpTest, Ambition ambition) {
 		if (phase == Phase.RECOVERY) {
 			return List.of();
 		}
@@ -267,7 +305,7 @@ public class PlanGenerator {
 		}
 
 		List<WorkoutType> pool = poolFor(focus, phase, level, weeklyHours);
-		int count = hardSessionsPerWeek(level, weeklyHours);
+		int count = hardSessionsPerWeek(level, weeklyHours, ambition);
 		long distinct = pool.stream().distinct().count();
 		List<WorkoutType> result = new ArrayList<>();
 		// reihum aus dem Pool, möglichst keine Art doppelt in einer Woche

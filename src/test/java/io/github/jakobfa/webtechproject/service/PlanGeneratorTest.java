@@ -289,4 +289,24 @@ class PlanGeneratorTest {
 		return plan.stream().map(this::workoutOf).filter(PlanGeneratorTest::isHard).map(Workout::getType).toList();
 	}
 
+	@Test
+	void ambitiousTargetTrainsHarderRelaxedTargetEasier() {
+		var realistic = EventProfile.Ambition.REALISTIC;
+		var ambitious = EventProfile.Ambition.AMBITIOUS;
+		var relaxed = EventProfile.Ambition.RELAXED;
+
+		assertThat(PlanGenerator.progressionStep(Level.HOBBY, Phase.BUILD, 2, ambitious))
+				.isGreaterThan(PlanGenerator.progressionStep(Level.HOBBY, Phase.BUILD, 2, realistic));
+		assertThat(PlanGenerator.progressionStep(Level.HOBBY, Phase.BUILD, 2, relaxed))
+				.isLessThan(PlanGenerator.progressionStep(Level.HOBBY, Phase.BUILD, 2, realistic));
+
+		assertThat(PlanGenerator.hardSessionsPerWeek(Level.AMBITIOUS, 8, ambitious)).isEqualTo(3);
+		assertThat(PlanGenerator.hardSessionsPerWeek(Level.AMBITIOUS, 8, relaxed)).isEqualTo(1);
+
+		var ultraFast = new EventProfile(1800, EventProfile.Focus.ULTRA, 1400, ambitious);
+		var ultraEasy = new EventProfile(1800, EventProfile.Focus.ULTRA, 2400, relaxed);
+		assertThat(PlanGenerator.useTempoLongRide(ultraFast, Phase.BUILD, 1)).isTrue();
+		assertThat(PlanGenerator.useTempoLongRide(ultraEasy, Phase.BUILD, 0)).isFalse();
+	}
+
 }
