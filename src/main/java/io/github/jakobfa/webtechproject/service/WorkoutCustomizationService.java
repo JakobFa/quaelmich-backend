@@ -53,8 +53,16 @@ public class WorkoutCustomizationService {
 	private final PlannedWorkoutService plannedWorkoutService;
 	private final PlannedWorkoutRepository repository;
 
+	/** prüft, ob ein eigenes Workout dem Nutzer gehört (eigenes Interface, damit Tests ohne Datenbank laufen) */
+	public interface CustomWorkoutOwnership {
+		boolean isOwnedBy(Long workoutId, Long userId);
+	}
+
+	private final CustomWorkoutOwnership customWorkouts;
+
 	public WorkoutCustomizationService(WorkoutLibrary library, PlannedWorkoutService plannedWorkoutService,
-			PlannedWorkoutRepository repository) {
+			PlannedWorkoutRepository repository, CustomWorkoutOwnership customWorkouts) {
+		this.customWorkouts = customWorkouts;
 		this.library = library;
 		this.plannedWorkoutService = plannedWorkoutService;
 		this.repository = repository;
@@ -97,7 +105,10 @@ public class WorkoutCustomizationService {
 			if (planned.isCompleted() || planned.getSkipReason() != null) {
 				throw new NotPossibleException();
 			}
-			Workout chosen = library.findById(workoutId).orElseThrow(NotPossibleException::new);
+			// eigene Workouts nur vom Besitzer – die Bibliothek für alle
+			Workout chosen = (customWorkouts.isOwnedBy(workoutId, userId)
+					? library.resolve(workoutId, null)
+					: library.findById(workoutId)).orElseThrow(NotPossibleException::new);
 			Integer minutes = null;
 			if (isVariable(workoutId)) {
 				minutes = durationMinutes != null ? durationMinutes : chosen.getDurationInMinutes();
@@ -164,6 +175,9 @@ public class WorkoutCustomizationService {
 
 	Optional<Choice> choiceFor(Workout current, Direction direction) {
 		long id = current.getId();
+		if (id >= WorkoutLibrary.CUSTOM_ID_OFFSET) {
+			return Optional.empty(); // eigene Workouts haben keine leichteren/härteren Stufen
+		}
 		int minutes = current.getDurationInMinutes();
 		boolean variable = isVariable(id);
 		if (current.getType() == WorkoutType.FTP_TEST) {

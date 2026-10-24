@@ -12,12 +12,12 @@ import io.github.jakobfa.webtechproject.service.FitWorkoutExporter;
 /**
  * Baut die HTTP-Antwort für den Download einer .fit-Datei.
  */
-final class FitDownload {
+public final class FitDownload {
 
 	private FitDownload() {
 	}
 
-	static ResponseEntity<byte[]> of(Workout workout, FitWorkoutExporter exporter) {
+	public static ResponseEntity<byte[]> of(Workout workout, FitWorkoutExporter exporter) {
 		return of(workout, exporter, null);
 	}
 

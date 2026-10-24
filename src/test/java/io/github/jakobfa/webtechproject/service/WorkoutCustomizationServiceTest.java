@@ -11,7 +11,7 @@ import io.github.jakobfa.webtechproject.service.WorkoutCustomizationService.Dire
 class WorkoutCustomizationServiceTest {
 
 	private final WorkoutLibrary library = new WorkoutLibrary();
-	private final WorkoutCustomizationService service = new WorkoutCustomizationService(library, null, null);
+	private final WorkoutCustomizationService service = new WorkoutCustomizationService(library, null, null, (id, user) -> false);
 
 	@Test
 	void intervalWorkoutsMoveToTheNeighbouringVariant() {

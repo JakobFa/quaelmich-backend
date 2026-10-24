@@ -159,6 +159,16 @@ public class WorkoutLibrary {
 					steps(ramp(WARMUP, min(15), 50, 75), steady(INTERVAL, min(5), 110), steady(RECOVERY, min(10), 50),
 							steady(INTERVAL, min(20), 100), ramp(COOLDOWN, min(15), 60, 45))));
 
+	/** IDs ab hier sind selbst gebaute Workouts (siehe CustomWorkout) – nie Teil der öffentlichen Bibliothek */
+	public static final long CUSTOM_ID_OFFSET = 1_000_000L;
+
+	private java.util.function.Function<Long, Optional<Workout>> customWorkouts = id -> Optional.empty();
+
+	/** Damit eingeplante eigene Workouts aufgelöst werden können (setzt CustomWorkoutService) */
+	public void setCustomWorkouts(java.util.function.Function<Long, Optional<Workout>> lookup) {
+		this.customWorkouts = lookup;
+	}
+
 	public List<Workout> findAll() {
 		return workouts;
 	}
@@ -190,6 +200,9 @@ public class WorkoutLibrary {
 	 * abweichende Dauer angegeben werden, dann wird das Workout passend zur verfügbaren Zeit erzeugt.
 	 */
 	public Optional<Workout> resolve(Long id, Integer durationMinutes) {
+		if (id != null && id >= CUSTOM_ID_OFFSET) {
+			return customWorkouts.apply(id);
+		}
 		if (durationMinutes == null) {
 			return findById(id);
 		}
