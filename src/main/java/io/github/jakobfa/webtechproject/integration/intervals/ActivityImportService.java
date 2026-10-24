@@ -100,7 +100,16 @@ public class ActivityImportService {
 				? stravaService.recentRides(userId, from, today, athlete.get().getFtp(),
 						athlete.get().getEffectiveThresholdHeartRate())
 				: Optional.empty();
-		List<RecordedActivity> rides = merge(intervalsRides, stravaRides.orElse(List.of()));
+		// schon bekannte Fahrten (zugeordnet, abgelehnt, Zusatzfahrt) behalten ihre Quelle – sonst würden sie
+		// als "neue" Fahrt gelten und den Plan ein zweites Mal anpassen
+		Set<String> knownIds = new java.util.HashSet<>();
+		plannedWorkoutRepository.findByPlanAthleteIdAndDateBetween(athleteId, from, today).forEach(planned -> {
+			knownIds.add(planned.getActivityId());
+			knownIds.add(planned.getRejectedActivityId());
+		});
+		extraRideRepository.findByAthleteIdAndDateBetween(athleteId, from, today)
+				.forEach(ride -> knownIds.add(ride.getActivityId()));
+		List<RecordedActivity> rides = merge(intervalsRides, stravaRides.orElse(List.of()), knownIds);
 
 		// sehr sichere Hinweise, dass die eingetragene FTP zu niedrig ist
 		FtpSuggestions.evaluate(athlete.get(), rides);
@@ -250,12 +259,25 @@ public class ActivityImportService {
 		return tssShare >= MIN_TSS_SHARE && tssShare <= MAX_TSS_SHARE;
 	}
 
-	/** Strava-Fahrten, die es schon aus intervals.icu gibt, fallen weg */
-	static List<RecordedActivity> merge(List<RecordedActivity> intervalsRides, List<RecordedActivity> stravaRides) {
-		List<RecordedActivity> merged = new ArrayList<>(intervalsRides);
-		stravaRides.stream()
-				.filter(strava -> intervalsRides.stream().noneMatch(strava::isSameActivityAs))
-				.forEach(merged::add);
+	/**
+	 * Dieselbe Fahrt aus beiden Quellen zählt einmal – bevorzugt die Strava-Version: Deren TSS rechnet
+	 * quaelmich mit der eigenen FTP, und Sekundenwerte und "View on Strava" gibt es nur dort.
+	 * Ausnahme: Ist die intervals.icu-Version schon bekannt (zugeordnet, abgelehnt, Zusatzfahrt), bleibt sie.
+	 */
+	static List<RecordedActivity> merge(List<RecordedActivity> intervalsRides, List<RecordedActivity> stravaRides,
+			Set<String> known) {
+		List<RecordedActivity> merged = new ArrayList<>();
+		Set<String> replaced = new java.util.HashSet<>();
+		for (RecordedActivity strava : stravaRides) {
+			RecordedActivity twin = intervalsRides.stream().filter(strava::isSameActivityAs)
+					.filter(intervals -> !replaced.contains(intervals.id())).findFirst().orElse(null);
+			if (twin != null) {
+				replaced.add(twin.id());
+			}
+			boolean keepIntervals = twin != null && known.contains(twin.id()) && !known.contains(strava.id());
+			merged.add(keepIntervals ? twin : strava);
+		}
+		intervalsRides.stream().filter(intervals -> !replaced.contains(intervals.id())).forEach(merged::add);
 		return merged;
 	}
 

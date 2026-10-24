@@ -295,18 +295,35 @@ class ActivityImportServiceTest {
 	}
 
 	@Test
-	void sameRideFromBothSourcesCountsOnceAndIntervalsWins() {
+	void sameRideFromBothSourcesCountsOnceAndStravaWins() {
 		PlannedWorkout today = planned(TODAY);
 		givenPlan(today);
 		when(client.listActivities(any(), any(), any())).thenReturn(List.of(ride("i1", TODAY, 70, 65)));
 		// Wahoo lädt auch zu Strava: Start 3 Minuten versetzt, gleiche Fahrt
-		givenStrava(stravaRide("6", TODAY, "17:03:00", 71), stravaRide("7", TODAY, "07:10:00", 25));
+		givenStrava(stravaRide("6", TODAY, "17:03:00", 71, 66), stravaRide("7", TODAY, "07:10:00", 25));
 
 		var result = service.importRecent(1L).orElseThrow();
 
 		assertThat(result.activities()).as("Pendelfahrt + Wahoo-Fahrt").isEqualTo(2);
-		assertThat(today.getActivityId()).isEqualTo("i1");
+		assertThat(today.getActivityId()).isEqualTo("strava-6");
 		assertThat(result.extra()).isEqualTo(1);
+	}
+
+	@Test
+	void alreadyLinkedIntervalsRideKeepsItsSource() {
+		PlannedWorkout today = planned(TODAY);
+		today.setActivityId("i1");
+		today.setCompleted(true);
+		today.setAdaptationApplied(true);
+		givenPlan(today);
+		when(client.listActivities(any(), any(), any())).thenReturn(List.of(ride("i1", TODAY, 70, 65)));
+		givenStrava(stravaRide("6", TODAY, "17:03:00", 71, 66));
+
+		var result = service.importRecent(1L).orElseThrow();
+
+		assertThat(today.getActivityId()).as("keine doppelte Anpassung durch Quellwechsel").isEqualTo("i1");
+		assertThat(result.matched()).isZero();
+		assertThat(result.extra()).isZero();
 	}
 
 	@Test
