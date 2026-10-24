@@ -61,7 +61,7 @@ public class WorkoutCustomizationService {
 	}
 
 	public Options optionsFor(PlannedWorkout planned) {
-		if (planned.isCompleted()) {
+		if (planned.isCompleted() || planned.getSkipReason() != null) {
 			return new Options(false, false, false, false, false);
 		}
 		Workout current = workoutOf(planned);
@@ -77,7 +77,7 @@ public class WorkoutCustomizationService {
 	@Transactional
 	public Optional<PlannedWorkout> adjust(Long id, Long userId, Direction direction) {
 		return plannedWorkoutService.findOwned(id, userId).map(planned -> {
-			if (planned.isCompleted()) {
+			if (planned.isCompleted() || planned.getSkipReason() != null) {
 				throw new NotPossibleException();
 			}
 			Workout current = workoutOf(planned);
@@ -94,7 +94,7 @@ public class WorkoutCustomizationService {
 	@Transactional
 	public Optional<PlannedWorkout> replace(Long id, Long userId, Long workoutId, Integer durationMinutes) {
 		return plannedWorkoutService.findOwned(id, userId).map(planned -> {
-			if (planned.isCompleted()) {
+			if (planned.isCompleted() || planned.getSkipReason() != null) {
 				throw new NotPossibleException();
 			}
 			Workout chosen = library.findById(workoutId).orElseThrow(NotPossibleException::new);

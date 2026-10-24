@@ -62,6 +62,18 @@ class IntervalsIcuClientTest {
 	}
 
 	@Test
+	void deletesEventsByExternalId() {
+		server.expect(requestTo("https://intervals.icu/api/v1/athlete/i42/events/bulk-delete"))
+				.andExpect(method(org.springframework.http.HttpMethod.PUT))
+				.andExpect(content().json("[{\"external_id\": \"quaelmich-2026-10-22\"}]"))
+				.andRespond(withSuccess());
+
+		client.deleteEvents(CREDENTIALS, List.of("quaelmich-2026-10-22"));
+
+		server.verify();
+	}
+
+	@Test
 	void verifyAcceptsWorkingCredentials() {
 		server.expect(requestTo("https://intervals.icu/api/v1/athlete/i42"))
 				.andExpect(method(HttpMethod.GET))

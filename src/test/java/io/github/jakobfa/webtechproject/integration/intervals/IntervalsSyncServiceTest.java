@@ -72,6 +72,19 @@ class IntervalsSyncServiceTest {
 	}
 
 	@Test
+	void skippedDaysAreRemovedFromTheCalendar() {
+		TrainingPlan plan = planWith(TODAY, TODAY.plusDays(1));
+		plan.getWorkouts().get(1).setSkipReason(io.github.jakobfa.webtechproject.model.SkipReason.PAUSE);
+		when(planService.findByAthlete(7L)).thenReturn(Optional.of(plan));
+
+		var result = service.syncUpcoming(CREDENTIALS, 7L, 14).orElseThrow();
+
+		assertThat(result.uploaded()).isEqualTo(1);
+		assertThat(sentEvents()).extracting(IntervalsEvent::externalId).containsExactly("quaelmich-2026-10-21");
+		verify(client).deleteEvents(CREDENTIALS, List.of("quaelmich-2026-10-22"));
+	}
+
+	@Test
 	void sendsAValidFitFileAsBase64() {
 		when(planService.findByAthlete(7L)).thenReturn(Optional.of(planWith(TODAY)));
 

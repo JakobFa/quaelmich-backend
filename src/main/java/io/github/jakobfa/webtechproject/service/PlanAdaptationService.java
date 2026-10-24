@@ -82,6 +82,14 @@ public class PlanAdaptationService {
 		return adaptNextHardSession(ride.getDate(), assessment, note, upcoming);
 	}
 
+	/**
+	 * Nach Krankheit, Verletzung oder Pause: das nächste harte Training in den Tagen danach eine Stufe leichter.
+	 */
+	public Optional<PlannedWorkout> adaptAfterAbsence(LocalDate lastMissedDay, String note,
+			List<PlannedWorkout> upcoming) {
+		return adaptNextHardSession(lastMissedDay, Assessment.HARDER, note, upcoming);
+	}
+
 	private Optional<PlannedWorkout> adaptNextHardSession(LocalDate rideDate, Assessment assessment, String note,
 			List<PlannedWorkout> upcoming) {
 		LocalDate until = rideDate.plusDays(DAYS_AHEAD);

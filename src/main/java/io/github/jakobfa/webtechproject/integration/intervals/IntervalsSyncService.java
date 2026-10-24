@@ -47,12 +47,23 @@ public class IntervalsSyncService {
 		LocalDate to = from.plusDays(days - 1L);
 
 		return planService.findByAthlete(athleteId).map(plan -> {
-			List<IntervalsEvent> events = plan.getWorkouts().stream()
+			List<PlannedWorkout> upcoming = plan.getWorkouts().stream()
 					.filter(planned -> !planned.getDate().isBefore(from) && !planned.getDate().isAfter(to))
-.map(planned -> toEvent(planned, heartRateTargetsOf(plan.getAthlete())))
+					.toList();
+			List<IntervalsEvent> events = upcoming.stream()
+					.filter(planned -> planned.getSkipReason() == null)
+					.map(planned -> toEvent(planned, heartRateTargetsOf(plan.getAthlete())))
 					.toList();
 			if (!events.isEmpty()) {
 				client.upsertEvents(credentials, events);
+			}
+			// ausgefallene Tage (z. B. Pause) aus dem Kalender nehmen, damit der Radcomputer sie nicht anzeigt
+			List<String> skipped = upcoming.stream()
+					.filter(planned -> planned.getSkipReason() != null)
+					.map(planned -> externalId(planned))
+					.toList();
+			if (!skipped.isEmpty()) {
+				client.deleteEvents(credentials, skipped);
 			}
 			return new SyncResult(events.size(), from, to);
 		});
@@ -78,8 +89,12 @@ public class IntervalsSyncService {
 				workout.getDescription(),
 				FitWorkoutExporter.fileName(workout),
 				fit,
-				// Ein Workout pro Tag: gleiche ID → intervals.icu ersetzt das Workout bei erneutem Senden
-				"quaelmich-" + planned.getDate());
+				externalId(planned));
+	}
+
+	/** Ein Workout pro Tag: gleiche ID → intervals.icu ersetzt das Workout bei erneutem Senden */
+	static String externalId(PlannedWorkout planned) {
+		return "quaelmich-" + planned.getDate();
 	}
 
 }

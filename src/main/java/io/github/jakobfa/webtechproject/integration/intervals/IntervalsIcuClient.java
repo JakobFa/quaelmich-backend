@@ -67,6 +67,17 @@ public class IntervalsIcuClient {
 				.toBodilessEntity();
 	}
 
+	/** Löscht Workouts aus dem Kalender anhand ihrer external_id (unbekannte IDs werden ignoriert) */
+	public void deleteEvents(IntervalsCredentials credentials, List<String> externalIds) {
+		restClient.put()
+				.uri("/api/v1/athlete/{athleteId}/events/bulk-delete", credentials.athleteId())
+				.header(HttpHeaders.AUTHORIZATION, basicAuth(credentials))
+				.contentType(MediaType.APPLICATION_JSON)
+				.body(externalIds.stream().map(id -> java.util.Map.of("external_id", id)).toList())
+				.retrieve()
+				.toBodilessEntity();
+	}
+
 	/** Aktivitäten im Zeitraum (beide Tage eingeschlossen) */
 	public List<IntervalsActivity> listActivities(IntervalsCredentials credentials, LocalDate oldest, LocalDate newest) {
 		List<IntervalsActivity> activities = restClient.get()

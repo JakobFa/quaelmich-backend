@@ -18,6 +18,8 @@ import io.github.jakobfa.webtechproject.model.Athlete;
 import io.github.jakobfa.webtechproject.model.HeartRateTargets;
 import io.github.jakobfa.webtechproject.integration.intervals.IntervalsAutoSyncService;
 import io.github.jakobfa.webtechproject.model.PlannedWorkout;
+import io.github.jakobfa.webtechproject.model.SkipReason;
+import io.github.jakobfa.webtechproject.service.AbsenceService;
 import io.github.jakobfa.webtechproject.service.FitWorkoutExporter;
 import io.github.jakobfa.webtechproject.service.RideAssignmentService;
 import io.github.jakobfa.webtechproject.service.WorkoutCustomizationService;
@@ -39,10 +41,12 @@ public class PlannedWorkoutController {
 	private final WorkoutCustomizationService customization;
 	private final IntervalsAutoSyncService autoSync;
 	private final RideAssignmentService rideAssignment;
+	private final AbsenceService absence;
 
 	public PlannedWorkoutController(PlannedWorkoutService plannedWorkoutService, PlanResponseMapper mapper,
 			FitWorkoutExporter fitExporter, WorkoutCustomizationService customization,
-			IntervalsAutoSyncService autoSync, RideAssignmentService rideAssignment) {
+			IntervalsAutoSyncService autoSync, RideAssignmentService rideAssignment, AbsenceService absence) {
+		this.absence = absence;
 		this.plannedWorkoutService = plannedWorkoutService;
 		this.mapper = mapper;
 		this.fitExporter = fitExporter;
@@ -110,6 +114,34 @@ public class PlannedWorkoutController {
 		} catch (NotPossibleException e) {
 			return ResponseEntity.status(HttpStatus.CONFLICT).build();
 		}
+	}
+
+	public record SkipRequest(@NotNull SkipReason reason) {
+	}
+
+	/**
+	 * "Nicht gemacht" mit Grund (keine Zeit, krank, …). 409, wenn schon eine Fahrt zugeordnet ist.
+	 * Bei Krankheit oder Verletzung wird das nächste harte Training sanfter.
+	 */
+	@PutMapping(path = "/planned-workouts/{id}/skip")
+	public ResponseEntity<PlannedWorkoutResponse> skip(@AuthenticationPrincipal Jwt jwt, @PathVariable Long id,
+			@Valid @RequestBody SkipRequest request) {
+		Long userId = CurrentUser.id(jwt);
+		try {
+			return absence.skip(id, userId, request.reason())
+					.map(planned -> syncedResponse(userId, planned))
+					.orElse(ResponseEntity.notFound().build());
+		} catch (AbsenceService.NotPossibleException e) {
+			return ResponseEntity.status(HttpStatus.CONFLICT).build();
+		}
+	}
+
+	@DeleteMapping(path = "/planned-workouts/{id}/skip")
+	public ResponseEntity<PlannedWorkoutResponse> undoSkip(@AuthenticationPrincipal Jwt jwt, @PathVariable Long id) {
+		Long userId = CurrentUser.id(jwt);
+		return absence.undoSkip(id, userId)
+				.map(planned -> syncedResponse(userId, planned))
+				.orElse(ResponseEntity.notFound().build());
 	}
 
 	/** Zurück zum ursprünglich geplanten Workout */

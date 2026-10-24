@@ -27,6 +27,9 @@ public class PlannedWorkoutService {
 	public Optional<PlannedWorkout> updateProgress(Long id, Long userId, boolean completed, Integer rating) {
 		return findOwned(id, userId).map(planned -> {
 			planned.setCompleted(completed);
+			if (completed) {
+				planned.setSkipReason(null); // doch gemacht
+			}
 			// Ohne Häkchen gibt es auch keine Bewertung
 			planned.setRating(completed ? rating : null);
 			return repository.save(planned);

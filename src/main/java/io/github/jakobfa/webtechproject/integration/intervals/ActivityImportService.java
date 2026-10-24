@@ -12,8 +12,11 @@ import java.util.Set;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.client.RestClientException;
 
 import io.github.jakobfa.webtechproject.integration.RecordedActivity;
 import io.github.jakobfa.webtechproject.integration.strava.StravaService;
@@ -39,6 +42,8 @@ import io.github.jakobfa.webtechproject.service.WorkoutLibrary;
  */
 @Service
 public class ActivityImportService {
+
+	private static final Logger log = LoggerFactory.getLogger(ActivityImportService.class);
 
 	public static final int DAYS_BACK = 14;
 
@@ -83,13 +88,10 @@ public class ActivityImportService {
 
 		LocalDate today = LocalDate.now(clock);
 		LocalDate from = today.minusDays(DAYS_BACK);
-		// intervals.icu-Fehler werden weitergereicht, Strava-Fehler ergeben nur eine leere Liste
-		List<RecordedActivity> intervalsRides = credentials
-				.map(c -> client.listActivities(c, from, today).stream()
-						.filter(IntervalsActivity::isUsable)
-						.map(IntervalsActivity::toRecordedActivity)
-						.toList())
-				.orElse(List.of());
+		// Fällt eine Quelle aus, kommen die Fahrten der anderen trotzdem an
+		Optional<List<RecordedActivity>> intervalsAnswer = credentials.flatMap(c -> intervalsRides(c, from, today));
+		List<RecordedActivity> intervalsRides = intervalsAnswer.orElse(List.of());
+		boolean intervalsAnswered = intervalsAnswer.isPresent();
 		Optional<List<RecordedActivity>> stravaRides = strava
 				? stravaService.recentRides(userId, from, today, athlete.get().getFtp(),
 						athlete.get().getEffectiveThresholdHeartRate())
@@ -111,7 +113,7 @@ public class ActivityImportService {
 			String linkedId = planned.getActivityId();
 			// nur lösen, wenn die Quelle der Fahrt gerade geantwortet hat – sonst wäre die Fahrt kurz unsichtbar
 			boolean sourceAnswered = RecordedActivity.isFromStrava(linkedId) ? stravaRides.isPresent()
-					: credentials.isPresent();
+					: intervalsAnswered;
 			// früher hieß "Nein, anderes Training": Fahrt bleibt am Workout hängen → jetzt als Ablehnung merken
 			// und lösen, damit die Fahrt unten zur Zusatzfahrt wird
 			if (linkedId != null && Boolean.FALSE.equals(planned.getActivityConfirmed()) && sourceAnswered) {
@@ -180,10 +182,23 @@ public class ActivityImportService {
 		extraRideRepository.deleteAll(known.values().stream()
 				.filter(ride -> RecordedActivity.isFromStrava(ride.getActivityId())
 						? stravaRides.isPresent()
-						: credentials.isPresent())
+						: intervalsAnswered)
 				.toList());
 
 		return Optional.of(new ImportResult(rides.size(), matched, extra, adjusted));
+	}
+
+	private Optional<List<RecordedActivity>> intervalsRides(IntervalsCredentials credentials, LocalDate from,
+			LocalDate to) {
+		try {
+			return Optional.of(client.listActivities(credentials, from, to).stream()
+					.filter(IntervalsActivity::isUsable)
+					.map(IntervalsActivity::toRecordedActivity)
+					.toList());
+		} catch (RestClientException e) {
+			log.warn("intervals.icu-Fahrten nicht abrufbar: {}", e.getMessage());
+			return Optional.empty();
+		}
 	}
 
 	/** Anteil von Dauer bzw. TSS des Workouts, den eine Fahrt mindestens haben muss, um es abzuhaken */
@@ -241,6 +256,7 @@ public class ActivityImportService {
 
 	static void apply(PlannedWorkout planned, RecordedActivity ride) {
 		planned.setCompleted(true);
+		planned.setSkipReason(null); // doch gefahren
 		planned.setActivityId(ride.id());
 		planned.setActivityConfirmed(null); // neue Fahrt → neu nachfragen
 		planned.setAdaptationApplied(false);

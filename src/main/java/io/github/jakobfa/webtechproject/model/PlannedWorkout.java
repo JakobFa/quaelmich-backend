@@ -51,6 +51,10 @@ public class PlannedWorkout {
 	@Max(10)
 	private Integer rating;
 
+	/** Gesetzt, wenn der Nutzer gesagt hat, dass er das Workout nicht gemacht hat (oder der Plan pausiert ist) */
+	@Enumerated(EnumType.STRING)
+	private SkipReason skipReason;
+
 	// ---------- Tatsächlich gefahren (aus intervals.icu, z. B. von Wahoo oder Garmin) ----------
 
 	/** ID der Aktivität in intervals.icu; gesetzt = automatisch mit einer echten Fahrt verknüpft */

@@ -65,7 +65,7 @@ public class PlanResponseMapper {
 		var adjustment = planned.getAdjustmentNote() == null ? null
 				: new PlannedWorkoutResponse.Adjustment(planned.getAdjustmentNote(), planned.getOriginalTitle());
 		return new PlannedWorkoutResponse(planned.getId(), planned.getDate(), planned.getPhase(),
-				planned.isCompleted(), planned.getRating(), workout, actual, adjustment,
+				planned.isCompleted(), planned.getRating(), planned.getSkipReason(), workout, actual, adjustment,
 				customization.optionsFor(planned));
 	}
 

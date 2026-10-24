@@ -17,6 +17,7 @@ import org.springframework.transaction.annotation.Transactional;
 import io.github.jakobfa.webtechproject.model.Athlete;
 import io.github.jakobfa.webtechproject.model.ExtraRide;
 import io.github.jakobfa.webtechproject.model.PlannedWorkout;
+import io.github.jakobfa.webtechproject.model.SkipReason;
 import io.github.jakobfa.webtechproject.model.TrainingPlan;
 import io.github.jakobfa.webtechproject.repository.ExtraRideRepository;
 import io.github.jakobfa.webtechproject.repository.TrainingPlanRepository;
@@ -207,6 +208,7 @@ public class ProgressService {
 		List<PlannedWorkout> due = plan.getWorkouts().stream()
 				.filter(planned -> planned.getDate().isBefore(today)
 						|| (planned.getDate().equals(today) && planned.isCompleted()))
+				.filter(planned -> planned.getSkipReason() != SkipReason.PAUSE) // Pause zählt nicht als verpasst
 				.toList();
 		int completed = (int) due.stream().filter(PlannedWorkout::isCompleted).count();
 		return new PlanProgress(week, totalWeeks, completed, due.size(),
