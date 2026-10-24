@@ -93,7 +93,11 @@ public class ActivityImportService {
 		LocalDate today = LocalDate.now(clock);
 		LocalDate from = today.minusDays(DAYS_BACK);
 		// Fällt eine Quelle aus, kommen die Fahrten der anderen trotzdem an
-		Optional<List<RecordedActivity>> intervalsAnswer = credentials.flatMap(c -> intervalsRides(c, from, today));
+		// Belastung immer mit den eigenen Profilwerten – nicht mit dem, was in intervals.icu eingestellt ist
+		Integer ftp = athlete.get().getFtp();
+		Integer thresholdHeartRate = athlete.get().getEffectiveThresholdHeartRate();
+		Optional<List<RecordedActivity>> intervalsAnswer = credentials
+				.flatMap(c -> intervalsRides(c, from, today, ftp, thresholdHeartRate));
 		List<RecordedActivity> intervalsRides = intervalsAnswer.orElse(List.of());
 		boolean intervalsAnswered = intervalsAnswer.isPresent();
 		Optional<List<RecordedActivity>> stravaRides = strava
@@ -213,11 +217,11 @@ public class ActivityImportService {
 	}
 
 	private Optional<List<RecordedActivity>> intervalsRides(IntervalsCredentials credentials, LocalDate from,
-			LocalDate to) {
+			LocalDate to, Integer ftp, Integer thresholdHeartRate) {
 		try {
 			return Optional.of(client.listActivities(credentials, from, to).stream()
 					.filter(IntervalsActivity::isUsable)
-					.map(IntervalsActivity::toRecordedActivity)
+					.map(activity -> activity.toRecordedActivity(ftp, thresholdHeartRate))
 					.toList());
 		} catch (RestClientException e) {
 			log.warn("intervals.icu-Fahrten nicht abrufbar: {}", e.getMessage());

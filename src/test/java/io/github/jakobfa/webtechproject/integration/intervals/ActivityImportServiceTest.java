@@ -222,6 +222,32 @@ class ActivityImportServiceTest {
 	}
 
 	@Test
+	void quaelmichComputesTheLoadWithItsOwnFtpAndThreshold() {
+		Athlete athlete = athleteService.findByOwner(1L).orElseThrow();
+		athlete.setFtp(250);
+		athlete.setMaxHeartRate(189); // Schwellenpuls ≈ 90 % = 170
+		givenPlan();
+		when(client.listActivities(any(), any(), any())).thenReturn(List.of(
+				// 1 h mit 200 W NP: IF 0,8 → 64 TSS – egal, was intervals.icu mit seiner FTP gerechnet hat
+				new IntervalsActivity("i20", TODAY + "T09:00:00", "Ride", 3600, 30000.0, 99, "WAHOO", true, 200,
+						150.0),
+				// ohne Wattmesser: 1 h mit Ø 153 bpm → (153/170)² × 100 ≈ 81
+				new IntervalsActivity("i21", TODAY + "T17:00:00", "Ride", 3600, 25000.0, 40, "GARMIN", false, null,
+						153.0)));
+
+		service.importRecent(1L);
+
+		var saved = org.mockito.ArgumentCaptor.forClass(ExtraRide.class);
+		verify(extraRides, org.mockito.Mockito.times(2)).save(saved.capture());
+		var byId = saved.getAllValues().stream()
+				.collect(java.util.stream.Collectors.toMap(ExtraRide::getActivityId, r -> r));
+		assertThat(byId.get("i20").getTss()).isEqualTo(64);
+		assertThat(byId.get("i20").isTssFromHeartRate()).isFalse();
+		assertThat(byId.get("i21").getTss()).isEqualTo(81);
+		assertThat(byId.get("i21").isTssFromHeartRate()).isTrue();
+	}
+
+	@Test
 	void loadWithoutPowerMeterIsMarkedAsEstimate() {
 		givenPlan();
 		when(client.listActivities(any(), any(), any())).thenReturn(List.of(

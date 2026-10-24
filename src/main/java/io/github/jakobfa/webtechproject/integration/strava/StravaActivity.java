@@ -6,6 +6,7 @@ import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.annotation.JsonProperty;
 
 import io.github.jakobfa.webtechproject.integration.RecordedActivity;
+import io.github.jakobfa.webtechproject.integration.TrainingLoad;
 import io.github.jakobfa.webtechproject.model.Sport;
 
 /**
@@ -36,30 +37,14 @@ public record StravaActivity(
 		return Sport.fromActivityType(sportType);
 	}
 
-	/**
-	 * TSS = Stunden × IF² × 100, mit IF = gewichtete Leistung / FTP.
-	 * Null ohne echten Wattmesser (geschätzte Watt von Strava zählen nicht) oder ohne FTP.
-	 */
+	/** Watt-TSS, siehe {@link TrainingLoad#powerTss} */
 	public Integer tss(Integer ftp) {
-		if (weightedAverageWatts == null || !Boolean.TRUE.equals(deviceWatts) || ftp == null || ftp <= 0) {
-			return null;
-		}
-		double intensity = (double) weightedAverageWatts / ftp;
-		return (int) Math.round(movingTimeSeconds / 3600.0 * intensity * intensity * 100);
+		return TrainingLoad.powerTss(movingTimeSeconds, weightedAverageWatts, deviceWatts, ftp);
 	}
 
-	/**
-	 * hrTSS = Stunden × (Ø-Puls / Schwellenpuls)² × 100 – dieselbe Formel wie beim Watt-TSS, nur mit Puls.
-	 * Mit dem Durchschnitt statt Pulszonen wird ein Intervalltraining eher unterschätzt; fürs Pendeln
-	 * oder lockere Fahrten passt es gut. Null ohne Pulsdaten oder ohne Schwellenpuls.
-	 */
+	/** Puls-TSS, siehe {@link TrainingLoad#heartRateTss} */
 	public Integer heartRateTss(Integer thresholdHeartRate) {
-		if (averageHeartRate == null || averageHeartRate <= 0 || thresholdHeartRate == null
-				|| thresholdHeartRate <= 0) {
-			return null;
-		}
-		double intensity = averageHeartRate / thresholdHeartRate;
-		return (int) Math.round(movingTimeSeconds / 3600.0 * intensity * intensity * 100);
+		return TrainingLoad.heartRateTss(movingTimeSeconds, averageHeartRate, thresholdHeartRate);
 	}
 
 	/**
