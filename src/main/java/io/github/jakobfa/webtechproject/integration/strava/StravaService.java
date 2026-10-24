@@ -155,6 +155,34 @@ public class StravaService {
 	 * nicht erreichbar ist – ein Strava-Problem soll den Import aus intervals.icu nicht verhindern.
 	 */
 	@Transactional
+	/** Sekundenwerte einer Strava-Fahrt; leer ohne Verbindung oder bei Fehlern */
+	public Optional<io.github.jakobfa.webtechproject.integration.ActivityStream> stream(Long userId,
+			long stravaActivityId) {
+		if (!isConfigured()) {
+			return Optional.empty();
+		}
+		var connection = repository.findByOwnerId(userId);
+		if (connection.isEmpty()) {
+			return Optional.empty();
+		}
+		try {
+			String accessToken = validAccessToken(userId, connection.get());
+			if (accessToken == null) {
+				return Optional.empty();
+			}
+			var streams = client.streams(accessToken, stravaActivityId);
+			return Optional.of(io.github.jakobfa.webtechproject.integration.ActivityStream.of(
+					dataOf(streams.get("time")), dataOf(streams.get("watts")), dataOf(streams.get("heartrate"))));
+		} catch (RestClientException e) {
+			log.warn("Strava-Datenstrom für Nutzer {} nicht abrufbar: {}", userId, e.getMessage());
+			return Optional.empty();
+		}
+	}
+
+	private static List<Double> dataOf(StravaClient.Stream stream) {
+		return stream == null ? null : stream.data();
+	}
+
 	public Optional<List<RecordedActivity>> recentRides(Long userId, LocalDate from, LocalDate to, Integer ftp,
 			Integer thresholdHeartRate) {
 		if (!isConfigured()) {

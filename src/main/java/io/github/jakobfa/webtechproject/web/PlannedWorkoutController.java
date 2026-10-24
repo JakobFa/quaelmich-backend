@@ -21,6 +21,8 @@ import io.github.jakobfa.webtechproject.model.PlannedWorkout;
 import io.github.jakobfa.webtechproject.model.SkipReason;
 import io.github.jakobfa.webtechproject.service.AbsenceService;
 import io.github.jakobfa.webtechproject.service.FitWorkoutExporter;
+import io.github.jakobfa.webtechproject.service.IntervalAccuracy;
+import io.github.jakobfa.webtechproject.service.IntervalAccuracyService;
 import io.github.jakobfa.webtechproject.service.RideAssignmentService;
 import io.github.jakobfa.webtechproject.service.WorkoutCustomizationService;
 import io.github.jakobfa.webtechproject.web.dto.ExtraRideResponse;
@@ -42,11 +44,14 @@ public class PlannedWorkoutController {
 	private final IntervalsAutoSyncService autoSync;
 	private final RideAssignmentService rideAssignment;
 	private final AbsenceService absence;
+	private final IntervalAccuracyService intervalAccuracy;
 
 	public PlannedWorkoutController(PlannedWorkoutService plannedWorkoutService, PlanResponseMapper mapper,
 			FitWorkoutExporter fitExporter, WorkoutCustomizationService customization,
-			IntervalsAutoSyncService autoSync, RideAssignmentService rideAssignment, AbsenceService absence) {
+			IntervalsAutoSyncService autoSync, RideAssignmentService rideAssignment, AbsenceService absence,
+			IntervalAccuracyService intervalAccuracy) {
 		this.absence = absence;
+		this.intervalAccuracy = intervalAccuracy;
 		this.plannedWorkoutService = plannedWorkoutService;
 		this.mapper = mapper;
 		this.fitExporter = fitExporter;
@@ -162,6 +167,20 @@ public class PlannedWorkoutController {
 	private ResponseEntity<PlannedWorkoutResponse> syncedResponse(Long userId, PlannedWorkout planned) {
 		autoSync.syncUserIfEnabled(userId);
 		return ResponseEntity.ok(mapper.toResponse(planned));
+	}
+
+	/**
+	 * Wie genau wurden die Intervalle getroffen? Richtwert aus den Sekundenwerten der zugeordneten Fahrt.
+	 * 204, wenn das nicht auswertbar ist (keine Fahrt, keine Intervalle, keine Watt-/Pulsdaten).
+	 */
+	@GetMapping(path = "/planned-workouts/{id}/accuracy")
+	public ResponseEntity<IntervalAccuracy.Result> accuracy(@AuthenticationPrincipal Jwt jwt, @PathVariable Long id) {
+		Long userId = CurrentUser.id(jwt);
+		if (plannedWorkoutService.findOwned(id, userId).isEmpty()) {
+			return ResponseEntity.notFound().build();
+		}
+		return intervalAccuracy.accuracy(id, userId).map(ResponseEntity::ok)
+				.orElse(ResponseEntity.noContent().build());
 	}
 
 	@GetMapping(path = "/planned-workouts/{id}")

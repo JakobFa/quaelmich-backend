@@ -78,6 +78,22 @@ public class IntervalsIcuClient {
 				.toBodilessEntity();
 	}
 
+	/** Ein Datenstrom einer Aktivität: {"type": "watts", "data": [...]} */
+	@com.fasterxml.jackson.annotation.JsonIgnoreProperties(ignoreUnknown = true)
+	public record Stream(String type, List<Double> data) {
+	}
+
+	/** Sekundengenaue Zeit, Leistung und Puls einer Aktivität */
+	public List<Stream> streams(IntervalsCredentials credentials, String activityId) {
+		List<Stream> streams = restClient.get()
+				.uri("/api/v1/activity/{id}/streams?types=time,watts,heartrate", activityId)
+				.header(HttpHeaders.AUTHORIZATION, basicAuth(credentials))
+				.retrieve()
+				.body(new org.springframework.core.ParameterizedTypeReference<List<Stream>>() {
+				});
+		return streams == null ? List.of() : streams;
+	}
+
 	/** Aktivitäten im Zeitraum (beide Tage eingeschlossen) */
 	public List<IntervalsActivity> listActivities(IntervalsCredentials credentials, LocalDate oldest, LocalDate newest) {
 		List<IntervalsActivity> activities = restClient.get()

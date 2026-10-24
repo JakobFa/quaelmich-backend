@@ -109,6 +109,22 @@ public class StravaClient {
 		return activities == null ? List.of() : activities;
 	}
 
+	/** Ein Datenstrom einer Aktivität (key_by_type=true): {"watts": {"data": [...]}, ...} */
+	@com.fasterxml.jackson.annotation.JsonIgnoreProperties(ignoreUnknown = true)
+	public record Stream(List<Double> data) {
+	}
+
+	/** Sekundengenaue Zeit, Leistung und Puls einer Aktivität (fehlende Sensoren fehlen in der Antwort) */
+	public java.util.Map<String, Stream> streams(String accessToken, long activityId) {
+		java.util.Map<String, Stream> streams = restClient.get()
+				.uri("/api/v3/activities/{id}/streams?keys=time,watts,heartrate&key_by_type=true", activityId)
+				.header(HttpHeaders.AUTHORIZATION, "Bearer " + accessToken)
+				.retrieve()
+				.body(new ParameterizedTypeReference<java.util.Map<String, Stream>>() {
+				});
+		return streams == null ? java.util.Map.of() : streams;
+	}
+
 	public StravaProfile profile(String accessToken) {
 		return restClient.get()
 				.uri("/api/v3/athlete")

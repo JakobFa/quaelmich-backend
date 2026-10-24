@@ -336,6 +336,15 @@ class PlannedWorkoutControllerTest {
 	}
 
 	@Test
+	void accuracyNeedsARideAndTheOwner() throws Exception {
+		mockMvc.perform(get("/planned-workouts/" + plannedId + "/accuracy").header("Authorization", token))
+				.andExpect(status().isNoContent());
+		mockMvc.perform(get("/planned-workouts/" + plannedId + "/accuracy")
+				.header("Authorization", registerWithProfile(mockMvc)))
+				.andExpect(status().isNotFound());
+	}
+
+	@Test
 	void needsLogin() throws Exception {
 		mockMvc.perform(get("/planned-workouts/" + plannedId)).andExpect(status().isUnauthorized());
 	}
