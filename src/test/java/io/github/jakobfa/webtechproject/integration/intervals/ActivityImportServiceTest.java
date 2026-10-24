@@ -222,6 +222,21 @@ class ActivityImportServiceTest {
 	}
 
 	@Test
+	void loadWithoutPowerMeterIsMarkedAsEstimate() {
+		givenPlan();
+		when(client.listActivities(any(), any(), any())).thenReturn(List.of(
+				new IntervalsActivity("i10", TODAY + "T11:53:44", "GravelRide", 9213, 62695.0, 68, "OAUTH_CLIENT",
+						false)));
+
+		service.importRecent(1L);
+
+		var saved = org.mockito.ArgumentCaptor.forClass(ExtraRide.class);
+		verify(extraRides).save(saved.capture());
+		assertThat(saved.getValue().getTss()).isEqualTo(68);
+		assertThat(saved.getValue().isTssFromHeartRate()).isTrue();
+	}
+
+	@Test
 	void rideStoredTwiceIsCleanedUp() {
 		givenPlan();
 		ExtraRide first = new ExtraRide(new Athlete(), "i9");

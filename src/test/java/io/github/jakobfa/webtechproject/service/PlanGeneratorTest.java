@@ -290,23 +290,24 @@ class PlanGeneratorTest {
 	}
 
 	@Test
-	void ambitiousTargetTrainsHarderRelaxedTargetEasier() {
-		var realistic = EventProfile.Ambition.REALISTIC;
-		var ambitious = EventProfile.Ambition.AMBITIOUS;
-		var relaxed = EventProfile.Ambition.RELAXED;
+	void goalChangesHowHardThePlanIs() {
+		var goodTime = io.github.jakobfa.webtechproject.model.EventGoal.GOOD_TIME;
+		var compete = io.github.jakobfa.webtechproject.model.EventGoal.COMPETE;
+		var finish = io.github.jakobfa.webtechproject.model.EventGoal.FINISH;
 
-		assertThat(PlanGenerator.progressionStep(Level.HOBBY, Phase.BUILD, 2, ambitious))
-				.isGreaterThan(PlanGenerator.progressionStep(Level.HOBBY, Phase.BUILD, 2, realistic));
-		assertThat(PlanGenerator.progressionStep(Level.HOBBY, Phase.BUILD, 2, relaxed))
-				.isLessThan(PlanGenerator.progressionStep(Level.HOBBY, Phase.BUILD, 2, realistic));
+		assertThat(PlanGenerator.progressionStep(Level.HOBBY, Phase.BUILD, 2, compete))
+				.isGreaterThan(PlanGenerator.progressionStep(Level.HOBBY, Phase.BUILD, 2, goodTime));
+		assertThat(PlanGenerator.progressionStep(Level.HOBBY, Phase.BUILD, 2, finish))
+				.isLessThan(PlanGenerator.progressionStep(Level.HOBBY, Phase.BUILD, 2, goodTime));
 
-		assertThat(PlanGenerator.hardSessionsPerWeek(Level.AMBITIOUS, 8, ambitious)).isEqualTo(3);
-		assertThat(PlanGenerator.hardSessionsPerWeek(Level.AMBITIOUS, 8, relaxed)).isEqualTo(1);
+		assertThat(PlanGenerator.hardSessionsPerWeek(Level.AMBITIOUS, 8, compete)).isEqualTo(3);
+		assertThat(PlanGenerator.hardSessionsPerWeek(Level.AMBITIOUS, 8, finish))
+				.as("ankommen: nicht weniger harte Einheiten, nur leichtere").isEqualTo(2);
 
-		var ultraFast = new EventProfile(1800, EventProfile.Focus.ULTRA, 1400, ambitious);
-		var ultraEasy = new EventProfile(1800, EventProfile.Focus.ULTRA, 2400, relaxed);
-		assertThat(PlanGenerator.useTempoLongRide(ultraFast, Phase.BUILD, 1)).isTrue();
-		assertThat(PlanGenerator.useTempoLongRide(ultraEasy, Phase.BUILD, 0)).isFalse();
+		var ultraCompete = new EventProfile(1800, EventProfile.Focus.ULTRA, compete);
+		var ultraFinish = new EventProfile(1800, EventProfile.Focus.ULTRA, finish);
+		assertThat(PlanGenerator.useTempoLongRide(ultraCompete, Phase.BUILD, 1)).isTrue();
+		assertThat(PlanGenerator.useTempoLongRide(ultraFinish, Phase.BUILD, 0)).isFalse();
 	}
 
 }

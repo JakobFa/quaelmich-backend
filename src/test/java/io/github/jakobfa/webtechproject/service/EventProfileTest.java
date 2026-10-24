@@ -57,21 +57,12 @@ class EventProfileTest {
 	}
 
 	@Test
-	void targetTimeShowsTheAmbition() {
+	void goalDefaultsToAGoodTime() {
 		Athlete athlete = athlete(Level.AMBITIOUS, 227, 5500, EventType.GRAN_FONDO);
-		int estimated = EventProfile.of(athlete).estimatedMinutes();
+		assertThat(EventProfile.of(athlete).goal()).isEqualTo(io.github.jakobfa.webtechproject.model.EventGoal.GOOD_TIME);
 
-		athlete.getEvent().setTargetMinutes((int) (estimated * 0.8));
-		var fast = EventProfile.of(athlete);
-		assertThat(fast.ambition()).isEqualTo(EventProfile.Ambition.AMBITIOUS);
-		assertThat(fast.plannedMinutes()).isEqualTo((int) (estimated * 0.8));
-
-		athlete.getEvent().setTargetMinutes(estimated * 2);
-		assertThat(EventProfile.of(athlete).ambition()).isEqualTo(EventProfile.Ambition.RELAXED);
-
-		athlete.getEvent().setTargetMinutes(null);
-		assertThat(EventProfile.of(athlete).ambition()).isEqualTo(EventProfile.Ambition.REALISTIC);
-		assertThat(EventProfile.of(athlete).plannedMinutes()).isEqualTo(estimated);
+		athlete.getEvent().setGoal(io.github.jakobfa.webtechproject.model.EventGoal.COMPETE);
+		assertThat(EventProfile.of(athlete).goal()).isEqualTo(io.github.jakobfa.webtechproject.model.EventGoal.COMPETE);
 	}
 
 }

@@ -4,6 +4,7 @@ import java.util.Map;
 
 import io.github.jakobfa.webtechproject.model.Athlete;
 import io.github.jakobfa.webtechproject.model.Event;
+import io.github.jakobfa.webtechproject.model.EventGoal;
 import io.github.jakobfa.webtechproject.model.EventType;
 import io.github.jakobfa.webtechproject.model.Level;
 
@@ -13,29 +14,10 @@ import io.github.jakobfa.webtechproject.model.Level;
  * Die Dauer wird grob aus Distanz, Höhenmetern und Level geschätzt (Grundtempo plus Zeit für die
  * Anstiege). Sie bestimmt, wie lang die lange Ausfahrt im Lauf des Plans wird.
  */
-public record EventProfile(int estimatedMinutes, Focus focus, Integer targetMinutes, Ambition ambition) {
+public record EventProfile(int estimatedMinutes, Focus focus, EventGoal goal) {
 
 	public EventProfile(int estimatedMinutes, Focus focus) {
-		this(estimatedMinutes, focus, null, Ambition.REALISTIC);
-	}
-
-	/** Wie ehrgeizig die Zielzeit im Vergleich zur Schätzung ist */
-	public enum Ambition {
-		/** deutlich langsamer als geschätzt: ankommen und genießen – mehr Grundlage, weniger hart */
-		RELAXED,
-		/** ungefähr die Schätzung (oder keine Zielzeit) */
-		REALISTIC,
-		/** deutlich schneller als geschätzt: härtere Stufen, eine harte Einheit mehr, mehr Renntempo */
-		AMBITIOUS
-	}
-
-	/** Zielzeit unter 90 % der Schätzung gilt als ambitioniert, über 115 % als entspannt */
-	static final double AMBITIOUS_BELOW = 0.9;
-	static final double RELAXED_ABOVE = 1.15;
-
-	/** So lange wird am Eventtag gefahren: die Zielzeit, sonst die Schätzung */
-	public int plannedMinutes() {
-		return targetMinutes != null ? targetMinutes : estimatedMinutes;
+		this(estimatedMinutes, focus, EventGoal.GOOD_TIME);
 	}
 
 	/** Schwerpunkt des Trainings */
@@ -81,20 +63,8 @@ public record EventProfile(int estimatedMinutes, Focus focus, Integer targetMinu
 		double hours = distance / speed + elevation / 1000.0 * HOURS_PER_1000_METERS.get(level);
 		double metersPerKm = distance > 0 ? elevation / distance : 0;
 
-		int estimated = (int) Math.round(hours * 60);
-		Integer target = event.getTargetMinutes();
-		return new EventProfile(estimated, focusFor(type, hours, metersPerKm), target, ambitionOf(estimated, target));
-	}
-
-	static Ambition ambitionOf(int estimatedMinutes, Integer targetMinutes) {
-		if (targetMinutes == null || estimatedMinutes <= 0) {
-			return Ambition.REALISTIC;
-		}
-		double ratio = (double) targetMinutes / estimatedMinutes;
-		if (ratio < AMBITIOUS_BELOW) {
-			return Ambition.AMBITIOUS;
-		}
-		return ratio > RELAXED_ABOVE ? Ambition.RELAXED : Ambition.REALISTIC;
+		return new EventProfile((int) Math.round(hours * 60), focusFor(type, hours, metersPerKm),
+				event.getGoal() == null ? EventGoal.GOOD_TIME : event.getGoal());
 	}
 
 	static Focus focusFor(EventType type, double hours, double metersPerKm) {
