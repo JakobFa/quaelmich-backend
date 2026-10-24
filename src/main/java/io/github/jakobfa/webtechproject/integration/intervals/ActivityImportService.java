@@ -27,6 +27,7 @@ import io.github.jakobfa.webtechproject.model.PlannedWorkout;
 import io.github.jakobfa.webtechproject.repository.ExtraRideRepository;
 import io.github.jakobfa.webtechproject.repository.PlannedWorkoutRepository;
 import io.github.jakobfa.webtechproject.service.AthleteService;
+import io.github.jakobfa.webtechproject.service.FtpSuggestions;
 import io.github.jakobfa.webtechproject.model.Workout;
 import io.github.jakobfa.webtechproject.model.WorkoutType;
 import io.github.jakobfa.webtechproject.service.PlanAdaptationService;
@@ -100,6 +101,9 @@ public class ActivityImportService {
 						athlete.get().getEffectiveThresholdHeartRate())
 				: Optional.empty();
 		List<RecordedActivity> rides = merge(intervalsRides, stravaRides.orElse(List.of()));
+
+		// sehr sichere Hinweise, dass die eingetragene FTP zu niedrig ist
+		FtpSuggestions.evaluate(athlete.get(), rides);
 
 		Map<LocalDate, List<RecordedActivity>> ridesPerDay = rides.stream().filter(RecordedActivity::isRide)
 				.collect(Collectors.groupingBy(RecordedActivity::date));

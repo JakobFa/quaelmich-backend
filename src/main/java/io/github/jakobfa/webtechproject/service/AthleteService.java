@@ -26,6 +26,15 @@ public class AthleteService {
 		athleteRepository.lockById(athleteId);
 	}
 
+	/** "Ausblenden": diesen Vorschlag nicht wieder zeigen. Leer ohne Profil. */
+	@Transactional
+	public Optional<Athlete> dismissFtpSuggestion(Long userId) {
+		return athleteRepository.findByOwnerId(userId).map(athlete -> {
+			athlete.setDismissedSuggestedFtp(athlete.getSuggestedFtp());
+			return athleteRepository.save(athlete);
+		});
+	}
+
 	public Optional<Athlete> findByOwner(Long userId) {
 		return athleteRepository.findByOwnerId(userId);
 	}
@@ -43,6 +52,9 @@ public class AthleteService {
 		athlete.setId(null);
 		athlete.getEvent().setId(null);
 		athlete.setOwner(userRepository.getReferenceById(userId));
+		athlete.setSuggestedFtp(null); // setzt nur quaelmich
+		athlete.setSuggestedFtpNote(null);
+		athlete.setDismissedSuggestedFtp(null);
 		if (athlete.getTrainingMode() == null) {
 			athlete.setTrainingMode(TrainingMode.POWER);
 		}
@@ -51,6 +63,10 @@ public class AthleteService {
 
 	private Athlete update(Athlete existing, Athlete changes) {
 		existing.setFtp(changes.getFtp());
+		if (existing.getFtp() != null && existing.getSuggestedFtp() != null
+				&& existing.getFtp() >= existing.getSuggestedFtp()) {
+			FtpSuggestions.clear(existing); // Vorschlag übernommen
+		}
 		existing.setThresholdHeartRate(changes.getThresholdHeartRate());
 		existing.setMaxHeartRate(changes.getMaxHeartRate());
 		existing.setHeartRateZoneStarts(changes.getHeartRateZoneStarts());

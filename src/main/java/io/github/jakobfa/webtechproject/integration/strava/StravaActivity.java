@@ -73,7 +73,8 @@ public record StravaActivity(
 		// Strava hängt an die Ortszeit ein "Z" an, obwohl es keine UTC-Zeit ist
 		return RecordedActivity.withEstimateIfMissing(RecordedActivity.STRAVA_PREFIX + id, sport,
 				LocalDateTime.parse(startDateLocal.substring(0, 19)), movingTimeSeconds, distance,
-				powerTss != null ? powerTss : heartRateTss, heartRateTss != null, Boolean.TRUE.equals(commute));
+				powerTss != null ? powerTss : heartRateTss, heartRateTss != null, Boolean.TRUE.equals(commute))
+				.withNormalizedPower(Boolean.TRUE.equals(deviceWatts) ? weightedAverageWatts : null);
 	}
 
 }

@@ -3,6 +3,7 @@ package io.github.jakobfa.webtechproject.web;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.oauth2.jwt.Jwt;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -37,6 +38,14 @@ public class AthleteController {
 	public ResponseEntity<Athlete> saveMyAthlete(@AuthenticationPrincipal Jwt jwt,
 			@Valid @RequestBody Athlete athlete) {
 		return ResponseEntity.ok(athleteService.saveForOwner(CurrentUser.id(jwt), athlete));
+	}
+
+	/** Hinweis "FTP wahrscheinlich zu niedrig" ausblenden */
+	@DeleteMapping(path = "/me/athlete/ftp-suggestion")
+	public ResponseEntity<Athlete> dismissFtpSuggestion(@AuthenticationPrincipal Jwt jwt) {
+		return athleteService.dismissFtpSuggestion(CurrentUser.id(jwt))
+				.map(ResponseEntity::ok)
+				.orElse(ResponseEntity.notFound().build());
 	}
 
 }

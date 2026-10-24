@@ -52,6 +52,17 @@ public class Athlete {
 	@Max(600)
 	private Integer ftp;
 
+	// ---------- Hinweis "FTP wahrscheinlich zu niedrig" (setzt nur quaelmich, nie der Nutzer) ----------
+
+	/** geschätzte FTP aus einer Fahrt, die mit der eingetragenen FTP eigentlich nicht möglich ist */
+	private Integer suggestedFtp;
+
+	/** Begründung, z. B. "Am Sa, 24.10. bist du 75 min mit 272 W (Normalized Power) gefahren." */
+	private String suggestedFtpNote;
+
+	/** Vorschlag, den der Nutzer ausgeblendet hat – derselbe Wert wird nicht wieder gezeigt */
+	private Integer dismissedSuggestedFtp;
+
 	/** Training nach Watt oder Puls; null wird wie POWER behandelt (ältere Profile) */
 	@Enumerated(EnumType.STRING)
 	@ColumnDefault("'POWER'")

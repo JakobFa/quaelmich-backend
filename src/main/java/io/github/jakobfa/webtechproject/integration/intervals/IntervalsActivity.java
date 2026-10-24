@@ -23,11 +23,17 @@ public record IntervalsActivity(
 		@JsonProperty("icu_training_load") Integer trainingLoad,
 		String source,
 		/** false = ohne Wattmesser aufgezeichnet; dann rechnet intervals.icu die Last aus dem Puls */
-		@JsonProperty("device_watts") Boolean deviceWatts) {
+		@JsonProperty("device_watts") Boolean deviceWatts,
+		@JsonProperty("icu_weighted_avg_watts") Integer weightedAverageWatts) {
 
 	public IntervalsActivity(String id, String startDateLocal, String type, Integer movingTimeSeconds,
 			Double distance, Integer trainingLoad, String source) {
-		this(id, startDateLocal, type, movingTimeSeconds, distance, trainingLoad, source, null);
+		this(id, startDateLocal, type, movingTimeSeconds, distance, trainingLoad, source, null, null);
+	}
+
+	public IntervalsActivity(String id, String startDateLocal, String type, Integer movingTimeSeconds,
+			Double distance, Integer trainingLoad, String source, Boolean deviceWatts) {
+		this(id, startDateLocal, type, movingTimeSeconds, distance, trainingLoad, source, deviceWatts, null);
 	}
 
 	/** Alle Sportarten mit Dauer und Startzeit – nur keine Strava-Platzhalter (die liefert die API leer) */
@@ -49,7 +55,8 @@ public record IntervalsActivity(
 		boolean fromHeartRate = sport == Sport.RIDE && trainingLoad != null && Boolean.FALSE.equals(deviceWatts);
 		return RecordedActivity.withEstimateIfMissing(id, sport,
 				LocalDateTime.parse(startDateLocal.substring(0, 19)), movingTimeSeconds, distance, trainingLoad,
-				fromHeartRate, false);
+				fromHeartRate, false)
+				.withNormalizedPower(Boolean.TRUE.equals(deviceWatts) ? weightedAverageWatts : null);
 	}
 
 }

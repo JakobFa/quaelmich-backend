@@ -19,7 +19,19 @@ import io.github.jakobfa.webtechproject.model.Sport;
  * @param commute          bei Strava als "Pendeln" markiert – hakt nie ein geplantes Workout ab
  */
 public record RecordedActivity(String id, Sport sport, LocalDateTime start, int movingSeconds, Double distanceMeters,
-		Integer tss, boolean tssFromHeartRate, boolean tssFromDuration, boolean commute) {
+		Integer tss, boolean tssFromHeartRate, boolean tssFromDuration, boolean commute,
+		/** Normalized Power in Watt – nur mit echtem Wattmesser, sonst null */
+		Integer normalizedPower) {
+
+	public RecordedActivity(String id, Sport sport, LocalDateTime start, int movingSeconds, Double distanceMeters,
+			Integer tss, boolean tssFromHeartRate, boolean tssFromDuration, boolean commute) {
+		this(id, sport, start, movingSeconds, distanceMeters, tss, tssFromHeartRate, tssFromDuration, commute, null);
+	}
+
+	public RecordedActivity withNormalizedPower(Integer watts) {
+		return new RecordedActivity(id, sport, start, movingSeconds, distanceMeters, tss, tssFromHeartRate,
+				tssFromDuration, commute, watts);
+	}
 
 	public static final String STRAVA_PREFIX = "strava-";
 
