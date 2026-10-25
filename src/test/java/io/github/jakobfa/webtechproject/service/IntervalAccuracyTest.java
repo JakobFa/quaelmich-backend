@@ -53,6 +53,29 @@ class IntervalAccuracyTest {
 	}
 
 	@Test
+	void findsTheIntervalsInTheMiddleOfARideWithApproachAndWayBack() {
+		// 30 min Anfahrt mit einem harten 12-min-Anstieg, Intervalle, 30 min zurück
+		ActivityStream stream = ride(new int[] { 10, 170 }, new int[] { 12, 265 }, new int[] { 8, 170 },
+				new int[] { 10, 150 }, new int[] { 12, 226 }, new int[] { 5, 140 }, new int[] { 12, 224 },
+				new int[] { 5, 140 }, new int[] { 12, 227 }, new int[] { 30, 175 });
+
+		var result = IntervalAccuracy.byPower(SWEET_SPOT, stream, FTP).orElseThrow();
+
+		assertThat(result.blocks()).hasSize(3).allMatch(block -> block.verdict() == Verdict.ON_TARGET);
+		assertThat(result.uncertain()).isFalse();
+	}
+
+	@Test
+	void findsIntervalsStartedEarlierThanPlanned() {
+		ActivityStream stream = ride(new int[] { 5, 150 }, new int[] { 12, 226 }, new int[] { 5, 140 },
+				new int[] { 12, 224 }, new int[] { 5, 140 }, new int[] { 12, 227 }, new int[] { 10, 130 });
+
+		var result = IntervalAccuracy.byPower(SWEET_SPOT, stream, FTP).orElseThrow();
+
+		assertThat(result.blocks()).allMatch(block -> block.verdict() == Verdict.ON_TARGET);
+	}
+
+	@Test
 	void tooHardEverywhere() {
 		var result = IntervalAccuracy.byPower(SWEET_SPOT, sweetSpotRide(262, 260, 258), FTP).orElseThrow();
 

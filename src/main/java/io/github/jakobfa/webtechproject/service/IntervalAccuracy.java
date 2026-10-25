@@ -44,8 +44,8 @@ public final class IntervalAccuracy {
 	static final double SLIGHTLY = 0.10;
 	/** ab hier "Vollgas": schneller ist nie falsch */
 	static final int ALL_OUT_PERCENT = 120;
-	/** so weit nach dem geplanten Start wird der erste Block noch gesucht (längeres Einrollen, Anfahrt …) */
-	static final int FIRST_BLOCK_SLACK_SECONDS = 20 * 60;
+	/** so weit um die gefundene Stelle herum wird der erste Block noch fein ausgerichtet */
+	static final int FIRST_BLOCK_SLACK_SECONDS = 3 * 60;
 	/** spätere Blöcke: höchstens doppelte Pause plus 2 Minuten – sonst würde ein Block den nächsten "finden" */
 	static final int LATER_BLOCK_SLACK_SECONDS = 2 * 60;
 
@@ -158,19 +158,32 @@ public final class IntervalAccuracy {
 	record Window(int start, int average, int before) {
 	}
 
-	/** null, wenn die Fahrt zu kurz für alle Blöcke ist */
+	/**
+	 * Findet die Blöcke in der Fahrt; null, wenn die Fahrt zu kurz für alle Blöcke ist.
+	 *
+	 * Erst wird das ganze Muster (Blöcke mit den geplanten Pausen) über die komplette Fahrt geschoben – so
+	 * stören An- und Abfahrt nicht, egal wie lang sie sind. Gewählt wird die Stelle, an der sich die Blöcke am
+	 * deutlichsten von den Pausen abheben; ein langer, gleichmäßig harter Anstieg auf der Anfahrt passt dadurch
+	 * schlechter als die echten Intervalle. Danach wird jeder Block einzeln fein ausgerichtet (längere Pausen,
+	 * Ampeln …).
+	 */
 	static List<Window> match(List<PlannedBlock> planned, Integer[] values) {
 		long[] prefix = new long[values.length + 1];
 		for (int i = 0; i < values.length; i++) {
 			prefix[i + 1] = prefix[i] + (values[i] == null ? 0 : values[i]);
 		}
+		Integer anchor = anchor(planned, prefix, values.length);
+		if (anchor == null) {
+			return null;
+		}
 		List<Window> windows = new ArrayList<>();
-		int pointer = 0;
-		int plannedEnd = 0;
+		int pointer = Math.max(0, anchor - FIRST_BLOCK_SLACK_SECONDS);
+		int plannedEnd = planned.getFirst().plannedStart();
 		for (PlannedBlock block : planned) {
 			int gap = Math.max(0, block.plannedStart() - plannedEnd);
-			int slack = windows.isEmpty() ? FIRST_BLOCK_SLACK_SECONDS : gap + LATER_BLOCK_SLACK_SECONDS;
-			int latestStart = Math.min(values.length - block.duration(), pointer + gap + slack);
+			int latestStart = windows.isEmpty()
+					? Math.min(values.length - block.duration(), anchor + FIRST_BLOCK_SLACK_SECONDS)
+					: Math.min(values.length - block.duration(), pointer + 2 * gap + LATER_BLOCK_SLACK_SECONDS);
 			if (latestStart < pointer) {
 				return null;
 			}
@@ -190,6 +203,41 @@ public final class IntervalAccuracy {
 			plannedEnd = block.plannedStart() + block.duration();
 		}
 		return windows;
+	}
+
+	/** Startsekunde des ersten Blocks an der am besten passenden Stelle; null, wenn das Muster nicht reinpasst */
+	private static Integer anchor(List<PlannedBlock> planned, long[] prefix, int length) {
+		int first = planned.getFirst().plannedStart();
+		PlannedBlock last = planned.getLast();
+		int patternLength = last.plannedStart() + last.duration() - first;
+		if (patternLength > length) {
+			return null;
+		}
+		Integer best = null;
+		double bestScore = Double.NEGATIVE_INFINITY;
+		for (int start = 0; start + patternLength <= length; start++) {
+			long blockSum = 0;
+			int blockSeconds = 0;
+			long gapSum = 0;
+			int gapSeconds = 0;
+			int previousEnd = -1;
+			for (PlannedBlock block : planned) {
+				int from = start + block.plannedStart() - first;
+				blockSum += prefix[from + block.duration()] - prefix[from];
+				blockSeconds += block.duration();
+				if (previousEnd >= 0 && from > previousEnd) {
+					gapSum += prefix[from] - prefix[previousEnd];
+					gapSeconds += from - previousEnd;
+				}
+				previousEnd = from + block.duration();
+			}
+			double score = (double) blockSum / blockSeconds - (gapSeconds == 0 ? 0 : (double) gapSum / gapSeconds);
+			if (score > bestScore) {
+				bestScore = score;
+				best = start;
+			}
+		}
+		return best;
 	}
 
 	private static int average(Integer[] values, int from, int length) {
