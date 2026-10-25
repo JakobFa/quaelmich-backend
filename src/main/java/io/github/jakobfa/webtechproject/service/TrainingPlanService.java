@@ -117,9 +117,13 @@ public class TrainingPlanService {
 		return !date.isBefore(from) && !date.isAfter(to);
 	}
 
-	/** Abgehakt, mit einer gefahrenen Einheit verknüpft oder mit Rückmeldung (nicht gemacht, Pause) */
+	/**
+	 * Abgehakt, mit einer gefahrenen Einheit verknüpft, mit Rückmeldung (nicht gemacht, Pause) oder vom Nutzer
+	 * selbst ausgesucht – z. B. nach einer neuen FTP bleibt das getauschte Workout für heute stehen
+	 */
 	private static boolean isKept(PlannedWorkout planned) {
-		return planned.isCompleted() || planned.getActivityId() != null || planned.getSkipReason() != null;
+		return planned.isCompleted() || planned.getActivityId() != null || planned.getSkipReason() != null
+				|| planned.isChosenByUser();
 	}
 
 	@Transactional(readOnly = true)
