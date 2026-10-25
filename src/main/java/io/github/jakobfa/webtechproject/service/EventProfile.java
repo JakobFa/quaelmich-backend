@@ -72,6 +72,8 @@ public record EventProfile(int estimatedMinutes, Focus focus, EventGoal goal) {
 			speed *= 0.8; // Schotter ist langsamer
 		} else if (type == EventType.ULTRA) {
 			speed *= 0.85; // Pausen
+		} else if (type == EventType.BIKEPACKING) {
+			speed *= 0.7; // Gepäck, eigenes Tempo, lange Pausen
 		}
 		double distance = event.getDistanceKm() == null ? 0 : event.getDistanceKm();
 		int elevation = event.getElevationMeters() == null ? 0 : event.getElevationMeters();
@@ -79,7 +81,12 @@ public record EventProfile(int estimatedMinutes, Focus focus, EventGoal goal) {
 		double metersPerKm = distance > 0 ? elevation / distance : 0;
 
 		return new EventProfile((int) Math.round(hours * 60), focusFor(type, hours, metersPerKm),
-				event.getGoal() == null ? EventGoal.GOOD_TIME : event.getGoal());
+				event.getGoal() != null ? event.getGoal() : defaultGoal(type));
+	}
+
+	/** Bikepacking ist kein Rennen: ohne eigene Angabe "Ankommen" statt "gute Zeit" */
+	static EventGoal defaultGoal(EventType type) {
+		return type == EventType.BIKEPACKING ? EventGoal.FINISH : EventGoal.GOOD_TIME;
 	}
 
 	static Focus focusFor(EventType type, double hours, double metersPerKm) {
@@ -89,7 +96,7 @@ public record EventProfile(int estimatedMinutes, Focus focus, EventGoal goal) {
 		if (type == EventType.TIME_TRIAL) {
 			return Focus.TIME_TRIAL;
 		}
-		if (type == EventType.ULTRA) {
+		if (type == EventType.ULTRA || type == EventType.BIKEPACKING) {
 			return Focus.ULTRA;
 		}
 		if (type == EventType.ROAD_RACE) {

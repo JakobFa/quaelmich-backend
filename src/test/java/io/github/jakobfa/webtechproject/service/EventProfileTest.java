@@ -65,4 +65,15 @@ class EventProfileTest {
 		assertThat(EventProfile.of(athlete).goal()).isEqualTo(io.github.jakobfa.webtechproject.model.EventGoal.COMPETE);
 	}
 
+	@Test
+	void bikepackingIsLongerAndMoreRelaxedThanAnUltraRace() {
+		var race = EventProfile.of(athlete(Level.AMBITIOUS, 600, 6000, EventType.ULTRA));
+		var trip = EventProfile.of(athlete(Level.AMBITIOUS, 600, 6000, EventType.BIKEPACKING));
+
+		assertThat(trip.focus()).isEqualTo(Focus.ULTRA);
+		assertThat(trip.estimatedMinutes()).isGreaterThan(race.estimatedMinutes());
+		assertThat(trip.goal()).isEqualTo(io.github.jakobfa.webtechproject.model.EventGoal.FINISH);
+		assertThat(race.goal()).isEqualTo(io.github.jakobfa.webtechproject.model.EventGoal.GOOD_TIME);
+	}
+
 }

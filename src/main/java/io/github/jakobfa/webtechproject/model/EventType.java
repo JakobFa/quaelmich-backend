@@ -8,6 +8,8 @@ public enum EventType {
 	CRITERIUM,
 	TIME_TRIAL,
 	GRAVEL,
-	/** Ultra / Bikepacking */
-	ULTRA
+	/** Ultra-Rennen: lange Distanz auf Zeit, wenig Pausen */
+	ULTRA,
+	/** Bikepacking: lange Tour mit Gepäck, eigenes Tempo, viele Pausen – entspannter als ein Ultra-Rennen */
+	BIKEPACKING
 }
