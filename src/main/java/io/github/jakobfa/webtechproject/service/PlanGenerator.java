@@ -221,6 +221,8 @@ public class PlanGenerator {
 		Map<Phase, Integer> weeksInPhase = new EnumMap<>(Phase.class);
 		int loadWeek = 0;
 		int lastFtpTest = -FTP_TEST_EVERY_WEEKS;
+		// ohne Event: passt der Test nicht in die Woche (z. B. Start am Sonntag), kommt er in die nächste
+		boolean ftpTestPending = false;
 		for (int weekIndex = 0; weekIndex < weeks; weekIndex++) {
 			LocalDate monday = firstMonday.plusWeeks(weekIndex);
 			WeeklyAvailability availability = weekAvailability.getOrDefault(monday, athlete.getAvailability());
@@ -238,7 +240,8 @@ public class PlanGenerator {
 				continue;
 			}
 
-			boolean ftpTest = isFtpTestWeek(phases, weekIndex, allWeeks, weeksUntilEvent, lastFtpTest);
+			boolean ftpTest = isFtpTestWeek(phases, weekIndex, allWeeks, weeksUntilEvent, lastFtpTest)
+					|| (ftpTestPending && phase != Phase.RECOVERY);
 			if (ftpTest) {
 				lastFtpTest = weekIndex;
 			}
@@ -254,7 +257,12 @@ public class PlanGenerator {
 					hardWorkoutsFor(athlete.getLevel(), profile.focus(), phase, weekIndex, weeksUntilEvent,
 							weeklyHours, ftpTest,
 							profile.goal()));
-			plan.addAll(planWeek(availability, trainingDays, week));
+			List<PlannedWorkout> planned = planWeek(availability, trainingDays, week);
+			plan.addAll(planned);
+			boolean testMissed = ftpTest
+					&& planned.stream().noneMatch(workout -> workout.getWorkoutId() == WorkoutLibrary.FTP_TEST);
+			// offen bleibt er, bis er eingeplant werden konnte (in Erholungswochen wird nicht getestet)
+			ftpTestPending = eventDate == null && (testMissed || (ftpTestPending && !ftpTest));
 
 			if (isLoadPhase(phase)) {
 				loadWeek++;

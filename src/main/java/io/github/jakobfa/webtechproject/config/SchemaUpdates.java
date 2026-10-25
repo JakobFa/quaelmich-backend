@@ -28,6 +28,8 @@ public class SchemaUpdates implements ApplicationRunner {
 		execute("ALTER TABLE athlete ALTER COLUMN ftp DROP NOT NULL");
 		// Einladungen erstellt jetzt nur noch der Betreiber (scripts/invite.sh), nicht mehr einzelne Nutzer
 		execute("ALTER TABLE invitation ALTER COLUMN created_by_id DROP NOT NULL");
+		// Ziele ohne Event (FTP, Ausdauer …): dann hat das Profil kein Event
+		execute("ALTER TABLE athlete ALTER COLUMN event_id DROP NOT NULL");
 	}
 
 	private void execute(String sql) {
