@@ -10,6 +10,7 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RestController;
 
 import io.github.jakobfa.webtechproject.auth.CurrentUser;
+import io.github.jakobfa.webtechproject.integration.intervals.IntervalsFtpSync;
 import io.github.jakobfa.webtechproject.model.Athlete;
 import io.github.jakobfa.webtechproject.service.AthleteService;
 import jakarta.validation.Valid;
@@ -21,9 +22,11 @@ import jakarta.validation.Valid;
 public class AthleteController {
 
 	private final AthleteService athleteService;
+	private final IntervalsFtpSync ftpSync;
 
-	public AthleteController(AthleteService athleteService) {
+	public AthleteController(AthleteService athleteService, IntervalsFtpSync ftpSync) {
 		this.athleteService = athleteService;
+		this.ftpSync = ftpSync;
 	}
 
 	@GetMapping(path = "/me/athlete")
@@ -33,11 +36,17 @@ public class AthleteController {
 				.orElse(ResponseEntity.notFound().build());
 	}
 
-	/** Legt das Profil an oder ändert es. */
+	/** Legt das Profil an oder ändert es. Eine geänderte FTP geht auch an intervals.icu, falls verbunden. */
 	@PutMapping(path = "/me/athlete")
 	public ResponseEntity<Athlete> saveMyAthlete(@AuthenticationPrincipal Jwt jwt,
 			@Valid @RequestBody Athlete athlete) {
-		return ResponseEntity.ok(athleteService.saveForOwner(CurrentUser.id(jwt), athlete));
+		Long userId = CurrentUser.id(jwt);
+		Integer oldFtp = athleteService.findByOwner(userId).map(Athlete::getFtp).orElse(null);
+		Athlete saved = athleteService.saveForOwner(userId, athlete);
+		if (saved.getFtp() != null && !saved.getFtp().equals(oldFtp)) {
+			ftpSync.pushFtp(userId, saved.getFtp());
+		}
+		return ResponseEntity.ok(saved);
 	}
 
 	/** Hinweis "FTP wahrscheinlich zu niedrig" ausblenden */
