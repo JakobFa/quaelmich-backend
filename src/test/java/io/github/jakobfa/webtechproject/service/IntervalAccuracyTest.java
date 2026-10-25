@@ -85,6 +85,13 @@ class IntervalAccuracyTest {
 		assertThat(result.blocks()).extracting(IntervalAccuracy.Block::actual)
 				.allMatch(watts -> watts >= 238, "alle drei Intervalle gefunden, nicht die Anfahrt");
 		assertThat(result.uncertain()).isFalse();
+		// für die Kurve in der App: dort, wo sie wirklich gefahren wurden (25., 40., 55. Minute)
+		assertThat(result.blocks()).extracting(IntervalAccuracy.Block::startSecond)
+				.satisfiesExactly(start -> assertThat(start).isBetween(25 * 60 - 30, 25 * 60 + 30),
+						start -> assertThat(start).isBetween(40 * 60 - 30, 40 * 60 + 30),
+						start -> assertThat(start).isBetween(55 * 60 - 30, 55 * 60 + 30));
+		assertThat(result.trace()).hasSize(90 * 6);
+		assertThat(result.trace().get(21 * 6)).as("an der Ampel gestanden").isNull();
 	}
 
 	@Test
