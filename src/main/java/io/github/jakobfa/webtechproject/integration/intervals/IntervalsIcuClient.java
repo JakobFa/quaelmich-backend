@@ -67,6 +67,17 @@ public class IntervalsIcuClient {
 				.toBodilessEntity();
 	}
 
+	/** Trägt die FTP in den Rad-Einstellungen ein – intervals.icu und der Radcomputer rechnen damit die Watt aus */
+	public void updateFtp(IntervalsCredentials credentials, int ftp) {
+		restClient.put()
+				.uri("/api/v1/athlete/{athleteId}/sport-settings/Ride", credentials.athleteId())
+				.header(HttpHeaders.AUTHORIZATION, basicAuth(credentials))
+				.contentType(MediaType.APPLICATION_JSON)
+				.body(java.util.Map.of("ftp", ftp))
+				.retrieve()
+				.toBodilessEntity();
+	}
+
 	/** Löscht Workouts aus dem Kalender anhand ihrer external_id (unbekannte IDs werden ignoriert) */
 	public void deleteEvents(IntervalsCredentials credentials, List<String> externalIds) {
 		restClient.put()

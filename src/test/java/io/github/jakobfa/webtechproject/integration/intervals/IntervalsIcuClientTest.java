@@ -125,4 +125,17 @@ class IntervalsIcuClientTest {
 				.isInstanceOf(RestClientException.class);
 	}
 
+	@Test
+	void updatesTheFtpInTheRideSettings() {
+		server.expect(requestTo("https://intervals.icu/api/v1/athlete/i42/sport-settings/Ride"))
+				.andExpect(method(HttpMethod.PUT))
+				.andExpect(header("Authorization", AUTH_HEADER))
+				.andExpect(content().json("{ \"ftp\": 265 }"))
+				.andRespond(withSuccess());
+
+		client.updateFtp(CREDENTIALS, 265);
+
+		server.verify();
+	}
+
 }

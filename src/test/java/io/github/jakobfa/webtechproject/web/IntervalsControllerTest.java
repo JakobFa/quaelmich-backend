@@ -4,9 +4,11 @@ import static io.github.jakobfa.webtechproject.web.TestUsers.registerNewUser;
 import static io.github.jakobfa.webtechproject.web.TestUsers.registerWithProfile;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.clearInvocations;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -17,6 +19,8 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import java.time.LocalDate;
+
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -25,6 +29,7 @@ import org.springframework.http.MediaType;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.ResultActions;
+import org.springframework.web.client.RestClientException;
 
 import io.github.jakobfa.webtechproject.integration.intervals.IntervalsConnectionRepository;
 import io.github.jakobfa.webtechproject.integration.intervals.IntervalsCredentials;
@@ -201,6 +206,36 @@ class IntervalsControllerTest {
 	void needsLogin() throws Exception {
 		mockMvc.perform(get("/me/intervals")).andExpect(status().isUnauthorized());
 		mockMvc.perform(post("/me/intervals/sync")).andExpect(status().isUnauthorized());
+	}
+
+	@Test
+	void newFtpIsAlsoSetInIntervals() throws Exception {
+		String token = TestUsers.registerWithProfile(mockMvc); // FTP 240
+		when(client.verify(any())).thenReturn(true);
+		connect(token, "schluessel-von-lina");
+
+		mockMvc.perform(put("/me/athlete").header("Authorization", token).contentType(MediaType.APPLICATION_JSON)
+				.content(TestUsers.athleteJson(240, "Testevent", LocalDate.now().plusWeeks(10))))
+				.andExpect(status().isOk());
+		verify(client, never()).updateFtp(any(), anyInt());
+
+		mockMvc.perform(put("/me/athlete").header("Authorization", token).contentType(MediaType.APPLICATION_JSON)
+				.content(TestUsers.athleteJson(265, "Testevent", LocalDate.now().plusWeeks(10))))
+				.andExpect(status().isOk());
+		verify(client).updateFtp(new IntervalsCredentials("schluessel-von-lina", "i42"), 265);
+	}
+
+	@Test
+	void savingWorksEvenIfIntervalsRejectsTheFtp() throws Exception {
+		String token = TestUsers.registerWithProfile(mockMvc);
+		when(client.verify(any())).thenReturn(true);
+		connect(token, "schluessel-von-lina");
+		doThrow(new RestClientException("kaputt")).when(client).updateFtp(any(), anyInt());
+
+		mockMvc.perform(put("/me/athlete").header("Authorization", token).contentType(MediaType.APPLICATION_JSON)
+				.content(TestUsers.athleteJson(270, "Testevent", LocalDate.now().plusWeeks(10))))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.ftp").value(270));
 	}
 
 }
