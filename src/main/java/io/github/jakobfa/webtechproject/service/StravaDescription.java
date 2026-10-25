@@ -30,8 +30,8 @@ public final class StravaDescription {
 			Map.entry(WorkoutType.ANAEROBIC, "Anaerob"), Map.entry(WorkoutType.SPRINT, "Sprint"),
 			Map.entry(WorkoutType.FTP_TEST, "FTP-Test"), Map.entry(WorkoutType.STRENGTH, "Kraft"));
 
-	private static final Map<Phase, String> PHASE_LABELS = Map.of(Phase.BASE, "Grundlage", Phase.BUILD, "Aufbau",
-			Phase.PEAK, "Spitze", Phase.TAPER, "Tapering", Phase.RECOVERY, "Erholung");
+	private static final Map<Phase, String> PHASE_LABELS = Map.of(Phase.BASE, "Grundlagenphase", Phase.BUILD,
+			"Aufbauphase", Phase.PEAK, "Spitzenphase", Phase.TAPER, "Tapering", Phase.RECOVERY, "Erholungswoche");
 
 	private static final Map<Assessment, String> ASSESSMENT_LABELS = Map.of(Assessment.EASIER, "leichter als geplant",
 			Assessment.AS_PLANNED, "wie geplant", Assessment.HARDER, "härter als geplant", Assessment.MUCH_HARDER,
@@ -59,7 +59,7 @@ public final class StravaDescription {
 		lines.add(START);
 		String type = TYPE_LABELS.get(workout.getType());
 		lines.add(workout.getTitle().contains(type) ? workout.getTitle() : workout.getTitle() + " (" + type + ")");
-		lines.add(PHASE_LABELS.get(content.phase()) + "-Phase · Woche " + content.week());
+		lines.add(PHASE_LABELS.get(content.phase()) + " · Woche " + content.week());
 		lines.add("Ablauf" + (content.heartRateMode() ? "" : " (% FTP)") + ": "
 				+ sequence(workout.getSteps(), content.heartRateMode()));
 
