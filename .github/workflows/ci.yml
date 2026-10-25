@@ -13,7 +13,7 @@ jobs:
 
     steps:
       - name: Code auschecken
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Java 25 einrichten
         uses: actions/setup-java@v4
