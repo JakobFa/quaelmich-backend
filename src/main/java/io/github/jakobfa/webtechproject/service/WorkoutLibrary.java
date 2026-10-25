@@ -165,20 +165,24 @@ public class WorkoutLibrary {
 	public static final long STRENGTH_MAINTENANCE = 42L;
 
 	/**
-	 * Krafteinheiten. Nicht in {@link #findAll()} – man kann sie nicht statt einer Radeinheit wählen.
+	 * Krafteinheiten für zu Hause ohne Geräte, gemischt mit Mobility (vorher lockern, nachher dehnen).
+	 * Nicht in {@link #findAll()} – man kann sie nicht statt einer Radeinheit wählen.
 	 * Die Last ist grob geschätzt (ein gleichmäßiger Abschnitt bei 55 %), damit sie in Wochen-TSS und
 	 * Belastungs-Check mitzählt.
 	 */
 	private final List<Workout> strengthWorkouts = List.of(
-			new Workout(STRENGTH_BASE_A, "Kraft A: Grundkraft", WorkoutType.STRENGTH,
-					"Kniebeuge, Kreuzheben, Hüftheben, Unterarmstütz – die Basis für Druck aufs Pedal.",
-					List.of(WorkoutStep.steady(STEADY, min(40), 55))),
-			new Workout(STRENGTH_BASE_B, "Kraft B: Einbeinig und Rumpf", WorkoutType.STRENGTH,
-					"Bulgarian Split Squat, Ausfallschritt, Dead Bug, Seitstütz – Stabilität für jedes Bein.",
-					List.of(WorkoutStep.steady(STEADY, min(40), 55))),
-			new Workout(STRENGTH_MAINTENANCE, "Kraft: Erhalten", WorkoutType.STRENGTH,
-					"Weniger Sätze, etwas schwerer – hält die Kraft, ohne die Beine fürs Rad zu ermüden.",
-					List.of(WorkoutStep.steady(STEADY, min(30), 55))));
+			new Workout(STRENGTH_BASE_A, "Kraft & Mobility A: Grundkraft", WorkoutType.STRENGTH,
+					"Zu Hause, ohne Geräte: Katze-Kuh, dann Kniebeuge, einbeiniges Kreuzheben, Hüftheben, "
+							+ "Unterarmstütz – zum Schluss die Hüftbeuger dehnen.",
+					List.of(WorkoutStep.steady(STEADY, min(30), 55))),
+			new Workout(STRENGTH_BASE_B, "Kraft & Mobility B: Beine einzeln und Rumpf", WorkoutType.STRENGTH,
+					"Zu Hause, ohne Geräte: Kindhaltung, dann Ausfallschritt, Wadenheben, Dead Bug, Seitstütz – "
+							+ "zum Schluss die Beinrückseite dehnen.",
+					List.of(WorkoutStep.steady(STEADY, min(30), 55))),
+			new Workout(STRENGTH_MAINTENANCE, "Kraft & Mobility: Erhalten", WorkoutType.STRENGTH,
+					"Kurz und ohne Geräte: weniger Sätze, dafür langsam – hält die Kraft, ohne die Beine fürs Rad "
+							+ "zu ermüden.",
+					List.of(WorkoutStep.steady(STEADY, min(20), 55))));
 
 	/** IDs ab hier sind selbst gebaute Workouts (siehe CustomWorkout) – nie Teil der öffentlichen Bibliothek */
 	public static final long CUSTOM_ID_OFFSET = 1_000_000L;
