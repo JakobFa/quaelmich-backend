@@ -109,6 +109,10 @@ public class WorkoutCustomizationService {
 			Workout chosen = (customWorkouts.isOwnedBy(workoutId, userId)
 					? library.resolve(workoutId, null)
 					: library.findById(workoutId)).orElseThrow(NotPossibleException::new);
+			// Kraft und Rad lassen sich nicht gegeneinander tauschen
+			if (WorkoutLibrary.isStrength(chosen) || WorkoutLibrary.isStrength(workoutOf(planned))) {
+				throw new NotPossibleException();
+			}
 			Integer minutes = null;
 			if (isVariable(workoutId)) {
 				minutes = durationMinutes != null ? durationMinutes : chosen.getDurationInMinutes();
@@ -180,8 +184,8 @@ public class WorkoutCustomizationService {
 		}
 		int minutes = current.getDurationInMinutes();
 		boolean variable = isVariable(id);
-		if (current.getType() == WorkoutType.FTP_TEST) {
-			return Optional.empty(); // ein Test bleibt ein Test
+		if (current.getType() == WorkoutType.FTP_TEST || WorkoutLibrary.isStrength(current)) {
+			return Optional.empty(); // ein Test bleibt ein Test, Kraft bleibt Kraft
 		}
 		if (variable) {
 			return variableChoice(id, minutes, direction);

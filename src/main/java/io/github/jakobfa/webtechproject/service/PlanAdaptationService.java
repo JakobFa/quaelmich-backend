@@ -97,6 +97,7 @@ public class PlanAdaptationService {
 				.filter(next -> next.getDate().isAfter(rideDate) && !next.getDate().isAfter(until))
 				.filter(next -> !next.isCompleted() && next.getAdjustmentNote() == null)
 				.filter(next -> !EASY_TYPES.contains(workoutOf(next).getType()))
+				.filter(next -> !WorkoutLibrary.isStrength(workoutOf(next))) // nur Radeinheiten werden leichter
 				.min(Comparator.comparing(PlannedWorkout::getDate))
 				.map(next -> {
 					replace(next, assessment, note);

@@ -28,7 +28,7 @@ public final class StravaDescription {
 			Map.entry(WorkoutType.SWEET_SPOT, "Sweet Spot"), Map.entry(WorkoutType.THRESHOLD, "Schwelle"),
 			Map.entry(WorkoutType.OVER_UNDER, "Over-Unders"), Map.entry(WorkoutType.VO2MAX, "VO2max"),
 			Map.entry(WorkoutType.ANAEROBIC, "Anaerob"), Map.entry(WorkoutType.SPRINT, "Sprint"),
-			Map.entry(WorkoutType.FTP_TEST, "FTP-Test"));
+			Map.entry(WorkoutType.FTP_TEST, "FTP-Test"), Map.entry(WorkoutType.STRENGTH, "Kraft"));
 
 	private static final Map<Phase, String> PHASE_LABELS = Map.of(Phase.BASE, "Grundlage", Phase.BUILD, "Aufbau",
 			Phase.PEAK, "Spitze", Phase.TAPER, "Tapering", Phase.RECOVERY, "Erholung");

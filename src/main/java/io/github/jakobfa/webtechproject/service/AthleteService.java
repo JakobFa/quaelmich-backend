@@ -75,6 +75,7 @@ public class AthleteService {
 		existing.setWeightKg(changes.getWeightKg());
 		existing.setLevel(changes.getLevel());
 		existing.setAvailability(changes.getAvailability());
+		existing.setStrengthTraining(changes.isStrengthTraining());
 
 		var event = existing.getEvent();
 		event.setName(changes.getEvent().getName());

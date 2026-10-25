@@ -12,10 +12,14 @@ class WorkoutLibraryTest {
 	private final WorkoutLibrary library = new WorkoutLibrary();
 
 	@Test
-	void containsEveryWorkoutType() {
+	void containsEveryRideTypeAndStrengthOnlyById() {
 		assertThat(library.findAll())
 				.extracting(Workout::getType)
-				.contains(WorkoutType.values());
+				.contains(java.util.Arrays.stream(WorkoutType.values()).filter(type -> type != WorkoutType.STRENGTH)
+						.toArray(WorkoutType[]::new))
+				.doesNotContain(WorkoutType.STRENGTH); // Kraft kann man nicht statt einer Radeinheit wählen
+		assertThat(library.findById(WorkoutLibrary.STRENGTH_BASE_A)).get().extracting(Workout::getType)
+				.isEqualTo(WorkoutType.STRENGTH);
 	}
 
 	@Test

@@ -156,6 +156,9 @@ public class ActivityImportService {
 				continue;
 			}
 			Workout workout = library.resolve(planned.getWorkoutId(), planned.getDurationMinutes()).orElseThrow();
+			if (WorkoutLibrary.isStrength(workout)) {
+				continue; // Kraft hakt man selbst ab – eine Radfahrt ist nie das Krafttraining
+			}
 			List<RecordedActivity> candidates = ridesPerDay.getOrDefault(planned.getDate(), List.of()).stream()
 					.filter(candidate -> !candidate.id().equals(planned.getRejectedActivityId()))
 					.toList();

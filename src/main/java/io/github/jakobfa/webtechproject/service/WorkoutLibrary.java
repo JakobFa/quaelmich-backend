@@ -159,6 +159,27 @@ public class WorkoutLibrary {
 					steps(ramp(WARMUP, min(15), 50, 75), steady(INTERVAL, min(5), 110), steady(RECOVERY, min(10), 50),
 							steady(INTERVAL, min(20), 100), ramp(COOLDOWN, min(15), 60, 45))));
 
+	/** Feste Workout-IDs der Krafteinheiten (die Übungen dazu kennt die App) */
+	public static final long STRENGTH_BASE_A = 40L;
+	public static final long STRENGTH_BASE_B = 41L;
+	public static final long STRENGTH_MAINTENANCE = 42L;
+
+	/**
+	 * Krafteinheiten. Nicht in {@link #findAll()} – man kann sie nicht statt einer Radeinheit wählen.
+	 * Die Last ist grob geschätzt (ein gleichmäßiger Abschnitt bei 55 %), damit sie in Wochen-TSS und
+	 * Belastungs-Check mitzählt.
+	 */
+	private final List<Workout> strengthWorkouts = List.of(
+			new Workout(STRENGTH_BASE_A, "Kraft A: Grundkraft", WorkoutType.STRENGTH,
+					"Kniebeuge, Kreuzheben, Hüftheben, Unterarmstütz – die Basis für Druck aufs Pedal.",
+					List.of(WorkoutStep.steady(STEADY, min(40), 55))),
+			new Workout(STRENGTH_BASE_B, "Kraft B: Einbeinig und Rumpf", WorkoutType.STRENGTH,
+					"Bulgarian Split Squat, Ausfallschritt, Dead Bug, Seitstütz – Stabilität für jedes Bein.",
+					List.of(WorkoutStep.steady(STEADY, min(40), 55))),
+			new Workout(STRENGTH_MAINTENANCE, "Kraft: Erhalten", WorkoutType.STRENGTH,
+					"Weniger Sätze, etwas schwerer – hält die Kraft, ohne die Beine fürs Rad zu ermüden.",
+					List.of(WorkoutStep.steady(STEADY, min(30), 55))));
+
 	/** IDs ab hier sind selbst gebaute Workouts (siehe CustomWorkout) – nie Teil der öffentlichen Bibliothek */
 	public static final long CUSTOM_ID_OFFSET = 1_000_000L;
 
@@ -174,7 +195,17 @@ public class WorkoutLibrary {
 	}
 
 	public Optional<Workout> findById(Long id) {
-		return workouts.stream().filter(workout -> workout.getId().equals(id)).findFirst();
+		return java.util.stream.Stream.concat(workouts.stream(), strengthWorkouts.stream())
+				.filter(workout -> workout.getId().equals(id)).findFirst();
+	}
+
+	public static boolean isStrength(Workout workout) {
+		return workout.getType() == WorkoutType.STRENGTH;
+	}
+
+	/** Ohne Nachschlagen: ist das eine der Krafteinheiten? */
+	public static boolean isStrengthId(Long workoutId) {
+		return workoutId != null && workoutId >= STRENGTH_BASE_A && workoutId <= STRENGTH_MAINTENANCE;
 	}
 
 	/** Alle Varianten einer Trainingsart, von leicht nach schwer */

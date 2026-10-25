@@ -197,4 +197,8 @@ public class Athlete {
 	@Embedded
 	private WeeklyAvailability availability;
 
+	/** Krafttraining mit einplanen (Haken im Profil) */
+	@ColumnDefault("false")
+	private boolean strengthTraining;
+
 }

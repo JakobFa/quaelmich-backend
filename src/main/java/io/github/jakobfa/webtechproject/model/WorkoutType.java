@@ -15,6 +15,8 @@ public enum WorkoutType {
 	VO2MAX,
 	ANAEROBIC,
 	SPRINT,
-	FTP_TEST
+	FTP_TEST,
+	/** Krafttraining – keine Radeinheit: keine .fit-Datei, kein Abhaken durch Fahrten */
+	STRENGTH
 
 }

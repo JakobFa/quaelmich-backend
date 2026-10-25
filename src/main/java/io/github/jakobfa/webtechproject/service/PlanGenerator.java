@@ -8,9 +8,13 @@ import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.EnumMap;
+import java.util.EnumSet;
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.function.Predicate;
 
 import org.springframework.stereotype.Component;
 
@@ -86,6 +90,17 @@ public class PlanGenerator {
 	 */
 	public List<PlannedWorkout> generateSeason(Athlete athlete, LocalDate startDate,
 			Map<LocalDate, WeeklyAvailability> weekAvailability, List<Event> moreEvents) {
+		List<PlannedWorkout> rides = ridesOfSeason(athlete, startDate, weekAvailability, moreEvents);
+		if (!athlete.isStrengthTraining()) {
+			return rides;
+		}
+		List<LocalDate> eventDates = new ArrayList<>(moreEvents.stream().map(Event::getDate).toList());
+		eventDates.add(athlete.getEvent().getDate());
+		return withStrength(rides, athlete, startDate, weekAvailability, eventDates);
+	}
+
+	private List<PlannedWorkout> ridesOfSeason(Athlete athlete, LocalDate startDate,
+			Map<LocalDate, WeeklyAvailability> weekAvailability, List<Event> moreEvents) {
 		if (moreEvents.isEmpty()) {
 			return generate(athlete, startDate, weekAvailability);
 		}
@@ -109,6 +124,85 @@ public class PlanGenerator {
 			afterEvent = true;
 		}
 		return season;
+	}
+
+	// ---------- Krafttraining ----------
+
+	/** Radeinheiten, nach denen die Beine am nächsten Tag (oder am selben) keine Kraft-Einheit vertragen */
+	static final Set<WorkoutType> DEMANDING = EnumSet.of(WorkoutType.TEMPO, WorkoutType.SWEET_SPOT,
+			WorkoutType.THRESHOLD, WorkoutType.OVER_UNDER, WorkoutType.VO2MAX, WorkoutType.ANAEROBIC,
+			WorkoutType.SPRINT, WorkoutType.FTP_TEST, WorkoutType.LONG_RIDE);
+
+	/** So viele Tage nach einem Event noch keine Kraft – erst erholen */
+	static final int NO_STRENGTH_DAYS_AFTER_EVENT = 3;
+
+	/** Kraft-Einheiten je Phase: Grundlage 2 (A und B), Aufbau, Spitze und Erholungswoche 1 zum Erhalten, Tapering 0 */
+	static List<Long> strengthSessionsFor(Phase phase) {
+		return switch (phase) {
+			case BASE -> List.of(WorkoutLibrary.STRENGTH_BASE_A, WorkoutLibrary.STRENGTH_BASE_B);
+			case BUILD, PEAK, RECOVERY -> List.of(WorkoutLibrary.STRENGTH_MAINTENANCE);
+			case TAPER -> List.of();
+		};
+	}
+
+	/**
+	 * Ergänzt den Radplan um Kraft-Einheiten. Regeln: nur an Tagen mit verfügbarer Zeit; nie am selben Tag wie
+	 * eine fordernde Radeinheit und nie am Tag davor (die Beine sollen frisch sein); nie zwei Tage hintereinander;
+	 * nicht am Tag vor, am Tag des oder kurz nach einem Event. Am liebsten an Tagen ohne Radeinheit, sonst an
+	 * Tagen mit lockerer Fahrt. Passt kein Tag, fällt die Einheit in dieser Woche aus.
+	 */
+	List<PlannedWorkout> withStrength(List<PlannedWorkout> rides, Athlete athlete, LocalDate startDate,
+			Map<LocalDate, WeeklyAvailability> weekAvailability, List<LocalDate> eventDates) {
+		if (rides.isEmpty()) {
+			return rides;
+		}
+		Map<LocalDate, List<WorkoutType>> typesPerDay = new HashMap<>();
+		for (PlannedWorkout planned : rides) {
+			typesPerDay.computeIfAbsent(planned.getDate(), day -> new ArrayList<>()).add(
+					library.resolve(planned.getWorkoutId(), planned.getDurationMinutes()).orElseThrow().getType());
+		}
+		Predicate<LocalDate> demanding = day -> typesPerDay.getOrDefault(day, List.of())
+				.stream().anyMatch(DEMANDING::contains);
+		LocalDate lastEvent = eventDates.stream().max(Comparator.naturalOrder()).orElseThrow();
+		Predicate<LocalDate> nearEvent = day -> eventDates.stream()
+				.anyMatch(event -> !day.isBefore(event.minusDays(1))
+						&& !day.isAfter(event.plusDays(NO_STRENGTH_DAYS_AFTER_EVENT)));
+
+		List<PlannedWorkout> result = new ArrayList<>(rides);
+		Set<LocalDate> strengthDays = new HashSet<>();
+		LocalDate monday = startDate.with(previousOrSame(DayOfWeek.MONDAY));
+		LocalDate lastDay = rides.stream().map(PlannedWorkout::getDate).max(Comparator.naturalOrder()).orElseThrow();
+		for (; !monday.isAfter(lastDay); monday = monday.plusWeeks(1)) {
+			LocalDate weekStart = monday;
+			Phase phase = rides.stream().filter(planned -> !planned.getDate().isBefore(weekStart)
+					&& planned.getDate().isBefore(weekStart.plusWeeks(1))).map(PlannedWorkout::getPhase)
+					.findFirst().orElse(null);
+			if (phase == null) {
+				continue;
+			}
+			WeeklyAvailability availability = weekAvailability.getOrDefault(weekStart, athlete.getAvailability());
+			List<LocalDate> candidates = weekStart.datesUntil(weekStart.plusWeeks(1))
+					.filter(day -> !day.isBefore(startDate) && day.isBefore(lastEvent))
+					.filter(day -> availableMinutes(availability, day) > 0)
+					.filter(day -> !demanding.test(day) && !demanding.test(day.plusDays(1)))
+					.filter(nearEvent.negate())
+					// lieber an freien Tagen als zusätzlich zu einer lockeren Fahrt
+					.sorted(Comparator.comparing((LocalDate day) -> typesPerDay.containsKey(day))
+							.thenComparing(Comparator.naturalOrder()))
+					.toList();
+			for (Long sessionId : strengthSessionsFor(phase)) {
+				candidates.stream()
+						.filter(day -> !strengthDays.contains(day) && !strengthDays.contains(day.minusDays(1))
+								&& !strengthDays.contains(day.plusDays(1)))
+						.findFirst()
+						.ifPresent(day -> {
+							strengthDays.add(day);
+							result.add(new PlannedWorkout(day, library.findById(sessionId).orElseThrow(), null, phase));
+						});
+			}
+		}
+		result.sort(Comparator.comparing(PlannedWorkout::getDate));
+		return result;
 	}
 
 	/** Gleicher Fahrer, anderes Ziel-Event (nur was der Generator braucht) */

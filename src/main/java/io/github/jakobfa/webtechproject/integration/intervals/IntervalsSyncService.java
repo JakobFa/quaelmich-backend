@@ -47,8 +47,11 @@ public class IntervalsSyncService {
 		LocalDate to = from.plusDays(days - 1L);
 
 		return planService.findByAthlete(athleteId).map(plan -> {
+			// nur Radeinheiten: intervals.icu bekommt eine .fit-Datei, und es gibt ein Workout pro Tag
 			List<PlannedWorkout> upcoming = plan.getWorkouts().stream()
 					.filter(planned -> !planned.getDate().isBefore(from) && !planned.getDate().isAfter(to))
+					.filter(planned -> !WorkoutLibrary.isStrength(
+							library.resolve(planned.getWorkoutId(), planned.getDurationMinutes()).orElseThrow()))
 					.toList();
 			List<IntervalsEvent> events = upcoming.stream()
 					.filter(planned -> planned.getSkipReason() == null)

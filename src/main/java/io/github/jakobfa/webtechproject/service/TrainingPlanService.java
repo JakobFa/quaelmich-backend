@@ -93,12 +93,13 @@ public class TrainingPlanService {
 	/** Offene Workouts im Zeitraum neu verteilen; Erledigtes und Rückmeldungen ("nicht gemacht") bleiben */
 	private void replan(TrainingPlan plan, LocalDate from, LocalDate to) {
 		plan.getWorkouts().removeIf(planned -> inRange(planned.getDate(), from, to) && !isKept(planned));
-		Set<LocalDate> keptDays = plan.getWorkouts().stream().map(PlannedWorkout::getDate)
+		// Rad und Kraft getrennt: ein abgehaktes Krafttraining soll die Radeinheit am selben Tag nicht verdrängen
+		Set<String> keptDays = plan.getWorkouts().stream().map(TrainingPlanService::slotOf)
 				.collect(Collectors.toSet());
 		planGenerator.generateSeason(plan.getAthlete(), plan.getStartDate(), plan.getWeekAvailability(),
 				moreEventsOf(plan.getAthlete().getId())).stream()
 				.filter(planned -> inRange(planned.getDate(), from, to))
-				.filter(planned -> !keptDays.contains(planned.getDate()))
+				.filter(planned -> !keptDays.contains(slotOf(planned)))
 				.forEach(plan::addWorkout);
 		plan.sortByDate();
 	}
@@ -106,6 +107,10 @@ public class TrainingPlanService {
 	/** weitere Events (zusätzlich zum ersten im Profil), als Event für den Generator */
 	private List<Event> moreEventsOf(Long athleteId) {
 		return raceEvents.findByAthleteIdOrderByDate(athleteId).stream().map(RaceEvent::toEvent).toList();
+	}
+
+	private static String slotOf(PlannedWorkout planned) {
+		return planned.getDate() + (WorkoutLibrary.isStrengthId(planned.getWorkoutId()) ? "/kraft" : "/rad");
 	}
 
 	private static boolean inRange(LocalDate date, LocalDate from, LocalDate to) {
