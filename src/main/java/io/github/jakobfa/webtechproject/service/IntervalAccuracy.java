@@ -31,23 +31,46 @@ public final class IntervalAccuracy {
 		ON_TARGET, SLIGHTLY_HARD, HARD, SLIGHTLY_EASY, EASY
 	}
 
-	/** Ein ausgewertetes Intervall: Ziel (targetHigh null = Vollgas, nach oben offen), gefahren, Urteil, Punkte */
-	public record Block(int number, int durationSeconds, int targetLow, Integer targetHigh, int actual,
-			Verdict verdict, int score) {
+	/**
+	 * Ein ausgewertetes Intervall: Ziel (targetHigh null = Vollgas, nach oben offen), gefahren, Urteil, Punkte.
+	 * startSecond = wo es in der Fahrt gefunden wurde (Sekunden seit Start, Stillstand mitgezählt).
+	 */
+	public record Block(int number, int startSecond, int durationSeconds, int targetLow, Integer targetHigh,
+			int actual, Verdict verdict, int score) {
 	}
 
-	/** score = Akkuratheit in % (nach Dauer gewichtet); uncertain = Intervalle in der Fahrt nicht klar erkennbar */
-	public record Result(Basis basis, int score, int onTarget, List<Block> blocks, boolean uncertain, String tip) {
+	/** So viele Sekunden fasst ein Punkt der Kurve zusammen */
+	public static final int TRACE_SECONDS = 10;
+
+	/**
+	 * score = Akkuratheit in % (nach Dauer gewichtet); uncertain = Intervalle in der Fahrt nicht klar erkennbar.
+	 * trace = Watt bzw. Puls der ganzen Fahrt, ein Wert je {@link #TRACE_SECONDS} Sekunden (null = Stillstand) –
+	 * damit die App die Kurve über die gefundenen Intervalle legen kann.
+	 */
+	public record Result(Basis basis, int score, int onTarget, List<Block> blocks, boolean uncertain, String tip,
+			List<Integer> trace) {
+
+		public Result(Basis basis, int score, int onTarget, List<Block> blocks, boolean uncertain, String tip) {
+			this(basis, score, onTarget, blocks, uncertain, tip, List.of());
+		}
 	}
 
 	static final double ON_TARGET = 0.05;
 	static final double SLIGHTLY = 0.10;
 	/** ab hier "Vollgas": schneller ist nie falsch */
 	static final int ALL_OUT_PERCENT = 120;
-	/** so weit um die gefundene Stelle herum wird der erste Block noch fein ausgerichtet */
-	static final int FIRST_BLOCK_SLACK_SECONDS = 3 * 60;
-	/** spätere Blöcke: höchstens doppelte Pause plus 2 Minuten – sonst würde ein Block den nächsten "finden" */
-	static final int LATER_BLOCK_SLACK_SECONDS = 2 * 60;
+	/** so viel länger als geplant darf eine Pause draußen sein (Ampel, länger ausrollen) … */
+	static final int MAX_LONGER_REST_SECONDS = 3 * 60;
+	/** … und so viel kürzer */
+	static final int MAX_SHORTER_REST_SECONDS = 60;
+	/**
+	 * Leichte Vorliebe für die geplanten Pausenlängen: jede Minute Abweichung kostet so viel wie 3 W weniger
+	 * Abstand zur Pause. Ampeln und längeres Ausrollen bleiben möglich – bei Gleichstand gewinnt aber der Plan
+	 * (sonst könnte z. B. ein Anstieg auf der Anfahrt den ersten Tempo-Block "spielen").
+	 */
+	static final double WATTS_PER_MINUTE_OFF_PLAN = 3;
+	/** Schnitt so vieler Sekunden vor dem ersten Block als Vergleich ("hebt sich ab?") */
+	static final int LEAD_IN_SECONDS = 2 * 60;
 
 	private IntervalAccuracy() {
 	}
@@ -113,7 +136,7 @@ public final class IntervalAccuracy {
 			if (allOut) {
 				deviation = Math.min(0, deviation);
 			}
-			blocks.add(new Block(i + 1, block.duration(), (int) Math.round(target * (1 - ON_TARGET)),
+			blocks.add(new Block(i + 1, window.start(), block.duration(), (int) Math.round(target * (1 - ON_TARGET)),
 					allOut ? null : (int) Math.round(target * (1 + ON_TARGET)), window.average(),
 					verdict(deviation), score(deviation)));
 			// ein hartes Intervall, das sich kaum von der Zeit davor abhebt, ist wohl nicht wirklich gefunden
@@ -121,7 +144,7 @@ public final class IntervalAccuracy {
 				uncertain = true;
 			}
 		}
-		return Optional.of(result(Basis.POWER, blocks, uncertain));
+		return Optional.of(result(Basis.POWER, blocks, uncertain, stream.watts()));
 	}
 
 	/** Nach Puls: nur Blöcke ab 2 Minuten, bewertet im letzten Drittel */
@@ -148,13 +171,13 @@ public final class IntervalAccuracy {
 			int actual = average(stream.heartRate(), window.start() + block.duration() - lastThird, lastThird);
 			double deviation = actual > range.high() ? (double) actual / range.high() - 1
 					: actual < range.low() ? (double) actual / range.low() - 1 : 0;
-			blocks.add(new Block(i + 1, block.duration(), range.low(), range.high(), actual, verdict(deviation),
-					score(deviation)));
+			blocks.add(new Block(i + 1, window.start(), block.duration(), range.low(), range.high(), actual,
+					verdict(deviation), score(deviation)));
 		}
 		if (blocks.isEmpty()) {
 			return Optional.empty();
 		}
-		return Optional.of(result(Basis.HEART_RATE, blocks, false));
+		return Optional.of(result(Basis.HEART_RATE, blocks, false, stream.heartRate()));
 	}
 
 	// ---------- Blöcke in der Fahrt finden ----------
@@ -198,89 +221,128 @@ public final class IntervalAccuracy {
 	/**
 	 * Findet die Blöcke in der Fahrt; null, wenn die Fahrt zu kurz für alle Blöcke ist.
 	 *
-	 * Erst wird das ganze Muster (Blöcke mit den geplanten Pausen) über die komplette Fahrt geschoben – so
-	 * stören An- und Abfahrt nicht, egal wie lang sie sind. Gewählt wird die Stelle, an der sich die Blöcke am
-	 * deutlichsten von den Pausen abheben; ein langer, gleichmäßig harter Anstieg auf der Anfahrt passt dadurch
-	 * schlechter als die echten Intervalle. Danach wird jeder Block einzeln fein ausgerichtet (längere Pausen,
-	 * Ampeln …).
+	 * Gesucht wird die Anordnung aller Blöcke, bei der sich jeder Block am deutlichsten von der Zeit davor abhebt
+	 * (sonst die Pause dazwischen; vor dem ersten und nach dem letzten Block ein Stück so lang wie Pause plus
+	 * Block). Der erste Block darf überall in der
+	 * Fahrt liegen – An- und Abfahrt stören also nicht. Jede Pause darf draußen kürzer oder länger sein als
+	 * geplant (Ampel, länger ausrollen), aber nie so lang, dass ein Block übersprungen wird. Die beste
+	 * Gesamt-Anordnung wird mit dynamischer Programmierung bestimmt; gewichtet wird nach Blockdauer, damit
+	 * lange Blöcke mehr zählen als kurze.
 	 */
 	static List<Window> match(List<PlannedBlock> planned, Integer[] values) {
 		Sums sums = Sums.of(values);
-		Integer anchor = anchor(planned, sums, values.length);
-		if (anchor == null) {
+		int length = values.length;
+		int blocks = planned.size();
+		int[] duration = new int[blocks];
+		int[] gap = new int[blocks]; // geplante Pause vor Block i (0 für den ersten)
+		int minimumLength = 0;
+		for (int i = 0; i < blocks; i++) {
+			duration[i] = planned.get(i).duration();
+			gap[i] = i == 0 ? 0
+					: Math.max(0, planned.get(i).plannedStart() - planned.get(i - 1).plannedStart() - duration[i - 1]);
+			minimumLength += duration[i] + Math.max(0, gap[i] - Math.min(gap[i] / 2, MAX_SHORTER_REST_SECONDS));
+		}
+		if (minimumLength > length) {
 			return null;
 		}
-		List<Window> windows = new ArrayList<>();
-		int pointer = Math.max(0, anchor - FIRST_BLOCK_SLACK_SECONDS);
-		int plannedEnd = planned.getFirst().plannedStart();
-		for (PlannedBlock block : planned) {
-			int gap = Math.max(0, block.plannedStart() - plannedEnd);
-			int latestStart = windows.isEmpty()
-					? Math.min(values.length - block.duration(), anchor + FIRST_BLOCK_SLACK_SECONDS)
-					: Math.min(values.length - block.duration(), pointer + 2 * gap + LATER_BLOCK_SLACK_SECONDS);
-			if (latestStart < pointer) {
-				return null;
+		double rideMean = sums.mean(0, length);
+		// vor dem ersten und nach dem letzten Block eine Pause plus einen Block weit vergleichen: Liegt dort noch
+		// ein Block, ist das ganze Muster verrutscht (z. B. ein Anstieg auf der Anfahrt als "erster Block")
+		int context = Math.max(LEAD_IN_SECONDS, blocks > 1 ? gap[1] + duration[0] : 0);
+
+		double[][] best = new double[blocks][length];
+		int[][] previous = new int[blocks][length];
+		for (double[] row : best) {
+			java.util.Arrays.fill(row, Double.NEGATIVE_INFINITY);
+		}
+		for (int start = 0; start + duration[0] <= length; start++) {
+			Double block = movingMean(sums, start, start + duration[0]);
+			if (block != null) {
+				int leadIn = Math.max(0, start - context);
+				best[0][start] = duration[0] * (block - context(sums, leadIn, start, rideMean));
 			}
-			// Summe statt Schnitt: ein Fenster mit Stillstand drin ist eher nicht das Intervall
-			int best = pointer;
-			long bestSum = Long.MIN_VALUE;
-			for (int start = pointer; start <= latestStart; start++) {
-				long sum = sums.sum(start, start + block.duration());
-				if (sum > bestSum) {
-					bestSum = sum;
-					best = start;
+		}
+		for (int i = 1; i < blocks; i++) {
+			int shorter = Math.min(gap[i] / 2, MAX_SHORTER_REST_SECONDS);
+			// länger ja – aber nie um einen ganzen Block samt Pause, sonst könnte einer übersprungen werden
+			int longer = Math.min(MAX_LONGER_REST_SECONDS, Math.max(1, gap[i] + duration[i] - 1));
+			for (int prior = 0; prior < length; prior++) {
+				if (best[i - 1][prior] == Double.NEGATIVE_INFINITY) {
+					continue;
+				}
+				int priorEnd = prior + duration[i - 1];
+				int from = priorEnd + gap[i] - shorter;
+				int to = Math.min(length - duration[i], priorEnd + gap[i] + longer);
+				for (int start = Math.max(priorEnd, from); start <= to; start++) {
+					Double block = movingMean(sums, start, start + duration[i]);
+					if (block == null) {
+						continue;
+					}
+					double rest = start > priorEnd ? meanOr(sums, priorEnd, start, rideMean) : rideMean;
+					double offPlan = Math.abs(start - priorEnd - gap[i]) / 60.0 * WATTS_PER_MINUTE_OFF_PLAN;
+					double total = best[i - 1][prior] + duration[i] * (block - rest - offPlan);
+					if (total > best[i][start]) {
+						best[i][start] = total;
+						previous[i][start] = prior;
+					}
 				}
 			}
-			int beforeLength = Math.min(180, best);
-			windows.add(new Window(best, sums.mean(best, best + block.duration()),
-					beforeLength == 0 ? 0 : sums.mean(best - beforeLength, best)));
-			pointer = best + block.duration();
-			plannedEnd = block.plannedStart() + block.duration();
+		}
+
+		// nach dem letzten Block: hebt er sich auch von dem ab, was danach kommt?
+		int last = -1;
+		double lastTotal = Double.NEGATIVE_INFINITY;
+		int lastDuration = duration[blocks - 1];
+		for (int start = 0; start + lastDuration <= length; start++) {
+			if (best[blocks - 1][start] == Double.NEGATIVE_INFINITY) {
+				continue;
+			}
+			int end = start + lastDuration;
+			double block = sums.mean(start, end);
+			double after = context(sums, end, Math.min(length, end + context), rideMean);
+			double total = best[blocks - 1][start] + lastDuration * (block - after);
+			if (total > lastTotal) {
+				lastTotal = total;
+				last = start;
+			}
+		}
+		if (last < 0) {
+			return null;
+		}
+		int[] starts = new int[blocks];
+		starts[blocks - 1] = last;
+		for (int i = blocks - 1; i > 0; i--) {
+			starts[i - 1] = previous[i][starts[i]];
+		}
+		List<Window> windows = new ArrayList<>();
+		for (int i = 0; i < blocks; i++) {
+			int start = starts[i];
+			int beforeLength = Math.min(180, start);
+			windows.add(new Window(start, sums.mean(start, start + duration[i]),
+					beforeLength == 0 ? 0 : sums.mean(start - beforeLength, start)));
 		}
 		return windows;
 	}
 
-	/** Startsekunde des ersten Blocks an der am besten passenden Stelle; null, wenn das Muster nicht reinpasst */
-	private static Integer anchor(List<PlannedBlock> planned, Sums sums, int length) {
-		int first = planned.getFirst().plannedStart();
-		PlannedBlock last = planned.getLast();
-		int patternLength = last.plannedStart() + last.duration() - first;
-		if (patternLength > length) {
-			return null;
-		}
-		// Pausen, in denen nur gestanden wurde: zählen wie der Schnitt der ganzen Fahrt – weder gut noch schlecht
-		double rideMean = sums.mean(0, length);
-		Integer best = null;
-		double bestScore = Double.NEGATIVE_INFINITY;
-		for (int start = 0; start + patternLength <= length; start++) {
-			long blockSum = 0;
-			int blockSeconds = 0;
-			int blockMoving = 0;
-			long gapSum = 0;
-			int gapMoving = 0;
-			int previousEnd = -1;
-			for (PlannedBlock block : planned) {
-				int from = start + block.plannedStart() - first;
-				blockSum += sums.sum(from, from + block.duration());
-				blockMoving += sums.count(from, from + block.duration());
-				blockSeconds += block.duration();
-				if (previousEnd >= 0 && from > previousEnd) {
-					gapSum += sums.sum(previousEnd, from);
-					gapMoving += sums.count(previousEnd, from);
-				}
-				previousEnd = from + block.duration();
-			}
-			if (blockMoving < blockSeconds / 2) {
-				continue; // Intervalle, in denen man meist steht, gibt es nicht
-			}
-			double gapMean = gapMoving == 0 ? rideMean : (double) gapSum / gapMoving;
-			double score = (double) blockSum / blockMoving - gapMean;
-			if (score > bestScore) {
-				bestScore = score;
-				best = start;
-			}
-		}
-		return best;
+	/** Schnitt der gefahrenen Sekunden; null, wenn im Fenster überwiegend gestanden wurde (das ist kein Block) */
+	private static Double movingMean(Sums sums, int from, int to) {
+		int moving = sums.count(from, to);
+		return moving * 2 < to - from ? null : (double) sums.sum(from, to) / moving;
+	}
+
+	/**
+	 * Vergleichsstück vor dem ersten bzw. nach dem letzten Block: erst ab einer gefahrenen Minute aussagekräftig
+	 * (sonst wäre z. B. die allererste Sekunde der Fahrt ein "perfekter" Kontrast) – vorher zählt neutral der
+	 * Schnitt der Fahrt.
+	 */
+	private static double context(Sums sums, int from, int to, double fallback) {
+		return sums.count(from, to) < 60 ? fallback : (double) sums.sum(from, to) / sums.count(from, to);
+	}
+
+	/** Schnitt der gefahrenen Sekunden – nur gestanden zählt neutral wie der Schnitt der ganzen Fahrt */
+	private static double meanOr(Sums sums, int from, int to, double fallback) {
+		int moving = sums.count(from, to);
+		return moving == 0 ? fallback : (double) sums.sum(from, to) / moving;
 	}
 
 	private static int average(Integer[] values, int from, int length) {
@@ -305,12 +367,24 @@ public final class IntervalAccuracy {
 		return (int) Math.round(Math.clamp(100 - Math.abs(deviation) * 200, 0, 100));
 	}
 
-	private static Result result(Basis basis, List<Block> blocks, boolean uncertain) {
+	private static Result result(Basis basis, List<Block> blocks, boolean uncertain, Integer[] values) {
 		int totalSeconds = blocks.stream().mapToInt(Block::durationSeconds).sum();
 		int score = (int) Math.round(blocks.stream()
 				.mapToDouble(block -> (double) block.score() * block.durationSeconds()).sum() / totalSeconds);
 		int onTarget = (int) blocks.stream().filter(block -> block.verdict() == Verdict.ON_TARGET).count();
-		return new Result(basis, score, onTarget, List.copyOf(blocks), uncertain, tipFor(blocks, score));
+		return new Result(basis, score, onTarget, List.copyOf(blocks), uncertain, tipFor(blocks, score),
+				trace(values));
+	}
+
+	/** Schnitt je 10 Sekunden über die gefahrenen Sekunden; null, wenn in den 10 Sekunden nur gestanden wurde */
+	static List<Integer> trace(Integer[] values) {
+		Sums sums = Sums.of(values);
+		List<Integer> trace = new ArrayList<>();
+		for (int from = 0; from < values.length; from += TRACE_SECONDS) {
+			int to = Math.min(from + TRACE_SECONDS, values.length);
+			trace.add(sums.count(from, to) == 0 ? null : sums.mean(from, to));
+		}
+		return java.util.Collections.unmodifiableList(trace);
 	}
 
 	static String tipFor(List<Block> blocks, int score) {
