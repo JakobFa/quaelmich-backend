@@ -153,6 +153,17 @@ class OpenGoalPlanTest {
 	}
 
 	@Test
+	void startingOnASundayStillTestsTheFtpRightAway() {
+		LocalDate sunday = START.minusDays(1);
+		List<PlannedWorkout> plan = GENERATOR.generateSeason(athlete(TrainingGoal.FTP), sunday, Map.of(),
+				List.of(), sunday.plusWeeks(12));
+
+		LocalDate firstTest = plan.stream().filter(p -> workoutOf(p).getType() == WorkoutType.FTP_TEST)
+				.map(PlannedWorkout::getDate).min(LocalDate::compareTo).orElseThrow();
+		assertThat(firstTest).as("in der ersten vollen Woche, nicht erst nach 8 Wochen").isBefore(sunday.plusDays(8));
+	}
+
+	@Test
 	void sameStartAndCycleGiveTheSamePlanWhenItGrows() {
 		// verlängern darf die vorhandenen Wochen nicht verändern
 		List<PlannedWorkout> shorter = GENERATOR.generateSeason(athlete(TrainingGoal.FTP), START, Map.of(),
