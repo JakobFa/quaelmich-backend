@@ -38,7 +38,7 @@ class StravaDescriptionBlockTest {
 		assertThat(block).isEqualTo("""
 				── quaelmich ──
 				Sweet Spot 3 × 12
-				Aufbau-Phase · Woche 6
+				Aufbauphase · Woche 6
 				Ablauf (%% FTP): 15 min einrollen · 3 × 12 min @ 90 %% (dazwischen 4 min locker) · 10 min ausrollen
 				Geplant 69 min / %d TSS · gefahren 78 min / 70 TSS → wie geplant
 				Intervalle: 87 %% getroffen
