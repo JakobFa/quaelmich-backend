@@ -134,7 +134,63 @@ public class StravaService {
 		}
 		connection.setConnectedAt(clock.instant());
 		connection.setScope(scope);
+		// Schreibrecht wird nur über den Schalter "In Strava-Beschreibung schreiben" angefragt
+		connection.setWriteDescriptions(connection.canWriteActivities());
 		return repository.save(connection);
+	}
+
+	/** Wird geworfen, wenn das Schreiben ohne Erlaubnis activity:write eingeschaltet werden soll */
+	public static class MissingScopeException extends RuntimeException {
+	}
+
+	/** Schalter "Training in die Strava-Beschreibung schreiben"; leer, wenn nicht verbunden */
+	@Transactional
+	public Optional<StravaConnection> setWriteDescriptions(Long userId, boolean enabled) {
+		return repository.findByOwnerId(userId).map(connection -> {
+			if (enabled && !connection.canWriteActivities()) {
+				throw new MissingScopeException();
+			}
+			connection.setWriteDescriptions(enabled);
+			return repository.save(connection);
+		});
+	}
+
+	/** Hat der Nutzer das Schreiben eingeschaltet und erlaubt? */
+	public boolean writesDescriptions(Long userId) {
+		return isConfigured() && repository.findByOwnerId(userId)
+				.filter(connection -> connection.isWriteDescriptions() && connection.canWriteActivities())
+				.isPresent();
+	}
+
+	/**
+	 * Ändert die Beschreibung einer Strava-Aktivität. edit bekommt die bisherige Beschreibung ("" wenn leer)
+	 * und liefert die neue; null heißt "nichts ändern". Pendelfahrten werden nie beschrieben. Fehler bei
+	 * Strava werden nur geloggt – die Beschreibung ist ein Extra, kein Grund für einen Fehler.
+	 */
+	@Transactional
+	public void editDescription(Long userId, long stravaActivityId,
+			java.util.function.BiFunction<String, Boolean, String> edit) {
+		if (!writesDescriptions(userId)) {
+			return;
+		}
+		StravaConnection connection = repository.findByOwnerId(userId).orElseThrow();
+		try {
+			String accessToken = validAccessToken(userId, connection);
+			if (accessToken == null) {
+				return;
+			}
+			StravaClient.ActivityDetails activity = client.activity(accessToken, stravaActivityId);
+			if (activity == null) {
+				return;
+			}
+			String current = activity.description() == null ? "" : activity.description();
+			String updated = edit.apply(current, activity.isCommute());
+			if (updated != null && !updated.equals(current)) {
+				client.updateDescription(accessToken, stravaActivityId, updated);
+			}
+		} catch (RestClientException e) {
+			log.warn("Strava-Beschreibung für Nutzer {} nicht geändert: {}", userId, e.getMessage());
+		}
 	}
 
 	/** Trennt die Verbindung (auch bei Strava) und löscht alle von Strava übernommenen Fahrten. */

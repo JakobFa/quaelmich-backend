@@ -2,6 +2,8 @@ package io.github.jakobfa.webtechproject.integration.strava;
 
 import java.time.Instant;
 
+import org.hibernate.annotations.ColumnDefault;
+
 import io.github.jakobfa.webtechproject.integration.intervals.SecretCipher;
 import io.github.jakobfa.webtechproject.model.AppUser;
 import jakarta.persistence.Column;
@@ -51,8 +53,17 @@ public class StravaConnection {
 	/** Von Strava erteilte Erlaubnisse, z. B. "read,activity:read_all,profile:read_all" */
 	private String scope;
 
+	/** Training von quaelmich in die Beschreibung bestätigter Strava-Fahrten schreiben (nur auf Wunsch) */
+	@ColumnDefault("false")
+	private boolean writeDescriptions;
+
 	public boolean canReadProfile() {
 		return scope != null && scope.contains("profile:read_all");
+	}
+
+	/** Darf quaelmich Aktivitäten bearbeiten (Beschreibung)? */
+	public boolean canWriteActivities() {
+		return scope != null && scope.contains("activity:write");
 	}
 
 }

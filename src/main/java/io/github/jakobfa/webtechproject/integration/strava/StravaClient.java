@@ -142,6 +142,34 @@ public class StravaClient {
 				.body(Zones.class);
 	}
 
+	/** Die Teile einer einzelnen Aktivität, die quaelmich zum Bearbeiten der Beschreibung braucht */
+	@JsonIgnoreProperties(ignoreUnknown = true)
+	public record ActivityDetails(Long id, String description, Boolean commute) {
+
+		public boolean isCommute() {
+			return Boolean.TRUE.equals(commute);
+		}
+	}
+
+	public ActivityDetails activity(String accessToken, long activityId) {
+		return restClient.get()
+				.uri("/api/v3/activities/{id}", activityId)
+				.header(HttpHeaders.AUTHORIZATION, "Bearer " + accessToken)
+				.retrieve()
+				.body(ActivityDetails.class);
+	}
+
+	/** Ersetzt die Beschreibung einer Aktivität (braucht activity:write) */
+	public void updateDescription(String accessToken, long activityId, String description) {
+		restClient.put()
+				.uri("/api/v3/activities/{id}", activityId)
+				.header(HttpHeaders.AUTHORIZATION, "Bearer " + accessToken)
+				.contentType(MediaType.APPLICATION_JSON)
+				.body(java.util.Map.of("description", description))
+				.retrieve()
+				.toBodilessEntity();
+	}
+
 	/** Entzieht quaelmich den Zugriff auf das Strava-Konto */
 	public void deauthorize(String accessToken) {
 		restClient.post()

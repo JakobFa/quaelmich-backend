@@ -9,6 +9,7 @@ import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.client.HttpClientErrorException;
@@ -37,9 +38,14 @@ public class StravaController {
 	/**
 	 * @param available ist Strava auf dem Server eingerichtet?
 	 * @param clientId  öffentliche ID der Strava-App (fürs Weiterleiten zu Strava)
+	 * @param canWriteActivities hat Strava das Bearbeiten von Aktivitäten erlaubt (activity:write)?
+	 * @param writeDescriptions  Training in die Beschreibung bestätigter Fahrten schreiben
 	 */
 	public record StatusResponse(boolean available, String clientId, boolean connected, String athleteName,
-			Instant connectedAt) {
+			Instant connectedAt, boolean canWriteActivities, boolean writeDescriptions) {
+	}
+
+	public record DescriptionSetting(boolean enabled) {
 	}
 
 	private final StravaService stravaService;
@@ -85,6 +91,20 @@ public class StravaController {
 		}
 	}
 
+	/** Schalter für die Strava-Beschreibung. 404 ohne Verbindung, 409 ohne Erlaubnis activity:write */
+	@PutMapping(path = "/me/strava/descriptions")
+	public ResponseEntity<StatusResponse> setDescriptions(@AuthenticationPrincipal Jwt jwt,
+			@RequestBody DescriptionSetting setting) {
+		Long userId = CurrentUser.id(jwt);
+		try {
+			return stravaService.setWriteDescriptions(userId, setting.enabled())
+					.map(connection -> ResponseEntity.ok(statusOf(userId)))
+					.orElse(ResponseEntity.notFound().build());
+		} catch (StravaService.MissingScopeException e) {
+			return ResponseEntity.status(HttpStatus.CONFLICT).build();
+		}
+	}
+
 	/** Trennt die Verbindung und löscht alle von Strava übernommenen Fahrten */
 	@DeleteMapping(path = "/me/strava")
 	public ResponseEntity<Void> disconnect(@AuthenticationPrincipal Jwt jwt) {
@@ -97,7 +117,9 @@ public class StravaController {
 		var connection = available ? stravaService.findByOwner(userId) : java.util.Optional.<StravaConnection>empty();
 		return new StatusResponse(available, available ? stravaService.clientId() : null, connection.isPresent(),
 				connection.map(StravaConnection::getAthleteName).orElse(null),
-				connection.map(StravaConnection::getConnectedAt).orElse(null));
+				connection.map(StravaConnection::getConnectedAt).orElse(null),
+				connection.map(StravaConnection::canWriteActivities).orElse(false),
+				connection.map(StravaConnection::isWriteDescriptions).orElse(false));
 	}
 
 }

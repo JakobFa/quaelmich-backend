@@ -24,6 +24,7 @@ import io.github.jakobfa.webtechproject.service.FitWorkoutExporter;
 import io.github.jakobfa.webtechproject.service.IntervalAccuracy;
 import io.github.jakobfa.webtechproject.service.IntervalAccuracyService;
 import io.github.jakobfa.webtechproject.service.RideAssignmentService;
+import io.github.jakobfa.webtechproject.service.StravaDescriptionService;
 import io.github.jakobfa.webtechproject.service.WorkoutCustomizationService;
 import io.github.jakobfa.webtechproject.web.dto.ExtraRideResponse;
 import io.github.jakobfa.webtechproject.service.WorkoutCustomizationService.Direction;
@@ -45,11 +46,13 @@ public class PlannedWorkoutController {
 	private final RideAssignmentService rideAssignment;
 	private final AbsenceService absence;
 	private final IntervalAccuracyService intervalAccuracy;
+	private final StravaDescriptionService stravaDescription;
 
 	public PlannedWorkoutController(PlannedWorkoutService plannedWorkoutService, PlanResponseMapper mapper,
 			FitWorkoutExporter fitExporter, WorkoutCustomizationService customization,
 			IntervalsAutoSyncService autoSync, RideAssignmentService rideAssignment, AbsenceService absence,
-			IntervalAccuracyService intervalAccuracy) {
+			IntervalAccuracyService intervalAccuracy, StravaDescriptionService stravaDescription) {
+		this.stravaDescription = stravaDescription;
 		this.absence = absence;
 		this.intervalAccuracy = intervalAccuracy;
 		this.plannedWorkoutService = plannedWorkoutService;
@@ -76,8 +79,9 @@ public class PlannedWorkoutController {
 	@PutMapping(path = "/planned-workouts/{id}/activity")
 	public ResponseEntity<PlannedWorkoutResponse> assignRide(@AuthenticationPrincipal Jwt jwt, @PathVariable Long id,
 			@Valid @RequestBody RideAssignment request) {
-		return rideAssignment.assign(id, CurrentUser.id(jwt), request.extraRideId())
-				.map(planned -> ResponseEntity.ok(mapper.toResponse(planned)))
+		Long userId = CurrentUser.id(jwt);
+		return rideAssignment.assign(id, userId, request.extraRideId())
+				.map(planned -> describedResponse(userId, planned))
 				.orElse(ResponseEntity.notFound().build());
 	}
 
@@ -194,8 +198,9 @@ public class PlannedWorkoutController {
 	@PutMapping(path = "/planned-workouts/{id}/progress")
 	public ResponseEntity<PlannedWorkoutResponse> updateProgress(@AuthenticationPrincipal Jwt jwt,
 			@PathVariable Long id, @Valid @RequestBody WorkoutProgressRequest progress) {
-		return plannedWorkoutService.updateProgress(id, CurrentUser.id(jwt), progress.completed(), progress.rating())
-				.map(planned -> ResponseEntity.ok(mapper.toResponse(planned)))
+		Long userId = CurrentUser.id(jwt);
+		return plannedWorkoutService.updateProgress(id, userId, progress.completed(), progress.rating())
+				.map(planned -> describedResponse(userId, planned))
 				.orElse(ResponseEntity.notFound().build());
 	}
 
@@ -210,12 +215,25 @@ public class PlannedWorkoutController {
 	public ResponseEntity<PlannedWorkoutResponse> confirmActivity(@AuthenticationPrincipal Jwt jwt,
 			@PathVariable Long id, @RequestBody ActivityConfirmation confirmation) {
 		Long userId = CurrentUser.id(jwt);
-		var result = confirmation.matchesPlan()
-				? plannedWorkoutService.confirmActivity(id, userId, true)
-				: rideAssignment.reject(id, userId);
-		return result
-				.map(planned -> ResponseEntity.ok(mapper.toResponse(planned)))
+		if (confirmation.matchesPlan()) {
+			return plannedWorkoutService.confirmActivity(id, userId, true)
+					.map(planned -> describedResponse(userId, planned))
+					.orElse(ResponseEntity.notFound().build());
+		}
+		String activityId = plannedWorkoutService.findOwned(id, userId).map(PlannedWorkout::getActivityId)
+				.orElse(null);
+		return rideAssignment.reject(id, userId)
+				.map(planned -> {
+					stravaDescription.remove(userId, activityId);
+					return ResponseEntity.ok(mapper.toResponse(planned));
+				})
 				.orElse(ResponseEntity.notFound().build());
+	}
+
+	/** Training in die Strava-Beschreibung schreiben (im Hintergrund, falls eingeschaltet) */
+	private ResponseEntity<PlannedWorkoutResponse> describedResponse(Long userId, PlannedWorkout planned) {
+		stravaDescription.refresh(userId, planned.getId());
+		return ResponseEntity.ok(mapper.toResponse(planned));
 	}
 
 	/** Im Puls-Modus Pulsbereiche, sonst null (= nach Watt) */
