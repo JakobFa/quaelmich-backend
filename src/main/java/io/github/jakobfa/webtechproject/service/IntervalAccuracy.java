@@ -164,6 +164,38 @@ public final class IntervalAccuracy {
 	}
 
 	/**
+	 * Summen und Anzahl der Sekunden mit Wert, jeweils ab Fahrtbeginn. Sekunden ohne Wert sind Stillstand
+	 * (Ampel, Pause) – sie zählen bei Mittelwerten nicht als 0 Watt. Sonst sähe eine Ampel wie eine perfekte
+	 * Erholung zwischen zwei Intervallen aus, und das ganze Muster würde verrutschen.
+	 */
+	record Sums(long[] sum, int[] count) {
+
+		static Sums of(Integer[] values) {
+			long[] sum = new long[values.length + 1];
+			int[] count = new int[values.length + 1];
+			for (int i = 0; i < values.length; i++) {
+				sum[i + 1] = sum[i] + (values[i] == null ? 0 : values[i]);
+				count[i + 1] = count[i] + (values[i] == null ? 0 : 1);
+			}
+			return new Sums(sum, count);
+		}
+
+		long sum(int from, int to) {
+			return sum[to] - sum[from];
+		}
+
+		int count(int from, int to) {
+			return count[to] - count[from];
+		}
+
+		/** Schnitt über die gefahrenen Sekunden; 0, wenn es keine gibt */
+		int mean(int from, int to) {
+			int seconds = count(from, to);
+			return seconds == 0 ? 0 : (int) Math.round((double) sum(from, to) / seconds);
+		}
+	}
+
+	/**
 	 * Findet die Blöcke in der Fahrt; null, wenn die Fahrt zu kurz für alle Blöcke ist.
 	 *
 	 * Erst wird das ganze Muster (Blöcke mit den geplanten Pausen) über die komplette Fahrt geschoben – so
@@ -173,11 +205,8 @@ public final class IntervalAccuracy {
 	 * Ampeln …).
 	 */
 	static List<Window> match(List<PlannedBlock> planned, Integer[] values) {
-		long[] prefix = new long[values.length + 1];
-		for (int i = 0; i < values.length; i++) {
-			prefix[i + 1] = prefix[i] + (values[i] == null ? 0 : values[i]);
-		}
-		Integer anchor = anchor(planned, prefix, values.length);
+		Sums sums = Sums.of(values);
+		Integer anchor = anchor(planned, sums, values.length);
 		if (anchor == null) {
 			return null;
 		}
@@ -192,18 +221,19 @@ public final class IntervalAccuracy {
 			if (latestStart < pointer) {
 				return null;
 			}
+			// Summe statt Schnitt: ein Fenster mit Stillstand drin ist eher nicht das Intervall
 			int best = pointer;
 			long bestSum = Long.MIN_VALUE;
 			for (int start = pointer; start <= latestStart; start++) {
-				long sum = prefix[start + block.duration()] - prefix[start];
+				long sum = sums.sum(start, start + block.duration());
 				if (sum > bestSum) {
 					bestSum = sum;
 					best = start;
 				}
 			}
 			int beforeLength = Math.min(180, best);
-			windows.add(new Window(best, (int) Math.round((double) bestSum / block.duration()),
-					beforeLength == 0 ? 0 : average(values, best - beforeLength, beforeLength)));
+			windows.add(new Window(best, sums.mean(best, best + block.duration()),
+					beforeLength == 0 ? 0 : sums.mean(best - beforeLength, best)));
 			pointer = best + block.duration();
 			plannedEnd = block.plannedStart() + block.duration();
 		}
@@ -211,32 +241,40 @@ public final class IntervalAccuracy {
 	}
 
 	/** Startsekunde des ersten Blocks an der am besten passenden Stelle; null, wenn das Muster nicht reinpasst */
-	private static Integer anchor(List<PlannedBlock> planned, long[] prefix, int length) {
+	private static Integer anchor(List<PlannedBlock> planned, Sums sums, int length) {
 		int first = planned.getFirst().plannedStart();
 		PlannedBlock last = planned.getLast();
 		int patternLength = last.plannedStart() + last.duration() - first;
 		if (patternLength > length) {
 			return null;
 		}
+		// Pausen, in denen nur gestanden wurde: zählen wie der Schnitt der ganzen Fahrt – weder gut noch schlecht
+		double rideMean = sums.mean(0, length);
 		Integer best = null;
 		double bestScore = Double.NEGATIVE_INFINITY;
 		for (int start = 0; start + patternLength <= length; start++) {
 			long blockSum = 0;
 			int blockSeconds = 0;
+			int blockMoving = 0;
 			long gapSum = 0;
-			int gapSeconds = 0;
+			int gapMoving = 0;
 			int previousEnd = -1;
 			for (PlannedBlock block : planned) {
 				int from = start + block.plannedStart() - first;
-				blockSum += prefix[from + block.duration()] - prefix[from];
+				blockSum += sums.sum(from, from + block.duration());
+				blockMoving += sums.count(from, from + block.duration());
 				blockSeconds += block.duration();
 				if (previousEnd >= 0 && from > previousEnd) {
-					gapSum += prefix[from] - prefix[previousEnd];
-					gapSeconds += from - previousEnd;
+					gapSum += sums.sum(previousEnd, from);
+					gapMoving += sums.count(previousEnd, from);
 				}
 				previousEnd = from + block.duration();
 			}
-			double score = (double) blockSum / blockSeconds - (gapSeconds == 0 ? 0 : (double) gapSum / gapSeconds);
+			if (blockMoving < blockSeconds / 2) {
+				continue; // Intervalle, in denen man meist steht, gibt es nicht
+			}
+			double gapMean = gapMoving == 0 ? rideMean : (double) gapSum / gapMoving;
+			double score = (double) blockSum / blockMoving - gapMean;
 			if (score > bestScore) {
 				bestScore = score;
 				best = start;
@@ -246,11 +284,8 @@ public final class IntervalAccuracy {
 	}
 
 	private static int average(Integer[] values, int from, int length) {
-		long sum = 0;
-		for (int i = from; i < from + length && i < values.length; i++) {
-			sum += values[i] == null ? 0 : values[i];
-		}
-		return (int) Math.round((double) sum / length);
+		int to = Math.min(from + length, values.length);
+		return Sums.of(java.util.Arrays.copyOfRange(values, from, to)).mean(0, to - from);
 	}
 
 	// ---------- Bewertung ----------

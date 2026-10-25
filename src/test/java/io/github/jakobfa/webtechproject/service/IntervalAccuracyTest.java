@@ -19,6 +19,9 @@ class IntervalAccuracyTest {
 	/** Sweet Spot 3 × 12: je 12 min bei 90 % (225 W), 5 min Pause */
 	private static final Workout SWEET_SPOT = LIBRARY.findById(5L).orElseThrow();
 
+	/** Stillstand (Ampel): die Zeit läuft weiter, aber es gibt keine Werte */
+	private static final int STOPPED = -1;
+
 	/** Baut eine Fahrt aus Abschnitten (Minuten, Watt, Puls) – mit etwas "Rauschen" wie draußen */
 	private static ActivityStream ride(int[]... parts) {
 		List<Integer> time = new ArrayList<>();
@@ -26,6 +29,10 @@ class IntervalAccuracyTest {
 		List<Integer> heartRate = new ArrayList<>();
 		int second = 0;
 		for (int[] part : parts) {
+			if (part[1] == STOPPED) {
+				second += part[0] * 60;
+				continue;
+			}
 			for (int i = 0; i < part[0] * 60; i++) {
 				time.add(second++);
 				watts.add(part[1] + (i % 7 == 0 ? -15 : 3)); // kurze Einbrüche, z. B. Kurven
@@ -62,6 +69,21 @@ class IntervalAccuracyTest {
 		var result = IntervalAccuracy.byPower(SWEET_SPOT, stream, FTP).orElseThrow();
 
 		assertThat(result.blocks()).hasSize(3).allMatch(block -> block.verdict() == Verdict.ON_TARGET);
+		assertThat(result.uncertain()).isFalse();
+	}
+
+	@Test
+	void aTrafficLightOnTheWayIsNotMistakenForARestBetweenIntervals() {
+		// wie bei Jakobs Fahrt am 25.10.: zügige Anfahrt, 3 min an der Ampel, dann 3 × 10 Sweet Spot
+		Workout sweetSpot3x10 = LIBRARY.findById(14L).orElseThrow();
+		ActivityStream stream = ride(new int[] { 10, 180 }, new int[] { 10, 205 }, new int[] { 3, STOPPED },
+				new int[] { 2, 150 }, new int[] { 10, 240 }, new int[] { 5, 130 }, new int[] { 10, 255 },
+				new int[] { 5, 145 }, new int[] { 10, 257 }, new int[] { 25, 160 });
+
+		var result = IntervalAccuracy.byPower(sweetSpot3x10, stream, 270).orElseThrow();
+
+		assertThat(result.blocks()).extracting(IntervalAccuracy.Block::actual)
+				.allMatch(watts -> watts >= 238, "alle drei Intervalle gefunden, nicht die Anfahrt");
 		assertThat(result.uncertain()).isFalse();
 	}
 
