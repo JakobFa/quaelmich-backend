@@ -118,7 +118,7 @@ public class RaceEventController {
 
 	/** Pro Tag höchstens ein Event – auch nicht am Tag des ersten Events */
 	private static boolean dateTaken(Athlete athlete, List<RaceEvent> existing, LocalDate date, Long ignoreId) {
-		return date.equals(athlete.getEvent().getDate())
+		return (athlete.getEvent() != null && date.equals(athlete.getEvent().getDate()))
 				|| existing.stream().anyMatch(e -> !e.getId().equals(ignoreId) && e.getDate().equals(date));
 	}
 

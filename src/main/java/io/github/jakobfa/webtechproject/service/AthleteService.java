@@ -6,6 +6,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import io.github.jakobfa.webtechproject.model.Athlete;
+import io.github.jakobfa.webtechproject.model.TrainingGoal;
 import io.github.jakobfa.webtechproject.model.TrainingMode;
 import io.github.jakobfa.webtechproject.repository.AppUserRepository;
 import io.github.jakobfa.webtechproject.repository.AthleteRepository;
@@ -50,7 +51,14 @@ public class AthleteService {
 	private Athlete create(Long userId, Athlete athlete) {
 		// IDs vergibt die Datenbank, mitgeschickte Werte werden ignoriert
 		athlete.setId(null);
-		athlete.getEvent().setId(null);
+		if (athlete.getTrainingGoal() == null) {
+			athlete.setTrainingGoal(TrainingGoal.EVENT);
+		}
+		if (!athlete.hasEventGoal()) {
+			athlete.setEvent(null); // ohne Event-Ziel kein Event
+		} else {
+			athlete.getEvent().setId(null);
+		}
 		athlete.setOwner(userRepository.getReferenceById(userId));
 		athlete.setSuggestedFtp(null); // setzt nur quaelmich
 		athlete.setSuggestedFtpNote(null);
@@ -76,13 +84,21 @@ public class AthleteService {
 		existing.setLevel(changes.getLevel());
 		existing.setAvailability(changes.getAvailability());
 
-		var event = existing.getEvent();
-		event.setName(changes.getEvent().getName());
-		event.setDate(changes.getEvent().getDate());
-		event.setDistanceKm(changes.getEvent().getDistanceKm());
-		event.setElevationMeters(changes.getEvent().getElevationMeters());
-		event.setType(changes.getEvent().getType());
-		event.setGoal(changes.getEvent().getGoal());
+		existing.setTrainingGoal(changes.getTrainingGoal() == null ? TrainingGoal.EVENT : changes.getTrainingGoal());
+		if (!existing.hasEventGoal()) {
+			existing.setEvent(null); // Ziel ohne Termin: das alte Event fällt weg
+		} else if (existing.getEvent() == null) {
+			changes.getEvent().setId(null);
+			existing.setEvent(changes.getEvent());
+		} else {
+			var event = existing.getEvent();
+			event.setName(changes.getEvent().getName());
+			event.setDate(changes.getEvent().getDate());
+			event.setDistanceKm(changes.getEvent().getDistanceKm());
+			event.setElevationMeters(changes.getEvent().getElevationMeters());
+			event.setType(changes.getEvent().getType());
+			event.setGoal(changes.getEvent().getGoal());
+		}
 
 		return athleteRepository.save(existing);
 	}

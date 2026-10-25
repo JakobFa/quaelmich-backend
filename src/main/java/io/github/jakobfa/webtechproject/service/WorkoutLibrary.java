@@ -159,6 +159,9 @@ public class WorkoutLibrary {
 					steps(ramp(WARMUP, min(15), 50, 75), steady(INTERVAL, min(5), 110), steady(RECOVERY, min(10), 50),
 							steady(INTERVAL, min(20), 100), ramp(COOLDOWN, min(15), 60, 45))));
 
+	/** Workout-ID des FTP-Tests */
+	public static final long FTP_TEST = 11L;
+
 	/** IDs ab hier sind selbst gebaute Workouts (siehe CustomWorkout) – nie Teil der öffentlichen Bibliothek */
 	public static final long CUSTOM_ID_OFFSET = 1_000_000L;
 

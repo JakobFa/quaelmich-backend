@@ -127,7 +127,7 @@ public class TrainingPlanController {
 	public ResponseEntity<TrainingPlanResponse> getPlan(@AuthenticationPrincipal Jwt jwt) {
 		return athleteService.findByOwner(CurrentUser.id(jwt))
 				.map(Athlete::getId)
-				.flatMap(planService::findByAthlete)
+				.flatMap(planService::currentPlan) // Pläne ohne Event wachsen dabei mit
 				.map(plan -> ResponseEntity.ok(mapper.toResponse(plan)))
 				.orElse(ResponseEntity.notFound().build());
 	}

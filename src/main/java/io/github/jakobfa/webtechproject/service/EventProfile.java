@@ -7,6 +7,7 @@ import io.github.jakobfa.webtechproject.model.Event;
 import io.github.jakobfa.webtechproject.model.EventGoal;
 import io.github.jakobfa.webtechproject.model.EventType;
 import io.github.jakobfa.webtechproject.model.Level;
+import io.github.jakobfa.webtechproject.model.TrainingGoal;
 
 /**
  * Was das Ziel-Event verlangt: geschätzte Dauer und daraus der Trainingsschwerpunkt.
@@ -48,7 +49,23 @@ public record EventProfile(int estimatedMinutes, Focus focus, EventGoal goal) {
 	static final double CLIMBING_METERS_PER_KM = 10;
 
 	public static EventProfile of(Athlete athlete) {
-		return of(athlete.getEvent(), athlete.getLevel());
+		return athlete.hasEventGoal() ? of(athlete.getEvent(), athlete.getLevel()) : forGoal(athlete.getTrainingGoal());
+	}
+
+	/**
+	 * Für ein Ziel ohne Event: geplant, als ginge es auf eine typische Ausfahrt dieser Art – das bestimmt
+	 * Schwerpunkt und Länge der langen Ausfahrt.
+	 * FTP: kurze, harte Schwelle; Ausdauer: lang und eher flach; fit bleiben: ausgewogen und lockerer;
+	 * Berg: lange Anstiege.
+	 */
+	public static EventProfile forGoal(TrainingGoal goal) {
+		return switch (goal) {
+			case FTP -> new EventProfile(90, Focus.TIME_TRIAL, EventGoal.GOOD_TIME);
+			case ENDURANCE -> new EventProfile(300, Focus.LONG_FLAT, EventGoal.GOOD_TIME);
+			case FITNESS -> new EventProfile(120, Focus.MIXED, EventGoal.FINISH);
+			case CLIMBING -> new EventProfile(180, Focus.LONG_CLIMBING, EventGoal.GOOD_TIME);
+			case EVENT -> throw new IllegalArgumentException("Ein Event-Ziel braucht ein Event");
+		};
 	}
 
 	/**

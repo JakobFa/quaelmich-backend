@@ -57,7 +57,8 @@ public class FormService {
 	public Optional<FormCurve> curveOf(Long userId) {
 		return athleteService.findByOwner(userId).flatMap(athlete -> plans.findByAthleteId(athlete.getId())
 				.map(plan -> curve(plan.getWorkouts(), extraRides.findByAthleteId(athlete.getId()),
-						LocalDate.now(clock), athlete.getEvent().getDate())));
+						LocalDate.now(clock), athlete.hasEventGoal() ? athlete.getEvent().getDate()
+								: LocalDate.now(clock).plusWeeks(PlanGenerator.OPEN_HORIZON_WEEKS))));
 	}
 
 	FormCurve curve(List<PlannedWorkout> workouts, List<ExtraRide> rides, LocalDate today, LocalDate eventDate) {

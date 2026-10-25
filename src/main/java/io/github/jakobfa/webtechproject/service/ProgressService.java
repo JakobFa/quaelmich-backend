@@ -37,9 +37,17 @@ public class ProgressService {
 	public record Level(int number, String name, int fromXp) {
 	}
 
-	/** Stand im Plan: welche Woche, wie viel vom Fälligen erledigt, wie lange bis zum Event */
+	/**
+	 * Stand im Plan: welche Woche, wie viel vom Fälligen erledigt, wie lange bis zum Event.
+	 * Bei einem Ziel ohne Event: cycle = Nummer des 8-Wochen-Zyklus, week/totalWeeks die Woche darin, und der
+	 * Countdown läuft bis zum nächsten FTP-Test (eventName "FTP-Test"); bei Event-Plänen ist cycle null.
+	 */
 	public record PlanProgress(int week, int totalWeeks, int completed, int due, long daysToEvent,
-			String eventName) {
+			String eventName, Integer cycle) {
+
+		public PlanProgress(int week, int totalWeeks, int completed, int due, long daysToEvent, String eventName) {
+			this(week, totalWeeks, completed, due, daysToEvent, eventName, null);
+		}
 	}
 
 	/** nextLevel ist null, wenn es kein benanntes Level mehr darüber gibt; load null ohne Plan */
@@ -280,6 +288,9 @@ public class ProgressService {
 	/** Countdown bis zum nächsten anstehenden Event; Wochen bis zum letzten Event der Saison */
 	static PlanProgress planProgress(TrainingPlan plan, Athlete athlete, List<Event> more, LocalDate today) {
 		LocalDate firstMonday = plan.getStartDate().with(TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY));
+		if (!athlete.hasEventGoal()) {
+			return openProgress(plan, firstMonday, today);
+		}
 		Event next = EventProfile.nextEvent(athlete.getEvent(), more, today);
 		LocalDate eventDate = next.getDate();
 		LocalDate lastEvent = more.stream().map(Event::getDate).filter(d -> d.isAfter(athlete.getEvent().getDate()))
@@ -288,15 +299,37 @@ public class ProgressService {
 		int totalWeeks = (int) ChronoUnit.WEEKS.between(firstMonday, eventMonday) + 1;
 		int week = (int) Math.clamp(ChronoUnit.WEEKS.between(firstMonday, today) + 1, 1, totalWeeks);
 
-		// fällig = alles vor heute, dazu heute schon Erledigtes
-		List<PlannedWorkout> due = plan.getWorkouts().stream()
+		List<PlannedWorkout> due = dueOf(plan, today);
+		return new PlanProgress(week, totalWeeks, completedOf(due), due.size(),
+				Math.max(0, ChronoUnit.DAYS.between(today, eventDate)), next.getName());
+	}
+
+	/** Ziel ohne Event: Woche im 8-Wochen-Zyklus und Tage bis zum nächsten FTP-Test (sonst bis Zyklusende) */
+	private static PlanProgress openProgress(TrainingPlan plan, LocalDate firstMonday, LocalDate today) {
+		int cycleWeeks = PlanGenerator.OPEN_CYCLE.size();
+		int weeksSinceStart = (int) Math.max(0, ChronoUnit.WEEKS.between(firstMonday, today));
+		LocalDate cycleEnd = firstMonday.plusWeeks((weeksSinceStart / cycleWeeks + 1L) * cycleWeeks);
+		LocalDate nextTest = plan.getWorkouts().stream()
+				.filter(planned -> planned.getWorkoutId() != null && planned.getWorkoutId() == WorkoutLibrary.FTP_TEST)
+				.filter(planned -> !planned.getDate().isBefore(today) && !planned.isCompleted())
+				.map(PlannedWorkout::getDate).min(LocalDate::compareTo).orElse(null);
+		List<PlannedWorkout> due = dueOf(plan, today);
+		return new PlanProgress(weeksSinceStart % cycleWeeks + 1, cycleWeeks, completedOf(due), due.size(),
+				ChronoUnit.DAYS.between(today, nextTest != null ? nextTest : cycleEnd),
+				nextTest != null ? "FTP-Test" : "Ende des Zyklus", weeksSinceStart / cycleWeeks + 1);
+	}
+
+	/** fällig = alles vor heute, dazu heute schon Erledigtes; Pause zählt nicht als verpasst */
+	private static List<PlannedWorkout> dueOf(TrainingPlan plan, LocalDate today) {
+		return plan.getWorkouts().stream()
 				.filter(planned -> planned.getDate().isBefore(today)
 						|| (planned.getDate().equals(today) && planned.isCompleted()))
-				.filter(planned -> planned.getSkipReason() != SkipReason.PAUSE) // Pause zählt nicht als verpasst
+				.filter(planned -> planned.getSkipReason() != SkipReason.PAUSE)
 				.toList();
-		int completed = (int) due.stream().filter(PlannedWorkout::isCompleted).count();
-		return new PlanProgress(week, totalWeeks, completed, due.size(),
-				Math.max(0, ChronoUnit.DAYS.between(today, eventDate)), next.getName());
+	}
+
+	private static int completedOf(List<PlannedWorkout> due) {
+		return (int) due.stream().filter(PlannedWorkout::isCompleted).count();
 	}
 
 }
