@@ -88,6 +88,14 @@ public class PlannedWorkout {
 	/** Begründung, z. B. "Angepasst: Am Di, 20.10. bist du 140 TSS statt 64 gefahren." */
 	private String adjustmentNote;
 
+	/** So beginnt die Begründung, wenn der Nutzer das Workout selbst getauscht oder angepasst hat */
+	public static final String USER_CHOICE_NOTE = "Von dir";
+
+	/** Selbst ausgesucht (getauscht, leichter, kürzer …) – bleibt, auch wenn der Plan neu verteilt wird */
+	public boolean isChosenByUser() {
+		return adjustmentNote != null && adjustmentNote.startsWith(USER_CHOICE_NOTE);
+	}
+
 	/** ursprünglich geplantes Workout (Titel), falls ersetzt */
 	private String originalTitle;
 

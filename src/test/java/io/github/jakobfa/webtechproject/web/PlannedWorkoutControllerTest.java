@@ -248,6 +248,34 @@ class PlannedWorkoutControllerTest {
 	}
 
 	@Test
+	void ownChoiceSurvivesWhenThePlanIsRedistributed() throws Exception {
+		makeItEndurance();
+		mockMvc.perform(put("/planned-workouts/" + plannedId + "/workout").header("Authorization", token)
+				.contentType(MediaType.APPLICATION_JSON).content("{ \"workoutId\": 12 }"))
+				.andExpect(status().isOk());
+
+		// z. B. neue FTP oder Verfügbarkeit im Profil gespeichert → Plan wird ab heute neu verteilt
+		mockMvc.perform(post("/me/plan").header("Authorization", token)).andExpect(status().isCreated());
+
+		mockMvc.perform(get("/planned-workouts/" + plannedId).header("Authorization", token))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.workout.id").value(12))
+				.andExpect(jsonPath("$.adjustment.note").value("Von dir getauscht."));
+	}
+
+	@Test
+	void ownAdjustmentSurvivesToo() throws Exception {
+		makeItEndurance();
+		adjust("SHORTER").andExpect(status().isOk());
+
+		mockMvc.perform(post("/me/plan").header("Authorization", token));
+
+		mockMvc.perform(get("/planned-workouts/" + plannedId).header("Authorization", token))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.workout.durationInMinutes").value(75));
+	}
+
+	@Test
 	void shorterWorkoutCanBeResetToTheOriginal() throws Exception {
 		makeItEndurance();
 

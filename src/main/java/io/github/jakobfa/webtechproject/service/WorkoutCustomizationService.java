@@ -90,7 +90,8 @@ public class WorkoutCustomizationService {
 			}
 			Workout current = workoutOf(planned);
 			Choice choice = choiceFor(current, direction).orElseThrow(NotPossibleException::new);
-			return apply(planned, current, choice, "Von dir angepasst: " + label(direction) + ".");
+			return apply(planned, current, choice,
+					PlannedWorkout.USER_CHOICE_NOTE + " angepasst: " + label(direction) + ".");
 		});
 	}
 
@@ -116,7 +117,8 @@ public class WorkoutCustomizationService {
 					throw new NotPossibleException();
 				}
 			}
-			return apply(planned, workoutOf(planned), new Choice(workoutId, minutes), "Von dir getauscht.");
+			return apply(planned, workoutOf(planned), new Choice(workoutId, minutes),
+					PlannedWorkout.USER_CHOICE_NOTE + " getauscht.");
 		});
 	}
 
