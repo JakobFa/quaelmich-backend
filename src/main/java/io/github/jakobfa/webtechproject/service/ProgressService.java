@@ -15,6 +15,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import io.github.jakobfa.webtechproject.model.Athlete;
+import io.github.jakobfa.webtechproject.model.Event;
 import io.github.jakobfa.webtechproject.model.ExtraRide;
 import io.github.jakobfa.webtechproject.model.PlannedWorkout;
 import io.github.jakobfa.webtechproject.model.SkipReason;
@@ -90,6 +91,19 @@ public class ProgressService {
 	private final ExtraRideRepository extraRideRepository;
 	private final WorkoutLibrary library;
 	private final Clock clock;
+	private io.github.jakobfa.webtechproject.repository.RaceEventRepository raceEvents;
+
+	/** weitere Events – optional, damit Tests ohne Datenbank auskommen */
+	@org.springframework.beans.factory.annotation.Autowired(required = false)
+	void setRaceEvents(io.github.jakobfa.webtechproject.repository.RaceEventRepository raceEvents) {
+		this.raceEvents = raceEvents;
+	}
+
+	private List<Event> moreEventsOf(Athlete athlete) {
+		return raceEvents == null ? List.of()
+				: raceEvents.findByAthleteIdOrderByDate(athlete.getId()).stream()
+						.map(io.github.jakobfa.webtechproject.model.RaceEvent::toEvent).toList();
+	}
 
 	public ProgressService(AthleteService athleteService, TrainingPlanRepository planRepository,
 			ExtraRideRepository extraRideRepository, WorkoutLibrary library, Clock clock) {
@@ -113,7 +127,7 @@ public class ProgressService {
 					+ extras.stream().mapToInt(ProgressService::xpOf).sum();
 			LocalDate today = LocalDate.now(clock);
 			return new Progress(xp, levelFor(xp), nextLevel(xp), streakWeeks(workouts, today),
-					plan.map(p -> planProgress(p, athlete, today)).orElse(null),
+					plan.map(p -> planProgress(p, athlete, moreEventsOf(athlete), today)).orElse(null),
 					plan.map(p -> loadCheck(workouts, extras, today)).orElse(null));
 		});
 	}
@@ -260,9 +274,17 @@ public class ProgressService {
 	}
 
 	static PlanProgress planProgress(TrainingPlan plan, Athlete athlete, LocalDate today) {
+		return planProgress(plan, athlete, List.of(), today);
+	}
+
+	/** Countdown bis zum nächsten anstehenden Event; Wochen bis zum letzten Event der Saison */
+	static PlanProgress planProgress(TrainingPlan plan, Athlete athlete, List<Event> more, LocalDate today) {
 		LocalDate firstMonday = plan.getStartDate().with(TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY));
-		LocalDate eventDate = athlete.getEvent().getDate();
-		LocalDate eventMonday = eventDate.with(TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY));
+		Event next = EventProfile.nextEvent(athlete.getEvent(), more, today);
+		LocalDate eventDate = next.getDate();
+		LocalDate lastEvent = more.stream().map(Event::getDate).filter(d -> d.isAfter(athlete.getEvent().getDate()))
+				.max(LocalDate::compareTo).orElse(athlete.getEvent().getDate());
+		LocalDate eventMonday = lastEvent.with(TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY));
 		int totalWeeks = (int) ChronoUnit.WEEKS.between(firstMonday, eventMonday) + 1;
 		int week = (int) Math.clamp(ChronoUnit.WEEKS.between(firstMonday, today) + 1, 1, totalWeeks);
 
@@ -274,7 +296,7 @@ public class ProgressService {
 				.toList();
 		int completed = (int) due.stream().filter(PlannedWorkout::isCompleted).count();
 		return new PlanProgress(week, totalWeeks, completed, due.size(),
-				Math.max(0, ChronoUnit.DAYS.between(today, eventDate)), athlete.getEvent().getName());
+				Math.max(0, ChronoUnit.DAYS.between(today, eventDate)), next.getName());
 	}
 
 }

@@ -106,6 +106,26 @@ class ProgressServiceTest {
 	}
 
 	@Test
+	void countdownGoesToTheNextUpcomingEvent() {
+		var athlete = new io.github.jakobfa.webtechproject.model.Athlete();
+		var first = new io.github.jakobfa.webtechproject.model.Event();
+		first.setName("Schon vorbei");
+		first.setDate(TODAY.minusDays(3));
+		athlete.setEvent(first);
+		var next = new io.github.jakobfa.webtechproject.model.Event();
+		next.setName("Herbst-Gravel");
+		next.setDate(TODAY.plusDays(40));
+		TrainingPlan plan = new TrainingPlan(athlete, TODAY.minusWeeks(10));
+
+		var progress = ProgressService.planProgress(plan, athlete, java.util.List.of(next), TODAY);
+
+		assertThat(progress.eventName()).isEqualTo("Herbst-Gravel");
+		assertThat(progress.daysToEvent()).isEqualTo(40);
+		assertThat(progress.week()).isLessThanOrEqualTo(progress.totalWeeks());
+		assertThat(progress.totalWeeks()).isGreaterThanOrEqualTo(15);
+	}
+
+	@Test
 	void loadCheckComparesTheLastSevenDaysWithThePlan() {
 		// geplant: 3 × Sweet Spot 3 × 12 (je 67 TSS) = 201 TSS
 		PlannedWorkout done = planned(TODAY.minusDays(5), true);

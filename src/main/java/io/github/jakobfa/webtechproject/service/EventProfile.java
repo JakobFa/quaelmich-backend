@@ -48,8 +48,23 @@ public record EventProfile(int estimatedMinutes, Focus focus, EventGoal goal) {
 	static final double CLIMBING_METERS_PER_KM = 10;
 
 	public static EventProfile of(Athlete athlete) {
-		Event event = athlete.getEvent();
-		Level level = athlete.getLevel() == null ? Level.HOBBY : athlete.getLevel();
+		return of(athlete.getEvent(), athlete.getLevel());
+	}
+
+	/**
+	 * Das nächste anstehende Event (ab heute) – das erste aus dem Profil oder ein weiteres.
+	 * Sind alle vorbei, das zuletzt vergangene.
+	 */
+	public static Event nextEvent(Event first, java.util.List<Event> more, java.time.LocalDate today) {
+		java.util.List<Event> all = new java.util.ArrayList<>(more);
+		all.add(first);
+		all.sort(java.util.Comparator.comparing(Event::getDate));
+		return all.stream().filter(event -> !event.getDate().isBefore(today)).findFirst()
+				.orElse(all.getLast());
+	}
+
+	public static EventProfile of(Event event, Level athleteLevel) {
+		Level level = athleteLevel == null ? Level.HOBBY : athleteLevel;
 		EventType type = event.getType();
 
 		double speed = SPEED.get(level);

@@ -1,5 +1,6 @@
 package io.github.jakobfa.webtechproject.web;
 
+import java.time.LocalDate;
 import java.time.DayOfWeek;
 import java.time.temporal.TemporalAdjusters;
 
@@ -27,11 +28,13 @@ public class PlanResponseMapper {
 	private final WorkoutLibrary workoutLibrary;
 	private final PlanAdaptationService adaptation;
 	private final ExtraRideRepository extraRideRepository;
+	private final java.time.Clock clock;
 	private final io.github.jakobfa.webtechproject.repository.RaceEventRepository raceEvents;
 	private final WorkoutCustomizationService customization;
 
 	public PlanResponseMapper(WorkoutLibrary workoutLibrary, PlanAdaptationService adaptation,
-			ExtraRideRepository extraRideRepository, WorkoutCustomizationService customization, io.github.jakobfa.webtechproject.repository.RaceEventRepository raceEvents) {
+			ExtraRideRepository extraRideRepository, WorkoutCustomizationService customization, io.github.jakobfa.webtechproject.repository.RaceEventRepository raceEvents, java.time.Clock clock) {
+		this.clock = clock;
 		this.raceEvents = raceEvents;
 		this.workoutLibrary = workoutLibrary;
 		this.adaptation = adaptation;
@@ -49,7 +52,9 @@ public class PlanResponseMapper {
 						.findByAthleteIdAndDateGreaterThanEqualOrderByDate(plan.getAthlete().getId(),
 								plan.getStartDate().with(TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY)))
 						.stream().map(PlanResponseMapper::toResponse).toList(),
-				EventProfile.of(plan.getAthlete()),
+				// Schwerpunkt des nächsten anstehenden Events
+				EventProfile.of(EventProfile.nextEvent(event, moreEventsOf(plan), LocalDate.now(clock)),
+						plan.getAthlete().getLevel()),
 				// Kopie, damit die Antwort nicht an der Hibernate-Collection hängt
 				new java.util.TreeMap<>(plan.getWeekAvailability()),
 				raceEvents.findByAthleteIdOrderByDate(plan.getAthlete().getId()));
@@ -72,6 +77,11 @@ public class PlanResponseMapper {
 		return new PlannedWorkoutResponse(planned.getId(), planned.getDate(), planned.getPhase(),
 				planned.isCompleted(), planned.getRating(), planned.getSkipReason(), workout, actual, adjustment,
 				customization.optionsFor(planned));
+	}
+
+	private java.util.List<io.github.jakobfa.webtechproject.model.Event> moreEventsOf(TrainingPlan plan) {
+		return raceEvents.findByAthleteIdOrderByDate(plan.getAthlete().getId()).stream()
+				.map(io.github.jakobfa.webtechproject.model.RaceEvent::toEvent).toList();
 	}
 
 }
