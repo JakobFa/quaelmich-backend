@@ -17,20 +17,33 @@ import io.github.jakobfa.webtechproject.model.Sport;
  * @param tssFromHeartRate true, wenn der TSS nur aus dem Puls geschätzt ist (hrTSS)
  * @param tssFromDuration  true, wenn der TSS nur grob aus Dauer und Sportart geschätzt ist
  * @param commute          bei Strava als "Pendeln" markiert – hakt nie ein geplantes Workout ab
+ * @param indoor           auf der Rolle gefahren (Rolle markiert oder virtuelle Fahrt, z. B. Zwift) – nur solche
+ *                         Fahrten können ein Workout automatisch abhaken
  */
 public record RecordedActivity(String id, Sport sport, LocalDateTime start, int movingSeconds, Double distanceMeters,
 		Integer tss, boolean tssFromHeartRate, boolean tssFromDuration, boolean commute,
 		/** Normalized Power in Watt – nur mit echtem Wattmesser, sonst null */
-		Integer normalizedPower) {
+		Integer normalizedPower, boolean indoor) {
 
 	public RecordedActivity(String id, Sport sport, LocalDateTime start, int movingSeconds, Double distanceMeters,
 			Integer tss, boolean tssFromHeartRate, boolean tssFromDuration, boolean commute) {
-		this(id, sport, start, movingSeconds, distanceMeters, tss, tssFromHeartRate, tssFromDuration, commute, null);
+		this(id, sport, start, movingSeconds, distanceMeters, tss, tssFromHeartRate, tssFromDuration, commute, null,
+				false);
 	}
 
 	public RecordedActivity withNormalizedPower(Integer watts) {
 		return new RecordedActivity(id, sport, start, movingSeconds, distanceMeters, tss, tssFromHeartRate,
-				tssFromDuration, commute, watts);
+				tssFromDuration, commute, watts, indoor);
+	}
+
+	public RecordedActivity withIndoor(boolean onTrainer) {
+		return new RecordedActivity(id, sport, start, movingSeconds, distanceMeters, tss, tssFromHeartRate,
+				tssFromDuration, commute, normalizedPower, onTrainer);
+	}
+
+	/** Rolle markiert oder virtuelle Fahrt (Zwift, Wahoo SYSTM …) */
+	public static boolean isIndoor(String activityType, Boolean trainer) {
+		return Boolean.TRUE.equals(trainer) || "VirtualRide".equals(activityType);
 	}
 
 	public static final String STRAVA_PREFIX = "strava-";

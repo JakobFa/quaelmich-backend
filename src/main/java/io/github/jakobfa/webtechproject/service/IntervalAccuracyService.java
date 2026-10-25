@@ -14,7 +14,6 @@ import io.github.jakobfa.webtechproject.integration.intervals.IntervalsConnectio
 import io.github.jakobfa.webtechproject.integration.intervals.IntervalsIcuClient;
 import io.github.jakobfa.webtechproject.integration.strava.StravaService;
 import io.github.jakobfa.webtechproject.model.Athlete;
-import io.github.jakobfa.webtechproject.model.PlannedWorkout;
 import io.github.jakobfa.webtechproject.model.Workout;
 
 /** Holt die Sekundenwerte der zugeordneten Fahrt und bewertet, wie genau die Intervalle getroffen wurden */
@@ -48,9 +47,29 @@ public class IntervalAccuracyService {
 					if (IntervalAccuracy.blocksOf(workout).isEmpty()) {
 						return Optional.empty();
 					}
-					return streamOf(planned, userId).flatMap(stream -> evaluate(workout, stream,
-							planned.getPlan().getAthlete()));
+					return accuracyOf(workout, planned.getActivityId(), userId, planned.getPlan().getAthlete());
 				});
+	}
+
+	/**
+	 * Wie genau passt eine bestimmte Fahrt zu einem Workout? Leer ohne Intervalle oder ohne passende Daten.
+	 * Holt dafür einmal die Sekundenwerte bei Strava bzw. intervals.icu.
+	 */
+	public Optional<IntervalAccuracy.Result> accuracyOf(Workout workout, String activityId, Long userId,
+			Athlete athlete) {
+		if (IntervalAccuracy.blocksOf(workout).isEmpty()) {
+			return Optional.empty();
+		}
+		return streamOf(activityId, userId).flatMap(stream -> evaluate(workout, stream, athlete));
+	}
+
+	/** Immer nach Watt, auch im Puls-Modus – fürs automatische Abhaken von Rollenfahrten */
+	public Optional<IntervalAccuracy.Result> powerAccuracyOf(Workout workout, String activityId, Long userId,
+			int ftp) {
+		if (!IntervalAccuracy.hasIntervals(workout)) {
+			return Optional.empty();
+		}
+		return streamOf(activityId, userId).flatMap(stream -> IntervalAccuracy.byPower(workout, stream, ftp));
 	}
 
 	private static Optional<IntervalAccuracy.Result> evaluate(Workout workout, ActivityStream stream, Athlete athlete) {
@@ -65,8 +84,7 @@ public class IntervalAccuracyService {
 				: IntervalAccuracy.byHeartRate(workout, stream, athlete.getHeartRateTargets());
 	}
 
-	private Optional<ActivityStream> streamOf(PlannedWorkout planned, Long userId) {
-		String id = planned.getActivityId();
+	private Optional<ActivityStream> streamOf(String id, Long userId) {
 		if (RecordedActivity.isFromStrava(id)) {
 			return strava.stream(userId, Long.parseLong(id.substring(RecordedActivity.STRAVA_PREFIX.length())));
 		}

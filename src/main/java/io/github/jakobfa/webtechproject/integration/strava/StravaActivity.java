@@ -26,7 +26,16 @@ public record StravaActivity(
 		@JsonProperty("average_heartrate") Double averageHeartRate,
 		@JsonProperty("max_heartrate") Double maxHeartRate,
 		/** in Strava als "Pendeln" markiert */
-		Boolean commute) {
+		Boolean commute,
+		/** auf der Rolle gefahren */
+		Boolean trainer) {
+
+	public StravaActivity(Long id, String sportType, String startDateLocal, Integer movingTimeSeconds,
+			Double distance, Integer weightedAverageWatts, Boolean deviceWatts, Double averageHeartRate,
+			Double maxHeartRate, Boolean commute) {
+		this(id, sportType, startDateLocal, movingTimeSeconds, distance, weightedAverageWatts, deviceWatts,
+				averageHeartRate, maxHeartRate, commute, null);
+	}
 
 	/** Alle Sportarten mit Dauer und Startzeit */
 	public boolean isUsable() {
@@ -59,7 +68,8 @@ public record StravaActivity(
 		return RecordedActivity.withEstimateIfMissing(RecordedActivity.STRAVA_PREFIX + id, sport,
 				LocalDateTime.parse(startDateLocal.substring(0, 19)), movingTimeSeconds, distance,
 				powerTss != null ? powerTss : heartRateTss, heartRateTss != null, Boolean.TRUE.equals(commute))
-				.withNormalizedPower(Boolean.TRUE.equals(deviceWatts) ? weightedAverageWatts : null);
+				.withNormalizedPower(Boolean.TRUE.equals(deviceWatts) ? weightedAverageWatts : null)
+				.withIndoor(RecordedActivity.isIndoor(sportType, trainer));
 	}
 
 }

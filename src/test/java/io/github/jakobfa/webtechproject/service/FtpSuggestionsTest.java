@@ -15,7 +15,7 @@ class FtpSuggestionsTest {
 
 	private static RecordedActivity ride(int minutes, Integer normalizedPower) {
 		return new RecordedActivity("i1", Sport.RIDE, LocalDateTime.of(2026, 10, 24, 11, 0), minutes * 60, 40000.0,
-				80, false, false, false, normalizedPower);
+				80, false, false, false, normalizedPower, false);
 	}
 
 	private static Athlete athleteWithFtp(int ftp) {

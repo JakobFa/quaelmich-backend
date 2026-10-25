@@ -28,6 +28,8 @@ import io.github.jakobfa.webtechproject.repository.ExtraRideRepository;
 import io.github.jakobfa.webtechproject.repository.PlannedWorkoutRepository;
 import io.github.jakobfa.webtechproject.service.AthleteService;
 import io.github.jakobfa.webtechproject.service.FtpSuggestions;
+import io.github.jakobfa.webtechproject.service.IntervalAccuracy;
+import io.github.jakobfa.webtechproject.service.IntervalAccuracyService;
 import io.github.jakobfa.webtechproject.model.Workout;
 import io.github.jakobfa.webtechproject.model.WorkoutType;
 import io.github.jakobfa.webtechproject.service.PlanAdaptationService;
@@ -36,9 +38,10 @@ import io.github.jakobfa.webtechproject.service.WorkoutLibrary;
 /**
  * Holt gefahrene Einheiten aus intervals.icu (z. B. vom Wahoo oder Garmin) und Strava (z. B. von der
  * Apple Watch) und verknüpft sie mit dem Plan:
- * Gibt es an einem Tag mit geplantem Workout eine Radfahrt, die dazu passt, wird das Workout abgehakt und die
- * tatsächlichen Werte werden gespeichert. Bei mehreren passenden Fahrten zählt die längste.
- * Alle übrigen Fahrten (z. B. am Ruhetag) werden als Zusatzfahrten gespeichert.
+ * Automatisch abgehakt wird ein Workout nur von einer Fahrt auf der Rolle, die eng dazu passt – dort stellt der
+ * Trainer die Watt ein, die Fahrt entspricht also fast genau dem Plan. Draußen weicht es fast immer ab
+ * (Anfahrt, Ampeln, Wind): Solche Fahrten werden Zusatzfahrten, und der Nutzer ordnet sie selbst zu.
+ * Bei mehreren passenden Fahrten zählt die längste. Alle übrigen Fahrten werden als Zusatzfahrten gespeichert.
  * Kommt dieselbe Fahrt aus beiden Quellen, gewinnt intervals.icu (dort gibt es den TSS).
  * Die Bewertung der Anstrengung bleibt unverändert – die kennt nur der Nutzer.
  */
@@ -60,12 +63,15 @@ public class ActivityImportService {
 	private final ExtraRideRepository extraRideRepository;
 	private final PlanAdaptationService adaptation;
 	private final WorkoutLibrary library;
+	private final IntervalAccuracyService intervalAccuracy;
 	private final Clock clock;
 
 	public ActivityImportService(IntervalsConnectionService connectionService, IntervalsIcuClient client,
 			StravaService stravaService, AthleteService athleteService,
 			PlannedWorkoutRepository plannedWorkoutRepository, ExtraRideRepository extraRideRepository,
-			PlanAdaptationService adaptation, WorkoutLibrary library, Clock clock) {
+			PlanAdaptationService adaptation, WorkoutLibrary library, IntervalAccuracyService intervalAccuracy,
+			Clock clock) {
+		this.intervalAccuracy = intervalAccuracy;
 		this.connectionService = connectionService;
 		this.client = client;
 		this.stravaService = stravaService;
@@ -149,11 +155,22 @@ public class ActivityImportService {
 				}
 				continue;
 			}
-			// die längste Fahrt des Tages, die zum Workout passt
 			Workout workout = library.resolve(planned.getWorkoutId(), planned.getDurationMinutes()).orElseThrow();
-			RecordedActivity ride = ridesPerDay.getOrDefault(planned.getDate(), List.of()).stream()
+			List<RecordedActivity> candidates = ridesPerDay.getOrDefault(planned.getDate(), List.of()).stream()
 					.filter(candidate -> !candidate.id().equals(planned.getRejectedActivityId()))
-					.filter(candidate -> fitsWorkout(candidate, workout))
+					.toList();
+			// schon zugeordnet, aber noch unbeantwortet (auch noch nach den alten, lockeren Regeln): bleibt, solange
+			// die Fahrt grob passt – sonst würden bereits abgehakte Workouts plötzlich wieder offen
+			RecordedActivity kept = candidates.stream().filter(candidate -> candidate.id().equals(linkedId))
+					.filter(candidate -> fitsWorkout(candidate, workout)).findFirst().orElse(null);
+			if (kept != null) {
+				updateValues(planned, kept); // z. B. TSS neu geschätzt, nachdem der Schwellenpuls eingetragen wurde
+				continue;
+			}
+			// neu automatisch zuordnen nur: die längste Rollenfahrt des Tages, die genau zum Workout passt
+			RecordedActivity ride = candidates.stream()
+					.filter(candidate -> fitsIndoorExactly(candidate, workout))
+					.filter(candidate -> intervalsMatch(candidate, workout, userId, athlete.get()))
 					.max(Comparator.comparingInt(RecordedActivity::movingSeconds))
 					.orElse(null);
 			if (ride == null) {
@@ -161,10 +178,6 @@ public class ActivityImportService {
 				if (linkedId != null && sourceAnswered) {
 					planned.clearActivity();
 				}
-				continue;
-			}
-			if (ride.id().equals(linkedId)) {
-				updateValues(planned, ride); // z. B. TSS neu geschätzt, nachdem der Schwellenpuls eingetragen wurde
 				continue;
 			}
 			apply(planned, ride);
@@ -240,9 +253,46 @@ public class ActivityImportService {
 	private static final Set<WorkoutType> EASY_TYPES = Set.of(WorkoutType.RECOVERY, WorkoutType.ENDURANCE,
 			WorkoutType.LONG_RIDE);
 
+	/** Rolle: Dauer 90–115 % der geplanten */
+	static final double INDOOR_MIN_DURATION_SHARE = 0.9;
+	static final double INDOOR_MAX_DURATION_SHARE = 1.15;
+	/** Rolle: TSS 85–115 % des geplanten */
+	static final double INDOOR_MIN_TSS_SHARE = 0.85;
+	static final double INDOOR_MAX_TSS_SHARE = 1.15;
+	/** Rolle mit Intervallen: so genau müssen die Intervalle getroffen sein (im ERG-Modus meist über 95) */
+	static final int INDOOR_MIN_ACCURACY = 85;
+
 	/**
-	 * Ist die Fahrt sehr wahrscheinlich das geplante Workout? Lieber einmal zu wenig automatisch abhaken als
-	 * falsch – der Nutzer kann eine Fahrt jederzeit selbst zuordnen.
+	 * Darf die Fahrt das Workout automatisch abhaken? Nur auf der Rolle, mit Wattmesser (Watt-TSS) und eng an
+	 * Dauer und TSS des Plans. Ob die Intervalle wirklich drin sind, prüft {@link #intervalsMatch} danach.
+	 */
+	static boolean fitsIndoorExactly(RecordedActivity ride, Workout workout) {
+		if (!ride.indoor() || ride.commute() || ride.normalizedPower() == null || ride.tss() == null
+				|| ride.tssFromHeartRate() || ride.tssFromDuration()) {
+			return false;
+		}
+		double durationShare = ride.movingSeconds() / (workout.getDurationInMinutes() * 60.0);
+		double tssShare = (double) ride.tss() / workout.getTss();
+		return durationShare >= INDOOR_MIN_DURATION_SHARE && durationShare <= INDOOR_MAX_DURATION_SHARE
+				&& tssShare >= INDOOR_MIN_TSS_SHARE && tssShare <= INDOOR_MAX_TSS_SHARE;
+	}
+
+	/** Workouts mit Intervallen: Sind sie in den Sekundenwerten klar und genau zu finden? Ohne Intervalle: ja */
+	private boolean intervalsMatch(RecordedActivity ride, Workout workout, Long userId, Athlete athlete) {
+		if (athlete.getFtp() == null) {
+			return false; // ohne FTP ist der Watt-TSS nicht unser eigener – zu unsicher
+		}
+		if (!IntervalAccuracy.hasIntervals(workout)) {
+			return true;
+		}
+		return intervalAccuracy.powerAccuracyOf(workout, ride.id(), userId, athlete.getFtp())
+				.filter(result -> !result.uncertain() && result.score() >= INDOOR_MIN_ACCURACY)
+				.isPresent();
+	}
+
+	/**
+	 * Passt eine schon zugeordnete Fahrt noch grob zum Workout? (Die früheren, lockeren Regeln fürs automatische
+	 * Abhaken – gelten nur noch fürs Behalten bestehender Zuordnungen.)
 	 * - Dauer: 80–130 % der geplanten Dauer
 	 * - TSS: 75–135 % des geplanten TSS
 	 * - ohne TSS (weder Watt noch Puls) nur lockere Workouts, harte lassen sich so nicht prüfen

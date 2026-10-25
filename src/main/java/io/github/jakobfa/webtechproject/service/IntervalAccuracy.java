@@ -56,6 +56,11 @@ public final class IntervalAccuracy {
 	record PlannedBlock(int plannedStart, int duration, double targetPercent, List<WorkoutStep> steps) {
 	}
 
+	/** Hat das Workout Intervalle, die man in einer Fahrt suchen kann? */
+	public static boolean hasIntervals(Workout workout) {
+		return !blocksOf(workout).isEmpty();
+	}
+
 	static List<PlannedBlock> blocksOf(Workout workout) {
 		List<PlannedBlock> blocks = new ArrayList<>();
 		int second = 0;

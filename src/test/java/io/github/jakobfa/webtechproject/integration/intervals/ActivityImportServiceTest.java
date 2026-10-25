@@ -29,6 +29,8 @@ import io.github.jakobfa.webtechproject.model.PlannedWorkout;
 import io.github.jakobfa.webtechproject.repository.ExtraRideRepository;
 import io.github.jakobfa.webtechproject.repository.PlannedWorkoutRepository;
 import io.github.jakobfa.webtechproject.service.AthleteService;
+import io.github.jakobfa.webtechproject.service.IntervalAccuracy;
+import io.github.jakobfa.webtechproject.service.IntervalAccuracyService;
 import io.github.jakobfa.webtechproject.service.PlanAdaptationService;
 import io.github.jakobfa.webtechproject.service.WorkoutLibrary;
 
@@ -39,6 +41,7 @@ class ActivityImportServiceTest {
 
 	private static final LocalDate TODAY = LocalDate.of(2026, 10, 21);
 	private static final Clock CLOCK = Clock.fixed(Instant.parse("2026-10-21T08:00:00Z"), ZoneOffset.UTC);
+	private static final int FTP = 250;
 	private static final IntervalsCredentials CREDENTIALS = new IntervalsCredentials("geheim", "i42");
 
 	private final IntervalsConnectionService connectionService = mock(IntervalsConnectionService.class);
@@ -48,13 +51,19 @@ class ActivityImportServiceTest {
 	private final ExtraRideRepository extraRides = mock(ExtraRideRepository.class);
 	private final StravaService strava = mock(StravaService.class);
 	private final WorkoutLibrary library = new WorkoutLibrary();
+	private final IntervalAccuracyService intervalAccuracy = mock(IntervalAccuracyService.class);
 	private final ActivityImportService service = new ActivityImportService(connectionService, client,
-			strava, athleteService, repository, extraRides, new PlanAdaptationService(library), library, CLOCK);
+			strava, athleteService, repository, extraRides, new PlanAdaptationService(library), library,
+			intervalAccuracy, CLOCK);
 
 	@BeforeEach
 	void connectedUserWithProfile() {
 		Athlete athlete = new Athlete();
 		athlete.setId(7L);
+		athlete.setFtp(FTP);
+		// Rollenfahrten mit Intervallen: im ERG-Modus genau getroffen
+		when(intervalAccuracy.powerAccuracyOf(any(), any(), any(), eq(FTP))).thenReturn(Optional.of(
+				new IntervalAccuracy.Result(IntervalAccuracy.Basis.POWER, 97, 3, List.of(), false, null)));
 		when(connectionService.credentialsOf(1L)).thenReturn(Optional.of(CREDENTIALS));
 		when(athleteService.findByOwner(1L)).thenReturn(Optional.of(athlete));
 	}
@@ -63,8 +72,16 @@ class ActivityImportServiceTest {
 		return new PlannedWorkout(date, library.findById(5L).orElseThrow(), null, Phase.BASE);
 	}
 
+	/** Draußen, ohne Wattmesser: Last von intervals.icu */
 	private static IntervalsActivity ride(String id, LocalDate date, int minutes, int load) {
 		return new IntervalsActivity(id, date + "T17:00:00", "Ride", minutes * 60, minutes * 500.0, load, "WAHOO");
+	}
+
+	/** Auf der Rolle mit Wattmesser; die Normalized Power ist so gewählt, dass bei FTP 250 genau tss herauskommt */
+	private static IntervalsActivity indoorRide(String id, LocalDate date, int minutes, int tss) {
+		int normalizedPower = (int) Math.round(FTP * Math.sqrt(tss * 60.0 / (minutes * 100.0)));
+		return new IntervalsActivity(id, date + "T17:00:00", "VirtualRide", minutes * 60, minutes * 500.0, tss,
+				"WAHOO", true, normalizedPower, null, true);
 	}
 
 	private void givenPlan(PlannedWorkout... workouts) {
@@ -77,7 +94,7 @@ class ActivityImportServiceTest {
 		yesterday.setRating(6);
 		givenPlan(yesterday);
 		when(client.listActivities(CREDENTIALS, TODAY.minusDays(14), TODAY))
-				.thenReturn(List.of(ride("i1", TODAY.minusDays(1), 75, 70))); // geplant: 71 min, 67 TSS
+				.thenReturn(List.of(indoorRide("i1", TODAY.minusDays(1), 75, 70))); // geplant: 71 min, 67 TSS
 
 		var result = service.importRecent(1L).orElseThrow();
 
@@ -95,7 +112,7 @@ class ActivityImportServiceTest {
 		PlannedWorkout today = planned(TODAY);
 		givenPlan(today);
 		when(client.listActivities(any(), any(), any())).thenReturn(List.of(
-				ride("kurz", TODAY, 30, 20), ride("lang", TODAY, 90, 65)));
+				indoorRide("kurz", TODAY, 30, 20), indoorRide("lang", TODAY, 80, 65)));
 
 		service.importRecent(1L);
 
@@ -182,7 +199,7 @@ class ActivityImportServiceTest {
 		PlannedWorkout today = planned(TODAY);
 		givenPlan(today);
 		when(client.listActivities(any(), any(), any())).thenReturn(List.of(
-				ride("kurz", TODAY, 30, 20), ride("lang", TODAY, 90, 65)));
+				indoorRide("kurz", TODAY, 30, 20), indoorRide("lang", TODAY, 80, 65)));
 
 		var result = service.importRecent(1L).orElseThrow();
 
@@ -295,6 +312,11 @@ class ActivityImportServiceTest {
 				minutes * 60, minutes * 400.0, tss, true, false, false);
 	}
 
+	private static RecordedActivity indoorStravaRide(String id, LocalDate date, String time, int minutes, int tss) {
+		return new RecordedActivity("strava-" + id, Sport.RIDE, java.time.LocalDateTime.parse(date + "T" + time),
+				minutes * 60, minutes * 400.0, tss, false, false, false, 200, true);
+	}
+
 	private static RecordedActivity stravaRide(String id, LocalDate date, String time, int minutes) {
 		return new RecordedActivity("strava-" + id, Sport.RIDE, java.time.LocalDateTime.parse(date + "T" + time),
 				minutes * 60, minutes * 400.0, null, false, false, false);
@@ -310,7 +332,7 @@ class ActivityImportServiceTest {
 		when(connectionService.credentialsOf(1L)).thenReturn(Optional.empty());
 		PlannedWorkout today = planned(TODAY);
 		givenPlan(today);
-		givenStrava(stravaRide("5", TODAY, "07:30:00", 70, 65));
+		givenStrava(indoorStravaRide("5", TODAY, "07:30:00", 70, 65));
 
 		var result = service.importRecent(1L).orElseThrow();
 
@@ -324,9 +346,9 @@ class ActivityImportServiceTest {
 	void sameRideFromBothSourcesCountsOnceAndStravaWins() {
 		PlannedWorkout today = planned(TODAY);
 		givenPlan(today);
-		when(client.listActivities(any(), any(), any())).thenReturn(List.of(ride("i1", TODAY, 70, 65)));
+		when(client.listActivities(any(), any(), any())).thenReturn(List.of(indoorRide("i1", TODAY, 70, 65)));
 		// Wahoo lädt auch zu Strava: Start 3 Minuten versetzt, gleiche Fahrt
-		givenStrava(stravaRide("6", TODAY, "17:03:00", 71, 66), stravaRide("7", TODAY, "07:10:00", 25));
+		givenStrava(indoorStravaRide("6", TODAY, "17:03:00", 71, 66), stravaRide("7", TODAY, "07:10:00", 25));
 
 		var result = service.importRecent(1L).orElseThrow();
 
@@ -371,7 +393,7 @@ class ActivityImportServiceTest {
 		PlannedWorkout today = planned(TODAY);
 		givenPlan(today);
 		when(connectionService.credentialsOf(1L)).thenReturn(Optional.empty());
-		givenStrava(stravaRide("5", TODAY, "07:30:00", 70, 65));
+		givenStrava(indoorStravaRide("5", TODAY, "07:30:00", 70, 65));
 		service.importRecent(1L);
 		today.setActivityConfirmed(true);
 
@@ -385,6 +407,65 @@ class ActivityImportServiceTest {
 		assertThat(today.getActualTss()).isEqualTo(58);
 		assertThat(today.isActualTssFromHeartRate()).isTrue();
 		assertThat(today.getActivityConfirmed()).isTrue();
+	}
+
+	@Test
+	void outdoorRideIsNeverTickedOffAutomaticallyEvenIfItFitsWell() {
+		PlannedWorkout today = planned(TODAY); // 71 min, 67 TSS
+		givenPlan(today);
+		when(client.listActivities(any(), any(), any())).thenReturn(List.of(ride("i4", TODAY, 72, 67)));
+
+		var result = service.importRecent(1L).orElseThrow();
+
+		assertThat(today.getActivityId()).isNull();
+		assertThat(today.isCompleted()).isFalse();
+		assertThat(result.extra()).as("Zusatzfahrt – selbst zuordnen").isEqualTo(1);
+	}
+
+	@Test
+	void indoorRideWithoutTheIntervalsIsNotTickedOff() {
+		PlannedWorkout today = planned(TODAY);
+		givenPlan(today);
+		when(client.listActivities(any(), any(), any())).thenReturn(List.of(indoorRide("i5", TODAY, 72, 67)));
+		// gleiche Dauer und Last, aber z. B. gleichmäßig gefahren statt 3 × 12
+		when(intervalAccuracy.powerAccuracyOf(any(), eq("i5"), any(), eq(FTP))).thenReturn(Optional.of(
+				new IntervalAccuracy.Result(IntervalAccuracy.Basis.POWER, 70, 0, List.of(), true, null)));
+
+		service.importRecent(1L);
+
+		assertThat(today.getActivityId()).isNull();
+	}
+
+	@Test
+	void indoorRulesAreStrict() {
+		var sweetSpot = library.findById(5L).orElseThrow(); // 71 min, 67 TSS
+		java.util.function.BiFunction<Integer, Integer, RecordedActivity> indoor = (minutes,
+				tss) -> new RecordedActivity("x", Sport.RIDE, java.time.LocalDateTime.parse(TODAY + "T07:00:00"),
+						minutes * 60, null, tss, false, false, false, 200, true);
+
+		assertThat(ActivityImportService.fitsIndoorExactly(indoor.apply(71, 67), sweetSpot)).isTrue();
+		assertThat(ActivityImportService.fitsIndoorExactly(indoor.apply(63, 67), sweetSpot)).as("zu kurz").isFalse();
+		assertThat(ActivityImportService.fitsIndoorExactly(indoor.apply(82, 67), sweetSpot)).as("zu lang").isFalse();
+		assertThat(ActivityImportService.fitsIndoorExactly(indoor.apply(71, 56), sweetSpot)).as("zu locker").isFalse();
+		assertThat(ActivityImportService.fitsIndoorExactly(indoor.apply(71, 78), sweetSpot)).as("zu hart").isFalse();
+		assertThat(ActivityImportService.fitsIndoorExactly(new RecordedActivity("x", Sport.RIDE,
+				java.time.LocalDateTime.parse(TODAY + "T07:00:00"), 71 * 60, null, 67, true, false, false, null, true),
+				sweetSpot)).as("nur Puls-TSS").isFalse();
+	}
+
+	@Test
+	void earlierLooseMatchStaysUntilAnswered() {
+		// nach den alten Regeln automatisch abgehakt (draußen) – darf nicht plötzlich wieder offen sein
+		PlannedWorkout today = planned(TODAY);
+		today.setActivityId("i6");
+		today.setCompleted(true);
+		givenPlan(today);
+		when(client.listActivities(any(), any(), any())).thenReturn(List.of(ride("i6", TODAY, 72, 67)));
+
+		service.importRecent(1L);
+
+		assertThat(today.getActivityId()).isEqualTo("i6");
+		assertThat(today.isCompleted()).isTrue();
 	}
 
 	@Test
