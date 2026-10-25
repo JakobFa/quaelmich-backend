@@ -43,8 +43,10 @@ public class PlanResponseMapper {
 	}
 
 	public TrainingPlanResponse toResponse(TrainingPlan plan) {
-		var event = plan.getAthlete().getEvent();
-		return new TrainingPlanResponse(plan.getId(), plan.getStartDate(), event.getName(), event.getDate(),
+		var athlete = plan.getAthlete();
+		var event = athlete.hasEventGoal() ? athlete.getEvent() : null;
+		return new TrainingPlanResponse(plan.getId(), plan.getStartDate(), event == null ? null : event.getName(),
+				event == null ? null : event.getDate(),
 				plan.getWorkouts().stream().map(this::toResponse).toList(),
 				extraRideRepository
 						// ab Montag der ersten Planwoche – so bleiben Fahrten sichtbar, auch wenn der Plan
@@ -52,12 +54,13 @@ public class PlanResponseMapper {
 						.findByAthleteIdAndDateGreaterThanEqualOrderByDate(plan.getAthlete().getId(),
 								plan.getStartDate().with(TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY)))
 						.stream().map(PlanResponseMapper::toResponse).toList(),
-				// Schwerpunkt des nächsten anstehenden Events
-				EventProfile.of(EventProfile.nextEvent(event, moreEventsOf(plan), LocalDate.now(clock)),
-						plan.getAthlete().getLevel()),
+				// Schwerpunkt des nächsten anstehenden Events – oder des Ziels ohne Event
+				event == null ? EventProfile.of(athlete)
+						: EventProfile.of(EventProfile.nextEvent(event, moreEventsOf(plan), LocalDate.now(clock)),
+								athlete.getLevel()),
 				// Kopie, damit die Antwort nicht an der Hibernate-Collection hängt
 				new java.util.TreeMap<>(plan.getWeekAvailability()),
-				raceEvents.findByAthleteIdOrderByDate(plan.getAthlete().getId()));
+				raceEvents.findByAthleteIdOrderByDate(athlete.getId()), athlete.getTrainingGoal());
 	}
 
 	public static ExtraRideResponse toResponse(ExtraRide ride) {

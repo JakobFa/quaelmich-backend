@@ -187,10 +187,28 @@ public class Athlete {
 	@Enumerated(EnumType.STRING)
 	private Level level;
 
-	@Valid
+	/** Worauf trainiert wird – ohne Angabe wie bisher auf ein Event hin */
 	@NotNull
+	@Enumerated(EnumType.STRING)
+	@ColumnDefault("'EVENT'")
+	private TrainingGoal trainingGoal = TrainingGoal.EVENT;
+
+	/** Das Ziel-Event; nur beim Ziel "Event" nötig, sonst leer */
+	@Valid
 	@OneToOne(cascade = CascadeType.ALL, orphanRemoval = true)
 	private Event event;
+
+	@JsonIgnore
+	@AssertTrue(message = "Für ein Event-Ziel braucht es ein Event")
+	public boolean isEventGivenWhenNeeded() {
+		return trainingGoal == null || !trainingGoal.needsEvent() || event != null;
+	}
+
+	/** Trainiert auf ein Event hin (sonst läuft der Plan ohne Enddatum in Zyklen) */
+	@JsonIgnore
+	public boolean hasEventGoal() {
+		return trainingGoal == null || trainingGoal.needsEvent();
+	}
 
 	@Valid
 	@NotNull

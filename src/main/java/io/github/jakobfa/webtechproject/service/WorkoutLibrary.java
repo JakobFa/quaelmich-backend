@@ -159,6 +159,9 @@ public class WorkoutLibrary {
 					steps(ramp(WARMUP, min(15), 50, 75), steady(INTERVAL, min(5), 110), steady(RECOVERY, min(10), 50),
 							steady(INTERVAL, min(20), 100), ramp(COOLDOWN, min(15), 60, 45))));
 
+	/** Workout-ID des FTP-Tests */
+	public static final long FTP_TEST = 11L;
+
 	/** Feste Workout-IDs der Krafteinheiten (die Übungen dazu kennt die App) */
 	public static final long STRENGTH_BASE_A = 40L;
 	public static final long STRENGTH_BASE_B = 41L;

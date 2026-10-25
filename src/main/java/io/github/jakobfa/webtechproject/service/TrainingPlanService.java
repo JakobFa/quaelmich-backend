@@ -53,7 +53,8 @@ public class TrainingPlanService {
 			var existing = planRepository.findByAthleteId(athleteId);
 			if (existing.isEmpty()) {
 				TrainingPlan plan = new TrainingPlan(athlete, today);
-				planGenerator.generateSeason(athlete, today, Map.of(), moreEventsOf(athleteId)).forEach(plan::addWorkout);
+				planGenerator.generateSeason(athlete, today, Map.of(), moreEventsOf(athleteId), horizon())
+						.forEach(plan::addWorkout);
 				return planRepository.save(plan);
 			}
 
@@ -97,7 +98,7 @@ public class TrainingPlanService {
 		Set<String> keptDays = plan.getWorkouts().stream().map(TrainingPlanService::slotOf)
 				.collect(Collectors.toSet());
 		planGenerator.generateSeason(plan.getAthlete(), plan.getStartDate(), plan.getWeekAvailability(),
-				moreEventsOf(plan.getAthlete().getId())).stream()
+				moreEventsOf(plan.getAthlete().getId()), horizon()).stream()
 				.filter(planned -> inRange(planned.getDate(), from, to))
 				.filter(planned -> !keptDays.contains(slotOf(planned)))
 				.forEach(plan::addWorkout);
@@ -124,6 +125,34 @@ public class TrainingPlanService {
 	private static boolean isKept(PlannedWorkout planned) {
 		return planned.isCompleted() || planned.getActivityId() != null || planned.getSkipReason() != null
 				|| planned.isChosenByUser();
+	}
+
+	/** Bis wann ein Plan ohne Event geplant ist: immer etwa 12 Wochen ab heute */
+	private LocalDate horizon() {
+		return LocalDate.now(clock).plusWeeks(PlanGenerator.OPEN_HORIZON_WEEKS);
+	}
+
+	/** Verlängert wird, sobald weniger als so viele Wochen im Voraus geplant sind */
+	static final int EXTEND_WHEN_LESS_THAN_WEEKS = 10;
+
+	/**
+	 * Der Plan zum Anzeigen. Ein Plan ohne Event (Ziel ohne Termin) hat kein Ende: Sind nur noch weniger als
+	 * 10 Wochen geplant, werden die nächsten Wochen bis zum Horizont angehängt – im selben Zyklus weiter.
+	 */
+	@Transactional
+	public Optional<TrainingPlan> currentPlan(Long athleteId) {
+		return planRepository.findByAthleteId(athleteId).map(plan -> {
+			if (!plan.getAthlete().hasEventGoal()) {
+				LocalDate lastPlanned = plan.getWorkouts().stream().map(PlannedWorkout::getDate)
+						.max(LocalDate::compareTo).orElse(LocalDate.now(clock));
+				if (lastPlanned.isBefore(LocalDate.now(clock).plusWeeks(EXTEND_WHEN_LESS_THAN_WEEKS))) {
+					replan(plan, lastPlanned.plusDays(1), horizon());
+					planRepository.save(plan);
+				}
+			}
+			plan.getWorkouts().size(); // Workouts innerhalb der Transaktion laden
+			return plan;
+		});
 	}
 
 	@Transactional(readOnly = true)

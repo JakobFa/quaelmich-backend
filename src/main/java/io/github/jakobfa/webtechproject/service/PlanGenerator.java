@@ -90,12 +90,27 @@ public class PlanGenerator {
 	 */
 	public List<PlannedWorkout> generateSeason(Athlete athlete, LocalDate startDate,
 			Map<LocalDate, WeeklyAvailability> weekAvailability, List<Event> moreEvents) {
-		List<PlannedWorkout> rides = ridesOfSeason(athlete, startDate, weekAvailability, moreEvents);
+		return generateSeason(athlete, startDate, weekAvailability, moreEvents,
+				startDate.plusWeeks(OPEN_HORIZON_WEEKS));
+	}
+
+	/**
+	 * Wie oben; horizon = bis wann ein Plan ohne Event (Ziel ohne Termin) geplant wird. Bei Event-Zielen
+	 * spielt er keine Rolle – dort endet der Plan mit dem Event.
+	 */
+	public List<PlannedWorkout> generateSeason(Athlete athlete, LocalDate startDate,
+			Map<LocalDate, WeeklyAvailability> weekAvailability, List<Event> moreEvents, LocalDate horizon) {
+		List<PlannedWorkout> rides = athlete.hasEventGoal()
+				? ridesOfSeason(athlete, startDate, weekAvailability, moreEvents)
+				: generateOpenEnded(athlete, startDate, weekAvailability, horizon);
 		if (!athlete.isStrengthTraining()) {
 			return rides;
 		}
-		List<LocalDate> eventDates = new ArrayList<>(moreEvents.stream().map(Event::getDate).toList());
-		eventDates.add(athlete.getEvent().getDate());
+		List<LocalDate> eventDates = new ArrayList<>();
+		if (athlete.hasEventGoal()) {
+			eventDates.addAll(moreEvents.stream().map(Event::getDate).toList());
+			eventDates.add(athlete.getEvent().getDate());
+		}
 		return withStrength(rides, athlete, startDate, weekAvailability, eventDates);
 	}
 
@@ -163,7 +178,10 @@ public class PlanGenerator {
 		}
 		Predicate<LocalDate> demanding = day -> typesPerDay.getOrDefault(day, List.of())
 				.stream().anyMatch(DEMANDING::contains);
-		LocalDate lastEvent = eventDates.stream().max(Comparator.naturalOrder()).orElseThrow();
+		// ohne Event (Ziel ohne Termin) bis zum Planende
+		LocalDate lastEvent = eventDates.stream().max(Comparator.naturalOrder())
+				.orElseGet(() -> rides.stream().map(PlannedWorkout::getDate).max(Comparator.naturalOrder())
+						.orElseThrow().plusDays(1));
 		Predicate<LocalDate> nearEvent = day -> eventDates.stream()
 				.anyMatch(event -> !day.isBefore(event.minusDays(1))
 						&& !day.isAfter(event.plusDays(NO_STRENGTH_DAYS_AFTER_EVENT)));
@@ -243,13 +261,57 @@ public class PlanGenerator {
 		if (allWeeks < 1) {
 			return List.of();
 		}
-
-		EventProfile profile = EventProfile.of(athlete);
 		List<Phase> phases = phasesFor(allWeeks);
 		int loadWeeksTotal = (int) phases.stream().filter(PlanGenerator::isLoadPhase).count();
-
 		// Bei sehr weit entfernten Events nur das erste Jahr planen
-		int weeks = Math.min(allWeeks, MAX_WEEKS);
+		return planWeeks(athlete, EventProfile.of(athlete), phases, startDate, eventDate, weekAvailability,
+				Math.min(allWeeks, MAX_WEEKS), loadWeeksTotal);
+	}
+
+	// ---------- Ziele ohne Event ----------
+
+	/** Ein Plan ohne Event wird so weit im Voraus geplant (und beim Öffnen verlängert) */
+	public static final int OPEN_HORIZON_WEEKS = 12;
+	/** Ein Zyklus: 3 Wochen Grundlage, Erholung, 3 Wochen Aufbau, Erholung – danach von vorn, eine Stufe höher */
+	static final List<Phase> OPEN_CYCLE = List.of(Phase.BASE, Phase.BASE, Phase.BASE, Phase.RECOVERY,
+			Phase.BUILD, Phase.BUILD, Phase.BUILD, Phase.RECOVERY);
+	/** Nach so vielen Belastungswochen ist die lange Ausfahrt auf voller Länge */
+	static final int OPEN_LOAD_WEEKS_TO_FULL = 12;
+
+	/**
+	 * Plan für ein Ziel ohne Termin (FTP, Ausdauer, fit bleiben, Berg): wiederkehrende 8-Wochen-Zyklen bis zum
+	 * Horizont. FTP-Test zu Beginn und nach jedem Zyklus (direkt nach der Erholungswoche); die harten Einheiten
+	 * werden von Zyklus zu Zyklus schwerer, bis zur Obergrenze des Levels.
+	 */
+	public List<PlannedWorkout> generateOpenEnded(Athlete athlete, LocalDate startDate,
+			Map<LocalDate, WeeklyAvailability> weekAvailability, LocalDate horizon) {
+		LocalDate firstMonday = startDate.with(previousOrSame(DayOfWeek.MONDAY));
+		int weeks = (int) ChronoUnit.WEEKS.between(firstMonday, horizon.with(previousOrSame(DayOfWeek.MONDAY)))
+				+ 1;
+		if (weeks < 1) {
+			return List.of();
+		}
+		return planWeeks(athlete, EventProfile.of(athlete), openPhases(weeks), startDate, null, weekAvailability,
+				weeks, OPEN_LOAD_WEEKS_TO_FULL);
+	}
+
+	static List<Phase> openPhases(int weeks) {
+		List<Phase> phases = new ArrayList<>();
+		for (int i = 0; i < weeks; i++) {
+			phases.add(OPEN_CYCLE.get(i % OPEN_CYCLE.size()));
+		}
+		return phases;
+	}
+
+	/**
+	 * Die Wochen nacheinander planen. eventDate null = Plan ohne Event: kein Tapering, keine Event-Woche,
+	 * und vom Ende her gilt nichts als "kurz vor dem Event".
+	 */
+	private List<PlannedWorkout> planWeeks(Athlete athlete, EventProfile profile, List<Phase> phases,
+			LocalDate startDate, LocalDate eventDate, Map<LocalDate, WeeklyAvailability> weekAvailability,
+			int weeks, int loadWeeksTotal) {
+		LocalDate firstMonday = startDate.with(previousOrSame(DayOfWeek.MONDAY));
+		int allWeeks = eventDate == null ? Integer.MAX_VALUE : phases.size();
 		List<PlannedWorkout> plan = new ArrayList<>();
 		Map<Phase, Integer> weeksInPhase = new EnumMap<>(Phase.class);
 		int loadWeek = 0;
@@ -259,10 +321,10 @@ public class PlanGenerator {
 			WeeklyAvailability availability = weekAvailability.getOrDefault(monday, athlete.getAvailability());
 			double weeklyHours = availability.totalHours();
 			Phase phase = phases.get(weekIndex);
-			int weeksUntilEvent = allWeeks - 1 - weekIndex;
+			int weeksUntilEvent = eventDate == null ? Integer.MAX_VALUE : allWeeks - 1 - weekIndex;
 
 			List<LocalDate> trainingDays = monday.datesUntil(monday.plusWeeks(1))
-					.filter(day -> !day.isBefore(startDate) && day.isBefore(eventDate))
+					.filter(day -> !day.isBefore(startDate) && (eventDate == null || day.isBefore(eventDate)))
 					.filter(day -> availableMinutes(availability, day) > 0)
 					.toList();
 
