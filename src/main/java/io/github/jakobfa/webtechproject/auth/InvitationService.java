@@ -13,8 +13,8 @@ import org.springframework.transaction.annotation.Transactional;
 
 
 /**
- * Einladungscodes vom Betreiber: jeder Code gilt einmal und 14 Tage. Ist "nur mit Einladung" eingeschaltet
- * (REGISTRATION_INVITE_ONLY=true), braucht jede Registrierung einen offenen Code.
+ * Einladungscodes vom Betreiber: jeder Code gilt einmal und 14 Tage. Standardmäßig braucht jede Registrierung
+ * einen offenen Code; nur mit REGISTRATION_INVITE_ONLY=false ist sie offen (z. B. lokal zum Testen).
  */
 @Service
 public class InvitationService {
@@ -34,7 +34,7 @@ public class InvitationService {
 	private final SecureRandom random = new SecureRandom();
 
 	public InvitationService(InvitationRepository repository, Clock clock,
-			@Value("${app.registration.invite-only:false}") boolean inviteOnly) {
+			@Value("${app.registration.invite-only:true}") boolean inviteOnly) {
 		this.repository = repository;
 		this.clock = clock;
 		this.inviteOnly = inviteOnly;
