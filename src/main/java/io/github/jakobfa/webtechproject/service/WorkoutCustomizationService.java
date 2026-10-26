@@ -310,7 +310,7 @@ public class WorkoutCustomizationService {
 		return switch (direction) {
 			case EASIER -> library.easierVariant(current).map(variant -> keepingLength(current, variant))
 					.or(() -> Optional.of(new Choice(ENDURANCE, Math.max(60, roundToQuarterHour(minutes)))));
-			case HARDER -> harderVariant(current).map(variant -> keepingLength(current, variant));
+			case HARDER -> library.harderVariant(current).map(variant -> keepingLength(current, variant));
 			// erst den Rahmen ändern, der Hauptteil bleibt; geht das nicht mehr, die kürzere Variante
 			case SHORTER -> withLength(current, minutes - LENGTH_STEP)
 					.or(() -> neighbourByDuration(current, false).map(Choice::of));
@@ -394,11 +394,6 @@ public class WorkoutCustomizationService {
 		return id == ENDURANCE ? 60 : 90;
 	}
 
-	private Optional<Workout> harderVariant(Workout workout) {
-		List<Workout> variants = library.variantsOf(workout.getType());
-		int index = variants.indexOf(library.findById(workout.getId()).orElse(workout));
-		return index >= 0 && index < variants.size() - 1 ? Optional.of(variants.get(index + 1)) : Optional.empty();
-	}
 
 	/**
 	 * Die Variante derselben Art, die als nächstes kürzer bzw. länger ist.
