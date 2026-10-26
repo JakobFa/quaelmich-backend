@@ -165,6 +165,10 @@ public class WorkoutLibrary {
 	 * Bibliothek. IDs ab 50.
 	 */
 	private final List<Workout> variety = List.of(
+			// ---------- Grundlage mit Einlagen (Länge frei wählbar) ----------
+			enduranceWithSprints(75),
+			enduranceWithTempo(75),
+
 			// ---------- Tempo ----------
 			new Workout(50L, "Tempo 4 × 10", WorkoutType.TEMPO,
 					"Vier kürzere Tempo-Blöcke mit kurzer Pause – gleicher Reiz wie 2 × 20, fühlt sich leichter an.",
@@ -450,6 +454,8 @@ public class WorkoutLibrary {
 			case 2 -> Optional.of(endurance(durationMinutes));
 			case 3 -> Optional.of(longRide(durationMinutes));
 			case 27 -> Optional.of(longRideWithTempo(durationMinutes));
+			case 29 -> Optional.of(enduranceWithSprints(durationMinutes));
+			case 30 -> Optional.of(enduranceWithTempo(durationMinutes));
 			default -> findById(id).map(workout -> isLengthAdjustable(workout)
 					? WorkoutFitter.fit(workout, durationMinutes).orElse(workout)
 					: workout);
@@ -496,6 +502,44 @@ public class WorkoutLibrary {
 		return new Workout(27L, "Lange Ausfahrt " + formatMinutes(minutes) + " mit Tempo", WorkoutType.LONG_RIDE,
 				"Lange Grundlage mit %d × 20 min im Renntempo – übt das gleichmäßige Fahren über Stunden."
 						.formatted(blocks),
+				steps(parts.toArray()));
+	}
+
+	/**
+	 * Grundlage mit ein paar kurzen Antritten (10 s, gleichmäßig verteilt) – bringt Spritzigkeit, kaum Ermüdung.
+	 * Ab 60 min; je angefangene 10 min Grundlage ein Antritt, höchstens 8.
+	 */
+	public static Workout enduranceWithSprints(int minutes) {
+		int easy = minutes - 20;
+		int sprints = Math.clamp(easy / 10, 3, 8);
+		int between = (easy * 60 - sprints * 10) / (sprints + 1);
+		List<Object> parts = new ArrayList<>();
+		parts.add(warmup());
+		for (int i = 0; i < sprints; i++) {
+			parts.add(steady(STEADY, between, 68));
+			parts.add(steady(INTERVAL, 10, 150));
+		}
+		parts.add(steady(STEADY, easy * 60 - sprints * (between + 10), 68));
+		parts.add(cooldown());
+		return new Workout(29L, "Grundlage %s mit Antritten".formatted(formatMinutes(minutes)), WorkoutType.ENDURANCE,
+				"Locker in Zone 2, dazu %d kurze Antritte à 10 Sekunden – kräftig, aber nicht all-out.".formatted(sprints),
+				steps(parts.toArray()));
+	}
+
+	/** Grundlage mit drei zügigen Blöcken (6 min bei 80 %) in der Mitte – ab 60 min */
+	public static Workout enduranceWithTempo(int minutes) {
+		int easy = minutes - 20 - 3 * 6;
+		int between = easy / 4;
+		List<Object> parts = new ArrayList<>();
+		parts.add(warmup());
+		for (int i = 0; i < 3; i++) {
+			parts.add(steady(STEADY, min(between), 68));
+			parts.add(steady(INTERVAL, min(6), 80));
+		}
+		parts.add(steady(STEADY, min(easy - 3 * between), 68));
+		parts.add(cooldown());
+		return new Workout(30L, "Grundlage %s mit Tempo-Einlagen".formatted(formatMinutes(minutes)),
+				WorkoutType.ENDURANCE, "Locker in Zone 2, dazwischen dreimal 6 Minuten zügig – noch kein hartes Training.",
 				steps(parts.toArray()));
 	}
 
