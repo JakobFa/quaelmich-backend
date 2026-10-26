@@ -79,6 +79,22 @@ class PlanGeneratorTest {
 	}
 
 	@Test
+	void hardSessionsVaryFromWeekToWeekInsteadOfRepeatingTheSameWorkout() {
+		Athlete athlete = athlete(Level.AMBITIOUS, MONDAY.plusWeeks(16).plusDays(6));
+
+		List<Workout> hard = generator.generate(athlete, MONDAY).stream().map(this::workoutOf)
+				.filter(PlanGeneratorTest::isHard).filter(w -> w.getType() != WorkoutType.FTP_TEST).toList();
+
+		assertThat(hard).extracting(Workout::getId).as("Abwechslungs-Workouts kommen im Plan vor")
+				.anyMatch(id -> id >= 50);
+		for (int i = 1; i < hard.size(); i++) {
+			assertThat(hard.subList(Math.max(0, i - 2), i)).extracting(Workout::getId)
+					.as("nicht dreimal hintereinander " + hard.get(i).getTitle())
+					.isNotEqualTo(List.of(hard.get(i).getId(), hard.get(i).getId()));
+		}
+	}
+
+	@Test
 	void startsAtStartDateAndEndsWithRestDayAndOpener() {
 		LocalDate eventSunday = MONDAY.plusWeeks(8).plusDays(6);
 		LocalDate startWednesday = MONDAY.plusDays(2);

@@ -160,9 +160,9 @@ public class WorkoutLibrary {
 							steady(INTERVAL, min(20), 100), ramp(COOLDOWN, min(15), 60, 45))));
 
 	/**
-	 * Abwechslung: weitere Workouts für die Auswahl, den Zufall und die Bibliothek. Sie sind bewusst nicht Teil
-	 * der Steigerung oben (variantsOf) – so ändert sich am Plan-Generator nichts und bestehende Pläne bleiben,
-	 * wie sie sind. IDs ab 50.
+	 * Abwechslung: weitere Workouts neben der Steigerung oben (variantsOf). Der Plan wechselt sie Woche für Woche
+	 * mit der Variante derselben Stufe ab (siehe alternatives), dazu gibt es sie in Auswahl, Zufall und
+	 * Bibliothek. IDs ab 50.
 	 */
 	private final List<Workout> variety = List.of(
 			// ---------- Tempo ----------
@@ -175,6 +175,10 @@ public class WorkoutLibrary {
 					steps(warmup(),
 							repeat(3, repeat(6, steady(INTERVAL, 110, 84), steady(INTERVAL, 10, 140)),
 									steady(RECOVERY, min(5), 55)),
+							cooldown())),
+			new Workout(66L, "Tempo 3 × 10", WorkoutType.TEMPO,
+					"Drei kurze Tempo-Blöcke – der sanfte Einstieg, wenn 2 × 15 zu lang wirkt.",
+					steps(warmup(), repeat(3, steady(INTERVAL, min(10), 80), steady(RECOVERY, min(4), 55)),
 							cooldown())),
 			new Workout(52L, "Tempo-Pyramide 10-15-10", WorkoutType.TEMPO,
 					"Kurz, lang, kurz – der lange Block in der Mitte etwas härter.",
@@ -191,6 +195,10 @@ public class WorkoutLibrary {
 					"Vier knackige Blöcke am oberen Sweet Spot mit kurzen Pausen.",
 					steps(warmup(), repeat(4, steady(INTERVAL, min(8), 92), steady(RECOVERY, min(4), 55)),
 							cooldown())),
+			new Workout(67L, "Sweet Spot 5 × 8", WorkoutType.SWEET_SPOT,
+					"Fünf Blöcke mit kurzen Pausen – 40 Minuten Sweet Spot, gut verdaulich portioniert.",
+					steps(warmup(), repeat(5, steady(INTERVAL, min(8), 90), steady(RECOVERY, min(3), 55)),
+							cooldown())),
 			new Workout(55L, "Sweet-Spot-Treppe 8-10-12", WorkoutType.SWEET_SPOT,
 					"Jeder Block etwas länger und etwas härter – von 88 bis 92 % FTP.",
 					steps(warmup(), steady(INTERVAL, min(8), 88), steady(RECOVERY, min(4), 55),
@@ -206,6 +214,10 @@ public class WorkoutLibrary {
 					"Vier Blöcke genau an der FTP mit kurzen Pausen – viel Zeit an der Schwelle.",
 					steps(warmup(), repeat(4, steady(INTERVAL, min(8), 100), steady(RECOVERY, min(4), 55)),
 							cooldown())),
+			new Workout(68L, "Schwelle 3 × 12", WorkoutType.THRESHOLD,
+					"Drei Blöcke an der FTP – zwischen 3 × 10 und 3 × 15.",
+					steps(warmup(), repeat(3, steady(INTERVAL, min(12), 98), steady(RECOVERY, min(5), 55)),
+							cooldown())),
 			new Workout(58L, "Schwelle 1 × 20", WorkoutType.THRESHOLD,
 					"Ein einziger Block an der Schwelle – übt das gleichmäßige Durchziehen wie im Zeitfahren.",
 					steps(ramp(WARMUP, min(15), 50, 80), steady(INTERVAL, min(20), 96), steady(RECOVERY, min(5), 55),
@@ -217,6 +229,19 @@ public class WorkoutLibrary {
 					steps(warmup(),
 							repeat(2, repeat(6, steady(INTERVAL, min(1), 92), steady(INTERVAL, min(1), 108)),
 									steady(RECOVERY, min(6), 55)),
+							cooldown())),
+
+			new Workout(69L, "Over-Unders 4 × 9", WorkoutType.OVER_UNDER,
+					"Vier kürzere Blöcke mit 2 min unter und 1 min über der Schwelle.",
+					steps(warmup(),
+							repeat(4, repeat(3, steady(INTERVAL, min(2), 95), steady(INTERVAL, min(1), 105)),
+									steady(RECOVERY, min(4), 55)),
+							cooldown())),
+			new Workout(70L, "Over-Unders 3 × 16 (3/1)", WorkoutType.OVER_UNDER,
+					"Lange Blöcke: drei Minuten knapp unter, eine deutlich über der Schwelle.",
+					steps(warmup(),
+							repeat(3, repeat(4, steady(INTERVAL, min(3), 95), steady(INTERVAL, min(1), 107)),
+									steady(RECOVERY, min(5), 55)),
 							cooldown())),
 
 			// ---------- VO2max ----------
@@ -317,6 +342,35 @@ public class WorkoutLibrary {
 
 	/** Der Opener ist fürs Vortag-Event gedacht und bleibt kurz */
 	static final long OPENER = 28L;
+
+	/**
+	 * Was der Plan auf dieser Stufe fahren kann: die Variante der Steigerung und alle Abwechslungs-Workouts
+	 * derselben Art, deren Belastung (TSS) dieser Stufe am nächsten liegt. Die Variante steht vorn.
+	 */
+	public List<Workout> alternatives(WorkoutType type, int step) {
+		List<Workout> variants = variantsOf(type);
+		if (variants.isEmpty()) {
+			return List.of();
+		}
+		int index = Math.clamp(step, 0, variants.size() - 1);
+		List<Workout> result = new ArrayList<>();
+		result.add(variants.get(index));
+		variety.stream()
+				.filter(workout -> workout.getType() == type && nearestStep(variants, workout) == index)
+				.forEach(result::add);
+		return result;
+	}
+
+	private static int nearestStep(List<Workout> variants, Workout workout) {
+		int best = 0;
+		for (int i = 1; i < variants.size(); i++) {
+			if (Math.abs(variants.get(i).getTss() - workout.getTss())
+					< Math.abs(variants.get(best).getTss() - workout.getTss())) {
+				best = i;
+			}
+		}
+		return best;
+	}
 
 	/**
 	 * Lässt sich die Dauer dieses festen Workouts über den Rahmen (Aufwärmen, Grundlage, Ausfahren) anpassen?
