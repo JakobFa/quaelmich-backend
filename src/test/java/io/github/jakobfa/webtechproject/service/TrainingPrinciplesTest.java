@@ -182,6 +182,69 @@ class TrainingPrinciplesTest {
 		}
 	}
 
+	/** Harte Einheiten der Woche ohne FTP-Test (der ist ein Test, kein Training) */
+	private static List<Workout> hardTraining(List<PlannedWorkout> week) {
+		return week.stream().filter(TrainingPrinciplesTest::isHard)
+				.filter(planned -> planned.getWorkoutId() != WorkoutLibrary.FTP_TEST)
+				.map(TrainingPrinciplesTest::workoutOf).toList();
+	}
+
+	/** Schnitt je Woche einer Phase: TSS der harten Einheiten */
+	private static double hardTssPerWeek(Rider rider, Phase phase) {
+		return trainingWeeks(rider).values().stream().filter(week -> phaseOf(week) == phase)
+				.mapToInt(week -> hardTraining(week).stream().mapToInt(Workout::getTss).sum())
+				.average().orElse(0);
+	}
+
+	/** Schnitt je Woche einer Phase: Minuten in Intervallen ab 105 % FTP (VO2max und darüber) */
+	private static double minutesAboveThresholdPerWeek(Rider rider, Phase phase) {
+		return trainingWeeks(rider).values().stream().filter(week -> phaseOf(week) == phase)
+				.mapToDouble(week -> hardTraining(week).stream().flatMap(workout -> workout.getSteps().stream())
+						.filter(step -> step.kind() == io.github.jakobfa.webtechproject.model.StepKind.INTERVAL
+								&& Math.max(step.powerStartPercent(), step.powerEndPercent()) >= 105)
+						.mapToInt(io.github.jakobfa.webtechproject.model.WorkoutStep::durationSeconds).sum() / 60.0)
+				.average().orElse(0);
+	}
+
+	@ParameterizedTest(name = "{0}")
+	@MethodSource("riders")
+	void hardSessionsGetHarderFromBaseToBuild(Rider rider) {
+		double base = hardTssPerWeek(rider, Phase.BASE);
+		double build = hardTssPerWeek(rider, Phase.BUILD);
+
+		assertThat(build).as("Aufbau härter als Grundlage (%.0f vs. %.0f TSS/Woche)", build, base)
+				.isGreaterThanOrEqualTo(base);
+	}
+
+	@ParameterizedTest(name = "{0}")
+	@MethodSource("riders")
+	void thePeakIsNotEasierThanTheBuild(Rider rider) {
+		double build = hardTssPerWeek(rider, Phase.BUILD);
+		double peak = hardTssPerWeek(rider, Phase.PEAK);
+		double buildIntense = minutesAboveThresholdPerWeek(rider, Phase.BUILD);
+		double peakIntense = minutesAboveThresholdPerWeek(rider, Phase.PEAK);
+
+		// die Spitze muss nicht in allem der härteste Block sein (bei kurzen Rennen wird geschärft: weniger
+		// Umfang, dafür härter) – aber sie darf nicht einfach leichter werden
+		assertThat(peak >= build || peakIntense > buildIntense)
+				.as("Spitze: %.0f TSS und %.0f min ≥ 105 %% je Woche, Aufbau: %.0f TSS und %.0f min", peak,
+						peakIntense, build, buildIntense)
+				.isTrue();
+	}
+
+	@ParameterizedTest(name = "{0}")
+	@MethodSource("riders")
+	void everyoneButBeginnersGetsSomeWorkAboveThreshold(Rider rider) {
+		if (rider.athlete().getLevel() == Level.BEGINNER) {
+			return; // Einsteiger brauchen erst Grundlage und Schwelle
+		}
+		double minutes = minutesAboveThresholdPerWeek(rider, Phase.BUILD) + minutesAboveThresholdPerWeek(rider,
+				Phase.PEAK);
+
+		// auch für Ultras: ein wenig VO2max hebt die Decke, dieselbe Leistung wird dann leichter
+		assertThat(minutes).as("Minuten ≥ 105 %% FTP in Aufbau und Spitze").isPositive();
+	}
+
 	@ParameterizedTest(name = "{0}")
 	@MethodSource("riders")
 	void recoveryWeeksAreClearlyEasier(Rider rider) {

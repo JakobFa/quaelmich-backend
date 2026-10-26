@@ -328,8 +328,10 @@ public class PlanGenerator {
 	}
 
 	/**
-	 * Steigerungsstufe der harten Workouts: alle zwei Wochen einer Phase eine Stufe schwerer.
-	 * Die Spitze startet auf mittlerer Stufe, im Tapering bleibt es moderat.
+	 * Steigerungsstufe der harten Workouts: in Grundlage und Aufbau alle zwei Wochen eine Stufe schwerer
+	 * (der Aufbau startet eine Stufe höher, damit es nach der Grundlage nicht wieder leichter wird). Die Spitze
+	 * ist der härteste Block: sie beginnt eine Stufe unter ihrem Maximum und darf eine Stufe über das hinaus,
+	 * was dem Level sonst zugemutet wird. Im Tapering bleibt es moderat.
 	 * Einsteiger und Hobbyfahrer bleiben auf den leichteren Stufen.
 	 */
 	static int progressionStep(Level level, Phase phase, int weekInPhase) {
@@ -338,22 +340,27 @@ public class PlanGenerator {
 
 	/** Vorne mitfahren: eine Stufe schwerer (auch über die Level-Grenze), ankommen: eine leichter */
 	static int progressionStep(Level level, Phase phase, int weekInPhase, EventGoal goal) {
-		int step = switch (phase) {
-			case PEAK -> 1 + weekInPhase / 2;
-			case TAPER -> 1;
-			default -> weekInPhase / 2;
-		};
 		int maxStep = switch (level) {
 			case BEGINNER -> 1;
 			case HOBBY -> 2;
 			default -> 3;
 		};
+		int top = phase == Phase.PEAK ? Math.min(HARDEST_STEP, maxStep + 1) : maxStep;
+		int step = switch (phase) {
+			case PEAK -> top - 1 + weekInPhase;
+			case BUILD -> 1 + weekInPhase / 2;
+			case TAPER -> 1;
+			default -> weekInPhase / 2;
+		};
 		return switch (goal) {
-			case COMPETE -> Math.min(step + 1, Math.min(maxStep + 1, 3));
-			case FINISH -> Math.max(0, Math.min(step, maxStep) - 1);
-			case GOOD_TIME -> Math.min(step, maxStep);
+			case COMPETE -> Math.min(step + 1, Math.min(top + 1, HARDEST_STEP));
+			case FINISH -> Math.max(0, Math.min(step, top) - 1);
+			case GOOD_TIME -> Math.min(step, top);
 		};
 	}
+
+	/** Höchste Stufe in der Bibliothek (z. B. VO2max 5 × 5, Schwelle 3 × 15) */
+	static final int HARDEST_STEP = 3;
 
 	// ---------- Umfang ----------
 
@@ -482,7 +489,9 @@ public class PlanGenerator {
 			case BUILD -> switch (focus) {
 				case LONG_CLIMBING -> List.of(WorkoutType.SWEET_SPOT, WorkoutType.THRESHOLD, WorkoutType.OVER_UNDER);
 				case LONG_FLAT -> List.of(WorkoutType.SWEET_SPOT, WorkoutType.TEMPO, WorkoutType.THRESHOLD);
-				case ULTRA -> List.of(WorkoutType.TEMPO, WorkoutType.SWEET_SPOT);
+				// auch für Ultras: ab und zu VO2max und Schwelle heben die Decke – dieselbe Wattzahl wird leichter
+				case ULTRA -> List.of(WorkoutType.SWEET_SPOT, WorkoutType.THRESHOLD, WorkoutType.TEMPO,
+						WorkoutType.VO2MAX);
 				case MIXED -> List.of(WorkoutType.THRESHOLD, WorkoutType.OVER_UNDER, WorkoutType.VO2MAX);
 				case SHORT_INTENSE -> List.of(WorkoutType.VO2MAX, WorkoutType.THRESHOLD, WorkoutType.OVER_UNDER);
 				case TIME_TRIAL -> List.of(WorkoutType.THRESHOLD, WorkoutType.SWEET_SPOT, WorkoutType.OVER_UNDER);
@@ -490,9 +499,12 @@ public class PlanGenerator {
 			default -> switch (focus) { // Spitze
 				case LONG_CLIMBING -> List.of(WorkoutType.THRESHOLD, WorkoutType.OVER_UNDER, WorkoutType.VO2MAX);
 				case LONG_FLAT -> List.of(WorkoutType.THRESHOLD, WorkoutType.SWEET_SPOT, WorkoutType.VO2MAX);
-				case ULTRA -> List.of(WorkoutType.SWEET_SPOT, WorkoutType.TEMPO);
+				// Ultra: spezifisch – lange gleichmäßige Blöcke, dazu Schwelle, damit die Intensität nicht verloren geht
+				case ULTRA -> List.of(WorkoutType.SWEET_SPOT, WorkoutType.THRESHOLD, WorkoutType.TEMPO);
 				case MIXED -> List.of(WorkoutType.VO2MAX, WorkoutType.OVER_UNDER, WorkoutType.THRESHOLD);
-				case SHORT_INTENSE -> List.of(WorkoutType.VO2MAX, WorkoutType.ANAEROBIC, WorkoutType.SPRINT);
+				// Kriterium: Antritte und Sprints, aber genug VO2max und Over-Unders für die harten Runden dazwischen
+				case SHORT_INTENSE -> List.of(WorkoutType.VO2MAX, WorkoutType.ANAEROBIC, WorkoutType.OVER_UNDER,
+						WorkoutType.SPRINT);
 				case TIME_TRIAL -> List.of(WorkoutType.THRESHOLD, WorkoutType.VO2MAX, WorkoutType.OVER_UNDER);
 			};
 		};
@@ -569,11 +581,14 @@ public class PlanGenerator {
 						.filter(candidate -> !hardDays.contains(candidate))
 						.filter(candidate -> hardDays.stream()
 								.noneMatch(hard -> Math.abs(ChronoUnit.DAYS.between(hard, candidate)) == 1))
-						.filter(candidate -> availableMinutes(availability, candidate) >= workout.getDurationInMinutes())
+						.filter(candidate -> fitsInto(workout, availableMinutes(availability, candidate)))
 						.findFirst();
 				if (day.isPresent()) {
 					hardDays.add(day.get());
-					week.add(new PlannedWorkout(day.get(), workout, null, plan.phase()));
+					int available = availableMinutes(availability, day.get());
+					// etwas zu lang: Aufwärmen und Ausfahren kürzen statt eine leichtere Stufe zu nehmen
+					Integer length = workout.getDurationInMinutes() > available ? available : null;
+					week.add(new PlannedWorkout(day.get(), workout, length, plan.phase()));
 					break;
 				}
 			}
@@ -602,6 +617,12 @@ public class PlanGenerator {
 
 		week.sort(Comparator.comparing(PlannedWorkout::getDate));
 		return week;
+	}
+
+	/** Passt das Workout in die Zeit – notfalls mit gekürztem Rahmen (die Intervalle bleiben gleich)? */
+	private static boolean fitsInto(Workout workout, int availableMinutes) {
+		return workout.getDurationInMinutes() <= availableMinutes
+				|| (WorkoutLibrary.isLengthAdjustable(workout) && WorkoutFitter.minimumMinutes(workout) <= availableMinutes);
 	}
 
 	/** Dieselben Workouts, beginnend bei Nummer offset (reihum) */
