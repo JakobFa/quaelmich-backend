@@ -233,9 +233,24 @@ public class WorkoutLibrary {
 		return variants.get(Math.clamp(step, 0, variants.size() - 1));
 	}
 
+	/** Der Opener ist fürs Vortag-Event gedacht und bleibt kurz */
+	static final long OPENER = 28L;
+
+	/**
+	 * Lässt sich die Dauer dieses festen Workouts über den Rahmen (Aufwärmen, Grundlage, Ausfahren) anpassen?
+	 * Nicht beim FTP-Test, beim Opener, bei Kraft und eigenen Workouts.
+	 */
+	public static boolean isLengthAdjustable(Workout workout) {
+		long id = workout.getId();
+		return id < CUSTOM_ID_OFFSET && id != OPENER && workout.getType() != WorkoutType.FTP_TEST
+				&& !isStrength(workout) && !WorkoutCustomizationService.isVariable(id)
+				&& WorkoutFitter.isFittable(workout);
+	}
+
 	/**
 	 * Liefert ein Workout aus der Bibliothek. Für Regeneration, Grundlage und lange Ausfahrt kann eine
 	 * abweichende Dauer angegeben werden, dann wird das Workout passend zur verfügbaren Zeit erzeugt.
+	 * Intervall-Workouts mit Dauer bekommen einen angepassten Rahmen (siehe WorkoutFitter).
 	 */
 	public Optional<Workout> resolve(Long id, Integer durationMinutes) {
 		if (id != null && id >= CUSTOM_ID_OFFSET) {
@@ -249,7 +264,9 @@ public class WorkoutLibrary {
 			case 2 -> Optional.of(endurance(durationMinutes));
 			case 3 -> Optional.of(longRide(durationMinutes));
 			case 27 -> Optional.of(longRideWithTempo(durationMinutes));
-			default -> findById(id);
+			default -> findById(id).map(workout -> isLengthAdjustable(workout)
+					? WorkoutFitter.fit(workout, durationMinutes).orElse(workout)
+					: workout);
 		};
 	}
 
