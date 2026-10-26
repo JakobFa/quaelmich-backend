@@ -64,4 +64,33 @@ class FtpSuggestionsTest {
 		assertThat(athlete.getSuggestedFtp()).isNull();
 	}
 
+	@Test
+	void aRampTestSuggestsItsResultEvenWhenLower() {
+		Athlete athlete = athleteWithFtp(280);
+
+		FtpSuggestions.fromRampTest(athlete, new RampTest.Result(352, 264), java.time.LocalDate.of(2026, 10, 26));
+
+		assertThat(athlete.getSuggestedFtp()).isEqualTo(264);
+		assertThat(athlete.getSuggestedFtpFromTest()).isTrue();
+		assertThat(athlete.getSuggestedFtpNote()).contains("Rampentest", "352 W", "264 W");
+
+		// eine normale Fahrt löscht den niedrigeren Test-Vorschlag nicht
+		FtpSuggestions.evaluate(athlete, List.of(ride(30, 200)));
+		assertThat(athlete.getSuggestedFtp()).isEqualTo(264);
+
+		// übernommen → erledigt
+		athlete.setFtp(264);
+		FtpSuggestions.evaluate(athlete, List.of());
+		assertThat(athlete.getSuggestedFtp()).isNull();
+	}
+
+	@Test
+	void aRampTestWithTheSameFtpNeedsNoSuggestion() {
+		Athlete athlete = athleteWithFtp(264);
+
+		FtpSuggestions.fromRampTest(athlete, new RampTest.Result(352, 264), java.time.LocalDate.of(2026, 10, 26));
+
+		assertThat(athlete.getSuggestedFtp()).isNull();
+	}
+
 }

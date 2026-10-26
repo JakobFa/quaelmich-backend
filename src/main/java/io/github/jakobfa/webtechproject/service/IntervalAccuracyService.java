@@ -15,6 +15,7 @@ import io.github.jakobfa.webtechproject.integration.intervals.IntervalsIcuClient
 import io.github.jakobfa.webtechproject.integration.strava.StravaService;
 import io.github.jakobfa.webtechproject.model.Athlete;
 import io.github.jakobfa.webtechproject.model.Workout;
+import io.github.jakobfa.webtechproject.model.WorkoutType;
 
 /** Holt die Sekundenwerte der zugeordneten Fahrt und bewertet, wie genau die Intervalle getroffen wurden */
 @Service
@@ -44,11 +45,26 @@ public class IntervalAccuracyService {
 				.flatMap(planned -> {
 					Workout workout = library.resolve(planned.getWorkoutId(), planned.getDurationMinutes())
 							.orElseThrow();
-					if (IntervalAccuracy.blocksOf(workout).isEmpty()) {
+					// beim Rampentest hört jeder woanders auf – dort zählt das Ergebnis, nicht die Genauigkeit
+					if (IntervalAccuracy.blocksOf(workout).isEmpty() || workout.getType() == WorkoutType.FTP_TEST) {
 						return Optional.empty();
 					}
 					return accuracyOf(workout, planned.getActivityId(), userId, planned.getPlan().getAthlete());
 				});
+	}
+
+	/** Ergebnis des Rampentests zum geplanten FTP-Test; leer ohne Fahrt, ohne Watt oder wenn es keiner war */
+	public Optional<RampTest.Result> rampTest(Long plannedId, Long userId) {
+		return plannedWorkoutService.findOwned(plannedId, userId)
+				.filter(planned -> planned.getActivityId() != null
+						&& planned.getWorkoutId() != null && planned.getWorkoutId() == WorkoutLibrary.FTP_TEST)
+				.flatMap(planned -> rampTestOf(planned.getActivityId(), userId));
+	}
+
+	/** War diese Fahrt ein Rampentest? Holt dafür einmal die Sekundenwerte */
+	public Optional<RampTest.Result> rampTestOf(String activityId, Long userId) {
+		return streamOf(activityId, userId).filter(ActivityStream::hasWatts)
+				.flatMap(stream -> RampTest.evaluate(stream.watts()));
 	}
 
 	/**
@@ -86,7 +102,11 @@ public class IntervalAccuracyService {
 
 	private Optional<ActivityStream> streamOf(String id, Long userId) {
 		if (RecordedActivity.isFromStrava(id)) {
-			return strava.stream(userId, Long.parseLong(id.substring(RecordedActivity.STRAVA_PREFIX.length())));
+			try {
+				return strava.stream(userId, Long.parseLong(id.substring(RecordedActivity.STRAVA_PREFIX.length())));
+			} catch (NumberFormatException e) {
+				return Optional.empty(); // keine echte Strava-ID (z. B. Testdaten)
+			}
 		}
 		return intervalsConnections.credentialsOf(userId).flatMap(credentials -> {
 			try {
