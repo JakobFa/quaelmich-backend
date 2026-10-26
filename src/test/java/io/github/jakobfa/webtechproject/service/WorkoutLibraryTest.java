@@ -42,6 +42,27 @@ class WorkoutLibraryTest {
 	}
 
 	@Test
+	void varietyIsSelectableButNotPartOfThePlanProgression() {
+		Workout fourByEight = library.findById(54L).orElseThrow(); // Sweet Spot 4 × 8
+
+		assertThat(library.findAll()).contains(fourByEight);
+		assertThat(library.variantsOf(WorkoutType.SWEET_SPOT)).doesNotContain(fourByEight)
+				.extracting(Workout::getId).containsExactly(14L, 5L, 16L, 15L);
+		assertThat(library.findAll().stream().filter(w -> w.getType() == WorkoutType.VO2MAX).count())
+				.as("mehr Auswahl als in der Steigerung").isGreaterThan(library.variantsOf(WorkoutType.VO2MAX).size());
+	}
+
+	@Test
+	void varietyWorkoutsHaveNeighboursForEasierAndHarder() {
+		Workout fourByEight = library.findById(54L).orElseThrow();
+
+		assertThat(library.easierVariant(fourByEight)).get()
+				.satisfies(easier -> assertThat(easier.getTss()).isLessThan(fourByEight.getTss()));
+		assertThat(library.harderVariant(fourByEight)).get()
+				.satisfies(harder -> assertThat(harder.getTss()).isGreaterThan(fourByEight.getTss()));
+	}
+
+	@Test
 	void idsAreUnique() {
 		assertThat(library.findAll()).extracting(Workout::getId).doesNotHaveDuplicates();
 	}

@@ -24,7 +24,7 @@ class WorkoutControllerTest {
 	void listsAllWorkouts() throws Exception {
 		mockMvc.perform(get("/workouts"))
 				.andExpect(status().isOk())
-				.andExpect(jsonPath("$.length()").value(28))
+				.andExpect(jsonPath("$.length()").value(44))
 				.andExpect(jsonPath("$[0].title").value("Lockeres Ausrollen 45 min"));
 	}
 
