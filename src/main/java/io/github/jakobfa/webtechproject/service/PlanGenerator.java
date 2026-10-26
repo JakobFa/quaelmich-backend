@@ -5,6 +5,7 @@ import static java.time.temporal.TemporalAdjusters.previousOrSame;
 import java.time.DayOfWeek;
 import java.time.LocalDate;
 import java.time.temporal.ChronoUnit;
+import java.time.temporal.IsoFields;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.EnumMap;
@@ -636,12 +637,17 @@ public class PlanGenerator {
 		List<PlannedWorkout> week = new ArrayList<>();
 		List<LocalDate> hardDays = new ArrayList<>();
 
+		// Abwechslung: je Trainingsart jede Woche das nächste Workout derselben Stufe (zweimal dieselbe Art in
+		// einer Woche: zwei verschiedene)
+		int weekOfYear = days.getFirst().get(IsoFields.WEEK_OF_WEEK_BASED_YEAR);
+		java.util.Map<WorkoutType, Integer> sameTypeThisWeek = new java.util.EnumMap<>(WorkoutType.class);
 		for (WorkoutType type : plan.hardWorkouts()) {
+			int rotation = weekOfYear + sameTypeThisWeek.merge(type, 1, Integer::sum) - 1;
 			// passt die geplante Stufe nicht in die Zeit, wird es die nächstleichtere Variante –
 			// und passt gar keine, eine kürzere Trainingsart, damit kurze Tage nicht ohne Reiz bleiben
 			List<Workout> options = new ArrayList<>();
 			for (int step = plan.step(); step >= 0; step--) {
-				options.add(library.variant(type, step));
+				options.addAll(rotated(library.alternatives(type, step), rotation));
 			}
 			// passt nicht mal der FTP-Test, gibt es stattdessen eine normale kurze Einheit
 			SHORT_FALLBACKS.stream().filter(fallback -> fallback != type)
@@ -691,6 +697,16 @@ public class PlanGenerator {
 
 		week.sort(Comparator.comparing(PlannedWorkout::getDate));
 		return week;
+	}
+
+	/** Dieselben Workouts, beginnend bei Nummer offset (reihum) */
+	private static List<Workout> rotated(List<Workout> workouts, int offset) {
+		if (workouts.isEmpty()) {
+			return workouts;
+		}
+		List<Workout> result = new ArrayList<>(workouts);
+		java.util.Collections.rotate(result, -Math.floorMod(offset, workouts.size()));
+		return result;
 	}
 
 	private PlannedWorkout longRide(LocalDate day, int targetMinutes, WeekPlan plan) {
