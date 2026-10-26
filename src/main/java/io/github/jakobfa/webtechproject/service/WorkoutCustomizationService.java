@@ -135,7 +135,7 @@ public class WorkoutCustomizationService {
 	 */
 	static int intensityLevel(WorkoutType type) {
 		return switch (type) {
-			case RECOVERY, ENDURANCE, LONG_RIDE, STRENGTH -> 0;
+			case RECOVERY, ENDURANCE, LONG_RIDE -> 0;
 			case TEMPO, SWEET_SPOT -> 1;
 			case THRESHOLD, OVER_UNDER, FTP_TEST -> 2;
 			case VO2MAX, ANAEROBIC, SPRINT -> 3;
@@ -167,9 +167,6 @@ public class WorkoutCustomizationService {
 				throw new NotPossibleException();
 			}
 			Workout current = workoutOf(planned);
-			if (WorkoutLibrary.isStrength(current)) {
-				throw new NotPossibleException();
-			}
 			int minutes = availableMinutes(planned);
 			List<Choice> candidates = randomCandidates(current, minutes > 0 ? minutes : current.getDurationInMinutes());
 			if (candidates.isEmpty()) {
@@ -197,8 +194,7 @@ public class WorkoutCustomizationService {
 		List<Choice> candidates = new ArrayList<>();
 		for (Workout workout : library.findAll()) {
 			long workoutId = workout.getId();
-			if (workout.getType() == WorkoutType.FTP_TEST || WorkoutLibrary.isStrength(workout)
-					|| intensityLevel(workout.getType()) != level) {
+			if (workout.getType() == WorkoutType.FTP_TEST || intensityLevel(workout.getType()) != level) {
 				continue;
 			}
 			Choice choice;

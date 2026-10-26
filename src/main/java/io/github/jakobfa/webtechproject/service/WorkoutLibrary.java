@@ -374,12 +374,12 @@ public class WorkoutLibrary {
 
 	/**
 	 * Lässt sich die Dauer dieses festen Workouts über den Rahmen (Aufwärmen, Grundlage, Ausfahren) anpassen?
-	 * Nicht beim FTP-Test, beim Opener, bei Kraft und eigenen Workouts.
+	 * Nicht beim FTP-Test, beim Opener und bei eigenen Workouts.
 	 */
 	public static boolean isLengthAdjustable(Workout workout) {
 		long id = workout.getId();
 		return id < CUSTOM_ID_OFFSET && id != OPENER && workout.getType() != WorkoutType.FTP_TEST
-				&& !isStrength(workout) && !WorkoutCustomizationService.isVariable(id)
+				&& !WorkoutCustomizationService.isVariable(id)
 				&& WorkoutFitter.isFittable(workout);
 	}
 
