@@ -208,6 +208,13 @@ public class WorkoutCustomizationService {
 					continue;
 				}
 				choice = new Choice(workoutId, length);
+			} else if (WorkoutLibrary.isLengthAdjustable(workout)) {
+				// Hauptteil bleibt, der Rahmen füllt die Zeit des Tages
+				int length = Math.min(MAX_MINUTES, minutes - minutes % 5);
+				if (WorkoutFitter.fit(workout, length).isEmpty()) {
+					continue;
+				}
+				choice = lengthChoice(workout, length);
 			} else {
 				int duration = workout.getDurationInMinutes();
 				if (duration > maxMinutes || duration < minutes * MIN_SHARE_OF_AVAILABLE_TIME) {
@@ -301,12 +308,43 @@ public class WorkoutCustomizationService {
 			return variableChoice(id, minutes, direction);
 		}
 		return switch (direction) {
-			case EASIER -> library.easierVariant(current).map(Choice::of)
+			case EASIER -> library.easierVariant(current).map(variant -> keepingLength(current, variant))
 					.or(() -> Optional.of(new Choice(ENDURANCE, Math.max(60, roundToQuarterHour(minutes)))));
-			case HARDER -> harderVariant(current).map(Choice::of);
-			case SHORTER -> neighbourByDuration(current, false).map(Choice::of);
-			case LONGER -> neighbourByDuration(current, true).map(Choice::of);
+			case HARDER -> harderVariant(current).map(variant -> keepingLength(current, variant));
+			// erst den Rahmen ändern, der Hauptteil bleibt; geht das nicht mehr, die kürzere Variante
+			case SHORTER -> withLength(current, minutes - LENGTH_STEP)
+					.or(() -> neighbourByDuration(current, false).map(Choice::of));
+			case LONGER -> withLength(current, minutes + LENGTH_STEP)
+					.or(() -> neighbourByDuration(current, true).map(Choice::of));
 		};
+	}
+
+	/** So viele Minuten machen "kürzer" und "länger" bei Intervall-Workouts */
+	static final int LENGTH_STEP = 15;
+
+	/** Dasselbe Workout mit anderem Rahmen; leer, wenn das nicht geht */
+	private Optional<Choice> withLength(Workout current, int minutes) {
+		if (!WorkoutLibrary.isLengthAdjustable(current) || minutes > MAX_MINUTES) {
+			return Optional.empty();
+		}
+		Workout original = library.findById(current.getId()).orElse(current);
+		return WorkoutFitter.fit(original, minutes).map(fitted -> lengthChoice(original, minutes));
+	}
+
+	/** Bei leichter/härter bleibt eine schon angepasste Länge erhalten, wenn sie für die Variante geht */
+	private Choice keepingLength(Workout current, Workout variant) {
+		Workout original = library.findById(current.getId()).orElse(current);
+		int minutes = current.getDurationInMinutes();
+		if (minutes != original.getDurationInMinutes() && WorkoutLibrary.isLengthAdjustable(variant)
+				&& WorkoutFitter.fit(variant, minutes).isPresent()) {
+			return lengthChoice(variant, minutes);
+		}
+		return Choice.of(variant);
+	}
+
+	/** Standardlänge wird als "keine eigene Dauer" gespeichert */
+	private static Choice lengthChoice(Workout original, int minutes) {
+		return new Choice(original.getId(), minutes == original.getDurationInMinutes() ? null : minutes);
 	}
 
 	private static Optional<Choice> variableChoice(long id, int minutes, Direction direction) {

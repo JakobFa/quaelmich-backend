@@ -25,7 +25,18 @@ class WorkoutCustomizationServiceTest {
 		assertThat(service.choiceFor(sweetSpot, Direction.EASIER)).contains(new Choice(14, null)); // 3 × 10
 		assertThat(service.choiceFor(sweetSpot, Direction.HARDER)).contains(new Choice(16, null)); // 2 × 20
 		assertThat(service.choiceFor(sweetSpot, Direction.SHORTER)).contains(new Choice(14, null));
-		assertThat(service.choiceFor(sweetSpot, Direction.LONGER)).isPresent();
+		assertThat(service.choiceFor(sweetSpot, Direction.LONGER)).as("Rahmen +15 min, gleiche Intervalle")
+				.contains(new Choice(5, 86));
+	}
+
+	@Test
+	void longerIntervalWorkoutsGoBackStepByStepAndKeepTheirLengthWhenHarder() {
+		var longerSweetSpot = library.resolve(5L, 86).orElseThrow();
+
+		assertThat(service.choiceFor(longerSweetSpot, Direction.SHORTER)).as("zurück zur Standardlänge")
+				.contains(new Choice(5, null));
+		assertThat(service.choiceFor(longerSweetSpot, Direction.HARDER)).contains(new Choice(16, 86));
+		assertThat(service.choiceFor(longerSweetSpot, Direction.EASIER)).contains(new Choice(14, 86));
 	}
 
 	@Test
