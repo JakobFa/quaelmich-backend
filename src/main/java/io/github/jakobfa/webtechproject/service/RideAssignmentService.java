@@ -22,9 +22,12 @@ public class RideAssignmentService {
 	private final PlannedWorkoutService plannedWorkoutService;
 	private final PlannedWorkoutRepository plannedWorkoutRepository;
 	private final ExtraRideRepository extraRideRepository;
+	private final IntervalAccuracyService intervalAccuracy;
 
 	public RideAssignmentService(PlannedWorkoutService plannedWorkoutService,
-			PlannedWorkoutRepository plannedWorkoutRepository, ExtraRideRepository extraRideRepository) {
+			PlannedWorkoutRepository plannedWorkoutRepository, ExtraRideRepository extraRideRepository,
+			IntervalAccuracyService intervalAccuracy) {
+		this.intervalAccuracy = intervalAccuracy;
 		this.plannedWorkoutService = plannedWorkoutService;
 		this.plannedWorkoutRepository = plannedWorkoutRepository;
 		this.extraRideRepository = extraRideRepository;
@@ -59,6 +62,12 @@ public class RideAssignmentService {
 							// hat die Fahrt den Plan schon angepasst, nicht nochmal
 							planned.setAdaptationApplied(ride.isAdaptationApplied());
 							extraRideRepository.delete(ride);
+							// FTP-Test selbst zugeordnet: war es ein Rampentest, gibt es die neue FTP als Vorschlag
+							if (planned.getWorkoutId() != null && planned.getWorkoutId() == WorkoutLibrary.FTP_TEST) {
+								intervalAccuracy.rampTestOf(ride.getActivityId(), userId)
+										.ifPresent(result -> FtpSuggestions.fromRampTest(planned.getPlan().getAthlete(),
+												result, planned.getDate()));
+							}
 							return plannedWorkoutRepository.save(planned);
 						}));
 	}

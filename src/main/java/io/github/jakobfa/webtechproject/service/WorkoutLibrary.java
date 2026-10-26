@@ -154,10 +154,10 @@ public class WorkoutLibrary {
 					steps(warmup(), steady(STEADY, min(20), 65),
 							repeat(6, steady(INTERVAL, 15, 170), steady(RECOVERY, min(4) + 45, 55)), cooldown())),
 
-			new Workout(11L, "FTP-Test 20 min", WorkoutType.FTP_TEST,
-					"20 Minuten so hart wie möglich, aber gleichmäßig. 95 % des Durchschnitts ergeben deine FTP.",
-					steps(ramp(WARMUP, min(15), 50, 75), steady(INTERVAL, min(5), 110), steady(RECOVERY, min(10), 50),
-							steady(INTERVAL, min(20), 100), ramp(COOLDOWN, min(15), 60, 45))));
+			new Workout(11L, "Rampentest", WorkoutType.FTP_TEST,
+					"Jede Minute ein bisschen mehr, bis nichts mehr geht – dann aufhören. Deine FTP sind 75 % "
+							+ "deiner besten Minute. Am besten im ERG-Modus auf der Rolle.",
+					rampTest()));
 
 	/**
 	 * Abwechslung: weitere Workouts neben der Steigerung oben (variantsOf). Der Plan wechselt sie Woche für Woche
@@ -283,6 +283,21 @@ public class WorkoutLibrary {
 	/** Alle Radeinheiten: Steigerung plus Abwechslung */
 	private final List<Workout> allRides = java.util.stream.Stream.concat(workouts.stream(), variety.stream())
 			.toList();
+
+	/** Rampentest: ab RAMP_START_PERCENT jede Minute RAMP_STEP_PERCENT mehr bis RAMP_END_PERCENT (da ist jeder fertig) */
+	static final int RAMP_STEP_PERCENT = 6;
+	static final int RAMP_START_PERCENT = 60;
+	static final int RAMP_END_PERCENT = 162;
+
+	private static List<WorkoutStep> rampTest() {
+		List<Object> parts = new ArrayList<>();
+		parts.add(ramp(WARMUP, min(8), 45, 60));
+		for (int percent = RAMP_START_PERCENT; percent <= RAMP_END_PERCENT; percent += RAMP_STEP_PERCENT) {
+			parts.add(steady(INTERVAL, min(1), percent));
+		}
+		parts.add(ramp(COOLDOWN, min(10), 55, 40));
+		return steps(parts.toArray());
+	}
 
 	/** Workout-ID des FTP-Tests */
 	public static final long FTP_TEST = 11L;

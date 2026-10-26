@@ -60,6 +60,9 @@ public class Athlete {
 	/** Begründung, z. B. "Am Sa, 24.10. bist du 75 min mit 272 W (Normalized Power) gefahren." */
 	private String suggestedFtpNote;
 
+	/** Der Vorschlag kommt aus einem FTP-Test – dann darf er auch niedriger sein als die eingetragene FTP */
+	private Boolean suggestedFtpFromTest;
+
 	/** Vorschlag, den der Nutzer ausgeblendet hat – derselbe Wert wird nicht wieder gezeigt */
 	private Integer dismissedSuggestedFtp;
 

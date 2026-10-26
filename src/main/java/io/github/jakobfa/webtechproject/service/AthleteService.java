@@ -62,6 +62,7 @@ public class AthleteService {
 		athlete.setOwner(userRepository.getReferenceById(userId));
 		athlete.setSuggestedFtp(null); // setzt nur quaelmich
 		athlete.setSuggestedFtpNote(null);
+		athlete.setSuggestedFtpFromTest(null);
 		athlete.setDismissedSuggestedFtp(null);
 		if (athlete.getTrainingMode() == null) {
 			athlete.setTrainingMode(TrainingMode.POWER);
@@ -71,8 +72,10 @@ public class AthleteService {
 
 	private Athlete update(Athlete existing, Athlete changes) {
 		existing.setFtp(changes.getFtp());
-		if (existing.getFtp() != null && existing.getSuggestedFtp() != null
-				&& existing.getFtp() >= existing.getSuggestedFtp()) {
+		Integer suggested = existing.getSuggestedFtp();
+		if (existing.getFtp() != null && suggested != null
+				&& (Boolean.TRUE.equals(existing.getSuggestedFtpFromTest()) ? existing.getFtp().equals(suggested)
+						: existing.getFtp() >= suggested)) {
 			FtpSuggestions.clear(existing); // Vorschlag übernommen
 		}
 		existing.setThresholdHeartRate(changes.getThresholdHeartRate());
