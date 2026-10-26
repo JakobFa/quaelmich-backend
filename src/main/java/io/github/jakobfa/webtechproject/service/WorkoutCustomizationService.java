@@ -54,6 +54,8 @@ public class WorkoutCustomizationService {
 	static final long ENDURANCE = 2;
 	static final long LONG_RIDE = 3;
 	static final long LONG_RIDE_WITH_TEMPO = 27;
+	static final long ENDURANCE_WITH_SPRINTS = 29;
+	static final long ENDURANCE_WITH_TEMPO = 30;
 	static final int MAX_MINUTES = 360;
 
 	private final WorkoutLibrary library;
@@ -353,6 +355,9 @@ public class WorkoutCustomizationService {
 				if (id == ENDURANCE) {
 					yield Optional.of(new Choice(RECOVERY, Math.min(minutes, 60)));
 				}
+				if (id == ENDURANCE_WITH_SPRINTS || id == ENDURANCE_WITH_TEMPO) {
+					yield Optional.of(new Choice(ENDURANCE, minutes)); // Einlagen weglassen
+				}
 				if (id == LONG_RIDE) {
 					yield Optional.of(new Choice(ENDURANCE, Math.max(60, roundToQuarterHour(minutes * 2 / 3.0))));
 				}
@@ -362,7 +367,10 @@ public class WorkoutCustomizationService {
 				if (id == RECOVERY) {
 					yield Optional.of(new Choice(ENDURANCE, Math.max(60, minutes)));
 				}
-				if (id == ENDURANCE || id == LONG_RIDE) {
+				if (id == ENDURANCE_WITH_SPRINTS) {
+					yield Optional.of(new Choice(ENDURANCE_WITH_TEMPO, minutes));
+				}
+				if (id == ENDURANCE || id == LONG_RIDE || id == ENDURANCE_WITH_TEMPO) {
 					yield Optional.of(new Choice(LONG_RIDE_WITH_TEMPO, Math.max(90, minutes)));
 				}
 				yield Optional.empty();
@@ -380,14 +388,15 @@ public class WorkoutCustomizationService {
 
 	/** Ausrollen, Grundlage und lange Ausfahrten gibt es in jeder Länge */
 	static boolean isVariable(long id) {
-		return id == RECOVERY || id == ENDURANCE || id == LONG_RIDE || id == LONG_RIDE_WITH_TEMPO;
+		return id == RECOVERY || id == ENDURANCE || id == LONG_RIDE || id == LONG_RIDE_WITH_TEMPO
+				|| id == ENDURANCE_WITH_SPRINTS || id == ENDURANCE_WITH_TEMPO;
 	}
 
 	static int minimumMinutes(long id) {
 		if (id == RECOVERY) {
 			return 30;
 		}
-		return id == ENDURANCE ? 60 : 90;
+		return id == ENDURANCE || id == ENDURANCE_WITH_SPRINTS || id == ENDURANCE_WITH_TEMPO ? 60 : 90;
 	}
 
 

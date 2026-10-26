@@ -508,6 +508,10 @@ public class PlanGenerator {
 				case TIME_TRIAL -> List.of(WorkoutType.THRESHOLD, WorkoutType.VO2MAX, WorkoutType.OVER_UNDER);
 			};
 		};
+		if (phase == Phase.BASE && level != Level.BEGINNER) {
+			// auch in der Grundlage ab und zu ein kurzer, harter Reiz (polarisiert) – etwa jede zweite Woche
+			pool = List.of(pool.get(0), pool.get(1), pool.get(0), WorkoutType.VO2MAX);
+		}
 		return pool.stream().map(type -> adjust(type, phase, level, weeklyHours, focus)).toList();
 	}
 
@@ -594,6 +598,9 @@ public class PlanGenerator {
 			}
 		}
 
+		// ein lockerer Tag pro Woche bekommt Einlagen (Antritte oder Tempo), damit nicht jeder Tag gleich aussieht
+		boolean spiceWeek = plan.phase() == Phase.BASE || plan.phase() == Phase.BUILD || plan.phase() == Phase.PEAK;
+		boolean spiced = false;
 		for (LocalDate day : days) {
 			if (hardDays.contains(day)) {
 				continue;
@@ -611,7 +618,15 @@ public class PlanGenerator {
 			} else {
 				// lockere Tage nie länger als die lange Ausfahrt
 				int minutes = floorToQuarterHour(Math.min(available * plan.volume(), plan.longRideMinutes()));
-				week.add(easyWorkout(day, minutes, available, plan.phase()));
+				PlannedWorkout easy = easyWorkout(day, minutes, available, plan.phase());
+				if (spiceWeek && !spiced && easy.getWorkoutId() == WorkoutLibrary.endurance(60).getId()) {
+					int length = easy.getDurationMinutes();
+					Workout spice = plan.weekIndex() % 2 == 0 ? WorkoutLibrary.enduranceWithSprints(length)
+							: WorkoutLibrary.enduranceWithTempo(length);
+					easy = new PlannedWorkout(day, spice, length, plan.phase());
+					spiced = true;
+				}
+				week.add(easy);
 			}
 		}
 
