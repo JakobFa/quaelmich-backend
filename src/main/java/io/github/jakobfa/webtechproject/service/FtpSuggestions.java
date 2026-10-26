@@ -36,20 +36,37 @@ public final class FtpSuggestions {
 		if (ftp == null) {
 			return;
 		}
-		if (athlete.getSuggestedFtp() != null && ftp >= athlete.getSuggestedFtp()) {
-			clear(athlete); // inzwischen angepasst
+		Integer suggested = athlete.getSuggestedFtp();
+		boolean fromTest = Boolean.TRUE.equals(athlete.getSuggestedFtpFromTest());
+		// inzwischen angepasst (ein Test-Ergebnis darf auch niedriger sein – dann erst bei Gleichstand erledigt)
+		if (suggested != null && (fromTest ? ftp.equals(suggested) : ftp >= suggested)) {
+			clear(athlete);
 		}
 		best(rides).filter(estimate -> estimate.watts() >= ftp * MARGIN)
 				.filter(estimate -> athlete.getSuggestedFtp() == null || estimate.watts() > athlete.getSuggestedFtp())
 				.ifPresent(estimate -> {
 					athlete.setSuggestedFtp(estimate.watts());
 					athlete.setSuggestedFtpNote(estimate.note());
+					athlete.setSuggestedFtpFromTest(false);
 				});
+	}
+
+	/** Ein Rampentest wurde erkannt: sein Ergebnis wird vorgeschlagen – auch niedriger, ein Test ist ein Test */
+	public static void fromRampTest(Athlete athlete, RampTest.Result result, java.time.LocalDate date) {
+		if (athlete.getFtp() != null && athlete.getFtp() == result.ftp()) {
+			clear(athlete);
+			return;
+		}
+		athlete.setSuggestedFtp(result.ftp());
+		athlete.setSuggestedFtpNote("Dein Rampentest am %s: beste Minute %d W, davon 75 %% sind %d W."
+				.formatted(DAY.format(date), result.bestMinuteWatts(), result.ftp()));
+		athlete.setSuggestedFtpFromTest(true);
 	}
 
 	public static void clear(Athlete athlete) {
 		athlete.setSuggestedFtp(null);
 		athlete.setSuggestedFtpNote(null);
+		athlete.setSuggestedFtpFromTest(null);
 	}
 
 	record Estimate(int watts, String note) {

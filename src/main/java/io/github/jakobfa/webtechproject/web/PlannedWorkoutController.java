@@ -203,6 +203,21 @@ public class PlannedWorkoutController {
 				.orElse(ResponseEntity.noContent().build());
 	}
 
+	/**
+	 * Ergebnis des Rampentests (beste Minute, FTP = 75 % davon) aus der zugeordneten Fahrt.
+	 * 204, wenn es kein FTP-Test ist, keine Fahrt mit Watt zugeordnet ist oder die Fahrt kein Rampentest war.
+	 */
+	@GetMapping(path = "/planned-workouts/{id}/ramp-test")
+	public ResponseEntity<io.github.jakobfa.webtechproject.service.RampTest.Result> rampTest(
+			@AuthenticationPrincipal Jwt jwt, @PathVariable Long id) {
+		Long userId = CurrentUser.id(jwt);
+		if (plannedWorkoutService.findOwned(id, userId).isEmpty()) {
+			return ResponseEntity.notFound().build();
+		}
+		return intervalAccuracy.rampTest(id, userId).map(ResponseEntity::ok)
+				.orElse(ResponseEntity.noContent().build());
+	}
+
 	@GetMapping(path = "/planned-workouts/{id}")
 	public ResponseEntity<PlannedWorkoutResponse> getPlannedWorkout(@AuthenticationPrincipal Jwt jwt,
 			@PathVariable Long id) {

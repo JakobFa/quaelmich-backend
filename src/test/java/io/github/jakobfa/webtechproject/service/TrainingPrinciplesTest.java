@@ -189,16 +189,22 @@ class TrainingPrinciplesTest {
 				.map(TrainingPrinciplesTest::workoutOf).toList();
 	}
 
+	/** Wochen einer Phase ohne FTP-Test (in Test-Wochen ersetzt der Test oft die harte Einheit) */
+	private static Stream<List<PlannedWorkout>> trainingWeeksOf(Rider rider, Phase phase) {
+		return trainingWeeks(rider).values().stream().filter(week -> phaseOf(week) == phase)
+				.filter(week -> week.stream().noneMatch(planned -> planned.getWorkoutId() == WorkoutLibrary.FTP_TEST));
+	}
+
 	/** Schnitt je Woche einer Phase: TSS der harten Einheiten */
 	private static double hardTssPerWeek(Rider rider, Phase phase) {
-		return trainingWeeks(rider).values().stream().filter(week -> phaseOf(week) == phase)
+		return trainingWeeksOf(rider, phase)
 				.mapToInt(week -> hardTraining(week).stream().mapToInt(Workout::getTss).sum())
 				.average().orElse(0);
 	}
 
 	/** Schnitt je Woche einer Phase: Minuten in Intervallen ab 105 % FTP (VO2max und darüber) */
 	private static double minutesAboveThresholdPerWeek(Rider rider, Phase phase) {
-		return trainingWeeks(rider).values().stream().filter(week -> phaseOf(week) == phase)
+		return trainingWeeksOf(rider, phase)
 				.mapToDouble(week -> hardTraining(week).stream().flatMap(workout -> workout.getSteps().stream())
 						.filter(step -> step.kind() == io.github.jakobfa.webtechproject.model.StepKind.INTERVAL
 								&& Math.max(step.powerStartPercent(), step.powerEndPercent()) >= 105)

@@ -128,7 +128,12 @@ class OpenGoalPlanTest {
 		assertThat(types.get(TrainingGoal.FTP)).contains(WorkoutType.THRESHOLD);
 		assertThat(types.get(TrainingGoal.CLIMBING)).contains(WorkoutType.THRESHOLD);
 		assertThat(types.get(TrainingGoal.ENDURANCE)).contains(WorkoutType.TEMPO)
-				.doesNotContain(WorkoutType.VO2MAX, WorkoutType.ANAEROBIC, WorkoutType.SPRINT);
+				.doesNotContain(WorkoutType.ANAEROBIC, WorkoutType.SPRINT);
+		// wenig Intensität heißt nicht keine: ab und zu ein kurzer VO2max-Reiz, aber selten
+		List<PlannedWorkout> endurance = plan(TrainingGoal.ENDURANCE);
+		long vo2max = endurance.stream().filter(p -> workoutOf(p).getType() == WorkoutType.VO2MAX).count();
+		long weeks = endurance.stream().map(p -> p.getDate().with(java.time.DayOfWeek.MONDAY)).distinct().count();
+		assertThat(vo2max).as("VO2max-Einheiten in %d Wochen", weeks).isLessThanOrEqualTo(weeks / 3 + 1);
 	}
 
 	@Test

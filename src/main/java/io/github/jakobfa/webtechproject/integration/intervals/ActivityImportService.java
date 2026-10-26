@@ -167,6 +167,28 @@ public class ActivityImportService {
 				updateValues(planned, kept); // z. B. TSS neu geschätzt, nachdem der Schwellenpuls eingetragen wurde
 				continue;
 			}
+			if (workout.getType() == WorkoutType.FTP_TEST) {
+				// schon als Rampentest erkannt: bleibt (die Sekundenwerte nicht bei jedem Abgleich neu holen)
+				RecordedActivity known = candidates.stream().filter(candidate -> candidate.id().equals(linkedId))
+						.filter(ActivityImportService::couldBeRampTest).findFirst().orElse(null);
+				if (known != null) {
+					updateValues(planned, known);
+					continue;
+				}
+				// beim Rampentest hört jeder woanders auf: nicht nach Dauer zuordnen, sondern die Rampe erkennen
+				var test = candidates.stream().filter(ActivityImportService::couldBeRampTest)
+						.map(candidate -> intervalAccuracy.rampTestOf(candidate.id(), userId)
+								.map(result -> Map.entry(candidate, result)))
+						.flatMap(Optional::stream).findFirst();
+				if (test.isPresent()) {
+					apply(planned, test.get().getKey());
+					FtpSuggestions.fromRampTest(athlete.get(), test.get().getValue(), planned.getDate());
+					matched++;
+				} else if (linkedId != null && sourceAnswered) {
+					planned.clearActivity();
+				}
+				continue;
+			}
 			// neu automatisch zuordnen nur: die längste Rollenfahrt des Tages, die genau zum Workout passt
 			RecordedActivity ride = candidates.stream()
 					.filter(candidate -> fitsIndoorExactly(candidate, workout))
@@ -275,6 +297,12 @@ public class ActivityImportService {
 		double tssShare = (double) ride.tss() / workout.getTss();
 		return durationShare >= INDOOR_MIN_DURATION_SHARE && durationShare <= INDOOR_MAX_DURATION_SHARE
 				&& tssShare >= INDOOR_MIN_TSS_SHARE && tssShare <= INDOOR_MAX_TSS_SHARE;
+	}
+
+	/** Rampentest: mit Wattmesser, 15–75 min (Aufwärmen + Rampe + Ausfahren) – drinnen oder draußen */
+	static boolean couldBeRampTest(RecordedActivity ride) {
+		return ride.normalizedPower() != null && !ride.commute() && ride.movingMinutes() >= 15
+				&& ride.movingMinutes() <= 75;
 	}
 
 	/** Workouts mit Intervallen: Sind sie in den Sekundenwerten klar und genau zu finden? Ohne Intervalle: ja */
