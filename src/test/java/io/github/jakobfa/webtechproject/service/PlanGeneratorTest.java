@@ -199,7 +199,8 @@ class PlanGeneratorTest {
 	void beginnersStayOnEasierVariants() {
 		assertThat(PlanGenerator.progressionStep(Level.BEGINNER, Phase.BASE, 10)).isEqualTo(1);
 		assertThat(PlanGenerator.progressionStep(Level.PERFORMANCE, Phase.BASE, 10)).isEqualTo(3);
-		assertThat(PlanGenerator.progressionStep(Level.HOBBY, Phase.BUILD, 0)).isZero();
+		assertThat(PlanGenerator.progressionStep(Level.HOBBY, Phase.BUILD, 0)).as("Aufbau beginnt nicht bei null").isEqualTo(1);
+		assertThat(PlanGenerator.progressionStep(Level.HOBBY, Phase.PEAK, 2)).as("Spitze über der Level-Grenze").isEqualTo(3);
 	}
 
 	@Test
