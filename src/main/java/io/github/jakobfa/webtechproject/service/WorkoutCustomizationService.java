@@ -1,13 +1,20 @@
 package io.github.jakobfa.webtechproject.service;
 
+import java.time.DayOfWeek;
+import java.time.temporal.TemporalAdjusters;
+import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Optional;
+import java.util.Random;
+import java.util.random.RandomGenerator;
 
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import io.github.jakobfa.webtechproject.model.PlannedWorkout;
+import io.github.jakobfa.webtechproject.model.TrainingPlan;
+import io.github.jakobfa.webtechproject.model.WeeklyAvailability;
 import io.github.jakobfa.webtechproject.model.Workout;
 import io.github.jakobfa.webtechproject.model.WorkoutType;
 import io.github.jakobfa.webtechproject.repository.PlannedWorkoutRepository;
@@ -122,6 +129,114 @@ public class WorkoutCustomizationService {
 		});
 	}
 
+	/**
+	 * Wie hart sich ein Tag anfühlt – der Zufall bleibt auf derselben Stufe, damit aus einem Tempo-Tag in
+	 * der Grundlagenphase kein VO2max-Tag wird. 0 = locker, 1 = Tempo/Sweet Spot, 2 = Schwelle, 3 = sehr hart.
+	 */
+	static int intensityLevel(WorkoutType type) {
+		return switch (type) {
+			case RECOVERY, ENDURANCE, LONG_RIDE -> 0;
+			case TEMPO, SWEET_SPOT -> 1;
+			case THRESHOLD, OVER_UNDER, FTP_TEST -> 2;
+			case VO2MAX, ANAEROBIC, SPRINT -> 3;
+		};
+	}
+	/** Ausrollen länger als eine Stunde ist kein sinnvolles Training mehr */
+	static final int MAX_RECOVERY_MINUTES = 60;
+	/** Feste Workouts sollen die freie Zeit wenigstens zu gut der Hälfte nutzen */
+	static final double MIN_SHARE_OF_AVAILABLE_TIME = 0.6;
+	/** so viel länger als die verfügbare Zeit darf der Zufall werden, wenn sonst nichts passt */
+	static final double RANDOM_OVERTIME_SHARE = 0.1;
+
+	private final RandomGenerator random = new Random();
+
+	/**
+	 * "Überrasch mich": ein zufälliges anderes Workout, das in die verfügbare Zeit des Tages passt
+	 * (Wochen-Ausnahme, sonst normale Verfügbarkeit). Es bleibt bei derselben Härte-Stufe (siehe
+	 * intensityLevel) – so bringt der Zufall die Woche nicht durcheinander. Kein FTP-Test, kein Krafttraining,
+	 * nie dasselbe noch mal.
+	 */
+	@Transactional
+	public Optional<PlannedWorkout> shuffle(Long id, Long userId) {
+		return shuffle(id, userId, random);
+	}
+
+	Optional<PlannedWorkout> shuffle(Long id, Long userId, RandomGenerator random) {
+		return plannedWorkoutService.findOwned(id, userId).map(planned -> {
+			if (planned.isCompleted() || planned.getSkipReason() != null) {
+				throw new NotPossibleException();
+			}
+			Workout current = workoutOf(planned);
+			int minutes = availableMinutes(planned);
+			List<Choice> candidates = randomCandidates(current, minutes > 0 ? minutes : current.getDurationInMinutes());
+			if (candidates.isEmpty()) {
+				throw new NotPossibleException();
+			}
+			Choice choice = candidates.get(random.nextInt(candidates.size()));
+			return apply(planned, current, choice, PlannedWorkout.USER_CHOICE_NOTE + " per Zufall gewählt.");
+		});
+	}
+
+	/**
+	 * Alles, was der Zufall statt current nehmen darf, wenn minutes Zeit ist. Passt streng nichts (z. B. nur
+	 * eine Stunde Zeit), darf es bis zu 10 % länger sein – sonst gäbe es an Wochentagen oft gar keine Auswahl.
+	 */
+	List<Choice> randomCandidates(Workout current, int minutes) {
+		List<Choice> candidates = candidatesUpTo(current, minutes, minutes);
+		return candidates.isEmpty()
+				? candidatesUpTo(current, minutes, (int) Math.floor(minutes * (1 + RANDOM_OVERTIME_SHARE)))
+				: candidates;
+	}
+
+	private List<Choice> candidatesUpTo(Workout current, int minutes, int maxMinutes) {
+		int level = intensityLevel(current.getType());
+		int quarterHours = Math.min(MAX_MINUTES, (int) (Math.floor(minutes / 15.0) * 15));
+		List<Choice> candidates = new ArrayList<>();
+		for (Workout workout : library.findAll()) {
+			long workoutId = workout.getId();
+			if (workout.getType() == WorkoutType.FTP_TEST || intensityLevel(workout.getType()) != level) {
+				continue;
+			}
+			Choice choice;
+			if (isVariable(workoutId)) {
+				int length = workoutId == RECOVERY ? Math.min(quarterHours, MAX_RECOVERY_MINUTES) : quarterHours;
+				if (length < minimumMinutes(workoutId)) {
+					continue;
+				}
+				choice = new Choice(workoutId, length);
+			} else if (WorkoutLibrary.isLengthAdjustable(workout)) {
+				// Hauptteil bleibt, der Rahmen füllt die Zeit des Tages
+				int length = Math.min(MAX_MINUTES, minutes - minutes % 5);
+				if (WorkoutFitter.fit(workout, length).isEmpty()) {
+					continue;
+				}
+				choice = lengthChoice(workout, length);
+			} else {
+				int duration = workout.getDurationInMinutes();
+				if (duration > maxMinutes || duration < minutes * MIN_SHARE_OF_AVAILABLE_TIME) {
+					continue;
+				}
+				choice = Choice.of(workout);
+			}
+			boolean same = workoutId == current.getId()
+					&& (!isVariable(workoutId) || choice.durationMinutes() == current.getDurationInMinutes());
+			if (!same) {
+				candidates.add(choice);
+			}
+		}
+		return candidates;
+	}
+
+	/** Verfügbare Minuten an diesem Tag: Wochen-Ausnahme vor normaler Verfügbarkeit */
+	private static int availableMinutes(PlannedWorkout planned) {
+		TrainingPlan plan = planned.getPlan();
+		WeeklyAvailability availability = plan.getWeekAvailability().getOrDefault(
+				planned.getDate().with(TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY)),
+				plan.getAthlete().getAvailability());
+		return availability == null ? 0
+				: (int) Math.round(availability.hoursOn(planned.getDate().getDayOfWeek()) * 60);
+	}
+
 	private PlannedWorkout apply(PlannedWorkout planned, Workout current, Choice choice, String note) {
 		if (planned.getOriginalWorkoutId() == null) {
 			planned.setOriginalWorkoutId(planned.getWorkoutId());
@@ -189,12 +304,43 @@ public class WorkoutCustomizationService {
 			return variableChoice(id, minutes, direction);
 		}
 		return switch (direction) {
-			case EASIER -> library.easierVariant(current).map(Choice::of)
+			case EASIER -> library.easierVariant(current).map(variant -> keepingLength(current, variant))
 					.or(() -> Optional.of(new Choice(ENDURANCE, Math.max(60, roundToQuarterHour(minutes)))));
-			case HARDER -> harderVariant(current).map(Choice::of);
-			case SHORTER -> neighbourByDuration(current, false).map(Choice::of);
-			case LONGER -> neighbourByDuration(current, true).map(Choice::of);
+			case HARDER -> library.harderVariant(current).map(variant -> keepingLength(current, variant));
+			// erst den Rahmen ändern, der Hauptteil bleibt; geht das nicht mehr, die kürzere Variante
+			case SHORTER -> withLength(current, minutes - LENGTH_STEP)
+					.or(() -> neighbourByDuration(current, false).map(Choice::of));
+			case LONGER -> withLength(current, minutes + LENGTH_STEP)
+					.or(() -> neighbourByDuration(current, true).map(Choice::of));
 		};
+	}
+
+	/** So viele Minuten machen "kürzer" und "länger" bei Intervall-Workouts */
+	static final int LENGTH_STEP = 15;
+
+	/** Dasselbe Workout mit anderem Rahmen; leer, wenn das nicht geht */
+	private Optional<Choice> withLength(Workout current, int minutes) {
+		if (!WorkoutLibrary.isLengthAdjustable(current) || minutes > MAX_MINUTES) {
+			return Optional.empty();
+		}
+		Workout original = library.findById(current.getId()).orElse(current);
+		return WorkoutFitter.fit(original, minutes).map(fitted -> lengthChoice(original, minutes));
+	}
+
+	/** Bei leichter/härter bleibt eine schon angepasste Länge erhalten, wenn sie für die Variante geht */
+	private Choice keepingLength(Workout current, Workout variant) {
+		Workout original = library.findById(current.getId()).orElse(current);
+		int minutes = current.getDurationInMinutes();
+		if (minutes != original.getDurationInMinutes() && WorkoutLibrary.isLengthAdjustable(variant)
+				&& WorkoutFitter.fit(variant, minutes).isPresent()) {
+			return lengthChoice(variant, minutes);
+		}
+		return Choice.of(variant);
+	}
+
+	/** Standardlänge wird als "keine eigene Dauer" gespeichert */
+	private static Choice lengthChoice(Workout original, int minutes) {
+		return new Choice(original.getId(), minutes == original.getDurationInMinutes() ? null : minutes);
 	}
 
 	private static Optional<Choice> variableChoice(long id, int minutes, Direction direction) {
@@ -244,11 +390,6 @@ public class WorkoutCustomizationService {
 		return id == ENDURANCE ? 60 : 90;
 	}
 
-	private Optional<Workout> harderVariant(Workout workout) {
-		List<Workout> variants = library.variantsOf(workout.getType());
-		int index = variants.indexOf(library.findById(workout.getId()).orElse(workout));
-		return index >= 0 && index < variants.size() - 1 ? Optional.of(variants.get(index + 1)) : Optional.empty();
-	}
 
 	/**
 	 * Die Variante derselben Art, die als nächstes kürzer bzw. länger ist.

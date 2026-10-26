@@ -351,6 +351,33 @@ class PlannedWorkoutControllerTest {
 		replace("{ \"workoutId\": 999 }").andExpect(status().isConflict());
 	}
 
+	private ResultActions shuffle(String authorization) throws Exception {
+		return mockMvc.perform(put("/planned-workouts/" + plannedId + "/random").header("Authorization", authorization));
+	}
+
+	@Test
+	void randomPicksAnotherEasyRideForAnEasyDay() throws Exception {
+		makeItEndurance();
+
+		String body = shuffle(token)
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.adjustment.note").value("Von dir per Zufall gewählt."))
+				.andExpect(jsonPath("$.adjustment.originalTitle").value("Grundlage 90 min"))
+				.andReturn().getResponse().getContentAsString();
+
+		String type = JsonPath.read(body, "$.workout.type");
+		assertThat(type).isIn("RECOVERY", "ENDURANCE", "LONG_RIDE");
+		assertThat(JsonPath.<String>read(body, "$.workout.title")).isNotEqualTo("Grundlage 90 min");
+	}
+
+	@Test
+	void randomIsOnlyForOpenOwnWorkouts() throws Exception {
+		shuffle(registerWithProfile(mockMvc)).andExpect(status().isNotFound());
+
+		saveProgress(token, true, 5);
+		shuffle(token).andExpect(status().isConflict());
+	}
+
 	@Test
 	void completedOrForeignWorkoutsCannotBeReplaced() throws Exception {
 		replace("{ \"workoutId\": 8 }").andExpect(status().isOk());

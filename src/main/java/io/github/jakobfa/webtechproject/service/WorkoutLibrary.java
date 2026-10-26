@@ -159,6 +159,131 @@ public class WorkoutLibrary {
 					steps(ramp(WARMUP, min(15), 50, 75), steady(INTERVAL, min(5), 110), steady(RECOVERY, min(10), 50),
 							steady(INTERVAL, min(20), 100), ramp(COOLDOWN, min(15), 60, 45))));
 
+	/**
+	 * Abwechslung: weitere Workouts neben der Steigerung oben (variantsOf). Der Plan wechselt sie Woche für Woche
+	 * mit der Variante derselben Stufe ab (siehe alternatives), dazu gibt es sie in Auswahl, Zufall und
+	 * Bibliothek. IDs ab 50.
+	 */
+	private final List<Workout> variety = List.of(
+			// ---------- Tempo ----------
+			new Workout(50L, "Tempo 4 × 10", WorkoutType.TEMPO,
+					"Vier kürzere Tempo-Blöcke mit kurzer Pause – gleicher Reiz wie 2 × 20, fühlt sich leichter an.",
+					steps(warmup(), repeat(4, steady(INTERVAL, min(10), 83), steady(RECOVERY, min(3), 55)),
+							cooldown())),
+			new Workout(51L, "Tempo mit Antritten 3 × 12", WorkoutType.TEMPO,
+					"Tempo mit kurzen Antritten alle zwei Minuten – wie in der Gruppe, wenn vorne jemand anzieht.",
+					steps(warmup(),
+							repeat(3, repeat(6, steady(INTERVAL, 110, 84), steady(INTERVAL, 10, 140)),
+									steady(RECOVERY, min(5), 55)),
+							cooldown())),
+			new Workout(66L, "Tempo 3 × 10", WorkoutType.TEMPO,
+					"Drei kurze Tempo-Blöcke – der sanfte Einstieg, wenn 2 × 15 zu lang wirkt.",
+					steps(warmup(), repeat(3, steady(INTERVAL, min(10), 80), steady(RECOVERY, min(4), 55)),
+							cooldown())),
+			new Workout(52L, "Tempo-Pyramide 10-15-10", WorkoutType.TEMPO,
+					"Kurz, lang, kurz – der lange Block in der Mitte etwas härter.",
+					steps(warmup(), steady(INTERVAL, min(10), 82), steady(RECOVERY, min(5), 55),
+							steady(INTERVAL, min(15), 86), steady(RECOVERY, min(5), 55), steady(INTERVAL, min(10), 82),
+							steady(RECOVERY, min(5), 55), cooldown())),
+
+			// ---------- Sweet Spot ----------
+			new Workout(53L, "Sweet Spot 2 × 12", WorkoutType.SWEET_SPOT,
+					"Unter einer Stunde: zwei Sweet-Spot-Blöcke für Tage mit wenig Zeit.",
+					steps(warmup(), repeat(2, steady(INTERVAL, min(12), 90), steady(RECOVERY, min(5), 55)),
+							cooldown())),
+			new Workout(54L, "Sweet Spot 4 × 8", WorkoutType.SWEET_SPOT,
+					"Vier knackige Blöcke am oberen Sweet Spot mit kurzen Pausen.",
+					steps(warmup(), repeat(4, steady(INTERVAL, min(8), 92), steady(RECOVERY, min(4), 55)),
+							cooldown())),
+			new Workout(67L, "Sweet Spot 5 × 8", WorkoutType.SWEET_SPOT,
+					"Fünf Blöcke mit kurzen Pausen – 40 Minuten Sweet Spot, gut verdaulich portioniert.",
+					steps(warmup(), repeat(5, steady(INTERVAL, min(8), 90), steady(RECOVERY, min(3), 55)),
+							cooldown())),
+			new Workout(55L, "Sweet-Spot-Treppe 8-10-12", WorkoutType.SWEET_SPOT,
+					"Jeder Block etwas länger und etwas härter – von 88 bis 92 % FTP.",
+					steps(warmup(), steady(INTERVAL, min(8), 88), steady(RECOVERY, min(4), 55),
+							steady(INTERVAL, min(10), 90), steady(RECOVERY, min(4), 55), steady(INTERVAL, min(12), 92),
+							steady(RECOVERY, min(5), 55), cooldown())),
+
+			// ---------- Schwelle ----------
+			new Workout(56L, "Schwelle 2 × 10", WorkoutType.THRESHOLD,
+					"Zweimal zehn Minuten an der FTP – Schwellentraining in unter einer Stunde.",
+					steps(warmup(), repeat(2, steady(INTERVAL, min(10), 98), steady(RECOVERY, min(5), 55)),
+							cooldown())),
+			new Workout(57L, "Schwelle 4 × 8", WorkoutType.THRESHOLD,
+					"Vier Blöcke genau an der FTP mit kurzen Pausen – viel Zeit an der Schwelle.",
+					steps(warmup(), repeat(4, steady(INTERVAL, min(8), 100), steady(RECOVERY, min(4), 55)),
+							cooldown())),
+			new Workout(68L, "Schwelle 3 × 12", WorkoutType.THRESHOLD,
+					"Drei Blöcke an der FTP – zwischen 3 × 10 und 3 × 15.",
+					steps(warmup(), repeat(3, steady(INTERVAL, min(12), 98), steady(RECOVERY, min(5), 55)),
+							cooldown())),
+			new Workout(58L, "Schwelle 1 × 20", WorkoutType.THRESHOLD,
+					"Ein einziger Block an der Schwelle – übt das gleichmäßige Durchziehen wie im Zeitfahren.",
+					steps(ramp(WARMUP, min(15), 50, 80), steady(INTERVAL, min(20), 96), steady(RECOVERY, min(5), 55),
+							cooldown())),
+
+			// ---------- Over-Unders ----------
+			new Workout(59L, "Over-Unders 2 × 12 (1/1)", WorkoutType.OVER_UNDER,
+					"Jede Minute ein Wechsel zwischen knapp unter und deutlich über der Schwelle.",
+					steps(warmup(),
+							repeat(2, repeat(6, steady(INTERVAL, min(1), 92), steady(INTERVAL, min(1), 108)),
+									steady(RECOVERY, min(6), 55)),
+							cooldown())),
+
+			new Workout(69L, "Over-Unders 4 × 9", WorkoutType.OVER_UNDER,
+					"Vier kürzere Blöcke mit 2 min unter und 1 min über der Schwelle.",
+					steps(warmup(),
+							repeat(4, repeat(3, steady(INTERVAL, min(2), 95), steady(INTERVAL, min(1), 105)),
+									steady(RECOVERY, min(4), 55)),
+							cooldown())),
+			new Workout(70L, "Over-Unders 3 × 16 (3/1)", WorkoutType.OVER_UNDER,
+					"Lange Blöcke: drei Minuten knapp unter, eine deutlich über der Schwelle.",
+					steps(warmup(),
+							repeat(3, repeat(4, steady(INTERVAL, min(3), 95), steady(INTERVAL, min(1), 107)),
+									steady(RECOVERY, min(5), 55)),
+							cooldown())),
+
+			// ---------- VO2max ----------
+			new Workout(60L, "VO2max 4 × 4", WorkoutType.VO2MAX,
+					"Vier Mal vier Minuten weit über der Schwelle – der Klassiker in kurz.",
+					steps(warmup(), repeat(4, steady(INTERVAL, min(4), 115), steady(RECOVERY, min(4), 50)),
+							cooldown())),
+			new Workout(61L, "VO2max 6 × 2", WorkoutType.VO2MAX,
+					"Kurze, sehr harte Zwei-Minuten-Intervalle – schnell am Limit, schnell wieder vorbei.",
+					steps(warmup(), repeat(6, steady(INTERVAL, min(2), 120), steady(RECOVERY, min(2), 50)),
+							cooldown())),
+			new Workout(62L, "VO2max 3 × 13 × 30/15", WorkoutType.VO2MAX,
+					"30 Sekunden hart, 15 locker, 13 Mal am Stück: der Puls bleibt oben, die Beine kommen kurz zur Ruhe.",
+					steps(warmup(),
+							repeat(3, repeat(13, steady(INTERVAL, 30, 118), steady(RECOVERY, 15, 50)),
+									steady(RECOVERY, min(3), 50)),
+							cooldown())),
+			new Workout(63L, "VO2max 3 × 8 × 40/20", WorkoutType.VO2MAX,
+					"40 Sekunden hart, 20 locker – längere Spitzen als bei 30/30, kürzere Pausen.",
+					steps(warmup(),
+							repeat(3, repeat(8, steady(INTERVAL, 40, 120), steady(RECOVERY, 20, 50)),
+									steady(RECOVERY, min(5), 50)),
+							cooldown())),
+
+			// ---------- Anaerob ----------
+			new Workout(64L, "Anaerob 2 × 5 × 30 s", WorkoutType.ANAEROBIC,
+					"Zwei Serien kurzer, sehr harter Antritte – für Rampen und Attacken.",
+					steps(warmup(),
+							repeat(2, repeat(5, steady(INTERVAL, 30, 150), steady(RECOVERY, 90, 50)),
+									steady(RECOVERY, min(5), 50)),
+							cooldown())),
+
+			// ---------- Sprint ----------
+			new Workout(65L, "Sprints 8 × 10 s", WorkoutType.SPRINT,
+					"Acht kurze Vollgas-Sprints in lockerer Grundlage – viel Spritzigkeit, wenig Ermüdung.",
+					steps(warmup(), steady(STEADY, min(15), 65),
+							repeat(8, steady(INTERVAL, 10, 180), steady(RECOVERY, min(3) + 50, 55)), cooldown())));
+
+	/** Alle Radeinheiten: Steigerung plus Abwechslung */
+	private final List<Workout> allRides = java.util.stream.Stream.concat(workouts.stream(), variety.stream())
+			.toList();
+
 	/** Workout-ID des FTP-Tests */
 	public static final long FTP_TEST = 11L;
 
@@ -173,14 +298,14 @@ public class WorkoutLibrary {
 	}
 
 	public List<Workout> findAll() {
-		return workouts;
+		return allRides;
 	}
 
 	public Optional<Workout> findById(Long id) {
-		return workouts.stream().filter(workout -> workout.getId().equals(id)).findFirst();
+		return allRides.stream().filter(workout -> workout.getId().equals(id)).findFirst();
 	}
 
-	/** Alle Varianten einer Trainingsart, von leicht nach schwer */
+	/** Alle Varianten einer Trainingsart, von leicht nach schwer – nur die Steigerung, ohne Abwechslung */
 	public List<Workout> variantsOf(WorkoutType type) {
 		return workouts.stream().filter(workout -> workout.getType() == type).toList();
 	}
@@ -188,8 +313,25 @@ public class WorkoutLibrary {
 	/** Die nächstleichtere Variante derselben Trainingsart, leer wenn es schon die leichteste ist */
 	public Optional<Workout> easierVariant(Workout workout) {
 		List<Workout> variants = variantsOf(workout.getType());
-		int index = variants.indexOf(findById(workout.getId()).orElse(workout));
+		Workout original = findById(workout.getId()).orElse(workout);
+		int index = variants.indexOf(original);
+		if (index < 0) {
+			// Abwechslung: die härteste Stufe, die leichter ist
+			return variants.stream().filter(v -> v.getTss() < original.getTss()).reduce((a, b) -> b);
+		}
 		return index > 0 ? Optional.of(variants.get(index - 1)) : Optional.empty();
+	}
+
+	/** Die nächstschwerere Variante derselben Trainingsart, leer wenn es schon die schwerste ist */
+	public Optional<Workout> harderVariant(Workout workout) {
+		List<Workout> variants = variantsOf(workout.getType());
+		Workout original = findById(workout.getId()).orElse(workout);
+		int index = variants.indexOf(original);
+		if (index < 0) {
+			// Abwechslung: die leichteste Stufe, die härter ist
+			return variants.stream().filter(v -> v.getTss() > original.getTss()).findFirst();
+		}
+		return index < variants.size() - 1 ? Optional.of(variants.get(index + 1)) : Optional.empty();
 	}
 
 	/** Variante einer Trainingsart nach Steigerungsstufe (0 = leichteste); zu hohe Stufen ergeben die schwerste. */
@@ -198,9 +340,53 @@ public class WorkoutLibrary {
 		return variants.get(Math.clamp(step, 0, variants.size() - 1));
 	}
 
+	/** Der Opener ist fürs Vortag-Event gedacht und bleibt kurz */
+	static final long OPENER = 28L;
+
+	/**
+	 * Was der Plan auf dieser Stufe fahren kann: die Variante der Steigerung und alle Abwechslungs-Workouts
+	 * derselben Art, deren Belastung (TSS) dieser Stufe am nächsten liegt. Die Variante steht vorn.
+	 */
+	public List<Workout> alternatives(WorkoutType type, int step) {
+		List<Workout> variants = variantsOf(type);
+		if (variants.isEmpty()) {
+			return List.of();
+		}
+		int index = Math.clamp(step, 0, variants.size() - 1);
+		List<Workout> result = new ArrayList<>();
+		result.add(variants.get(index));
+		variety.stream()
+				.filter(workout -> workout.getType() == type && nearestStep(variants, workout) == index)
+				.forEach(result::add);
+		return result;
+	}
+
+	private static int nearestStep(List<Workout> variants, Workout workout) {
+		int best = 0;
+		for (int i = 1; i < variants.size(); i++) {
+			if (Math.abs(variants.get(i).getTss() - workout.getTss())
+					< Math.abs(variants.get(best).getTss() - workout.getTss())) {
+				best = i;
+			}
+		}
+		return best;
+	}
+
+	/**
+	 * Lässt sich die Dauer dieses festen Workouts über den Rahmen (Aufwärmen, Grundlage, Ausfahren) anpassen?
+	 * Nicht beim FTP-Test, beim Opener und bei eigenen Workouts.
+	 */
+	public static boolean isLengthAdjustable(Workout workout) {
+		long id = workout.getId();
+		return id < CUSTOM_ID_OFFSET && id != OPENER && workout.getType() != WorkoutType.FTP_TEST
+				&& !WorkoutCustomizationService.isVariable(id)
+				&& WorkoutFitter.isFittable(workout);
+	}
+
 	/**
 	 * Liefert ein Workout aus der Bibliothek. Für Regeneration, Grundlage und lange Ausfahrt kann eine
 	 * abweichende Dauer angegeben werden, dann wird das Workout passend zur verfügbaren Zeit erzeugt.
+	 * Intervall-Workouts mit Dauer bekommen einen angepassten Rahmen (siehe WorkoutFitter).
 	 */
 	public Optional<Workout> resolve(Long id, Integer durationMinutes) {
 		if (id != null && id >= CUSTOM_ID_OFFSET) {
@@ -214,7 +400,9 @@ public class WorkoutLibrary {
 			case 2 -> Optional.of(endurance(durationMinutes));
 			case 3 -> Optional.of(longRide(durationMinutes));
 			case 27 -> Optional.of(longRideWithTempo(durationMinutes));
-			default -> findById(id);
+			default -> findById(id).map(workout -> isLengthAdjustable(workout)
+					? WorkoutFitter.fit(workout, durationMinutes).orElse(workout)
+					: workout);
 		};
 	}
 

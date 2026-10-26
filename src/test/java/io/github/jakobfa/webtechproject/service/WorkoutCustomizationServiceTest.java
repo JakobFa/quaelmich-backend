@@ -2,7 +2,12 @@ package io.github.jakobfa.webtechproject.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import java.util.List;
+
 import org.junit.jupiter.api.Test;
+
+import io.github.jakobfa.webtechproject.model.Workout;
+import io.github.jakobfa.webtechproject.model.WorkoutType;
 
 import io.github.jakobfa.webtechproject.service.WorkoutCustomizationService.Choice;
 import io.github.jakobfa.webtechproject.service.WorkoutCustomizationService.Direction;
@@ -20,7 +25,18 @@ class WorkoutCustomizationServiceTest {
 		assertThat(service.choiceFor(sweetSpot, Direction.EASIER)).contains(new Choice(14, null)); // 3 × 10
 		assertThat(service.choiceFor(sweetSpot, Direction.HARDER)).contains(new Choice(16, null)); // 2 × 20
 		assertThat(service.choiceFor(sweetSpot, Direction.SHORTER)).contains(new Choice(14, null));
-		assertThat(service.choiceFor(sweetSpot, Direction.LONGER)).isPresent();
+		assertThat(service.choiceFor(sweetSpot, Direction.LONGER)).as("Rahmen +15 min, gleiche Intervalle")
+				.contains(new Choice(5, 86));
+	}
+
+	@Test
+	void longerIntervalWorkoutsGoBackStepByStepAndKeepTheirLengthWhenHarder() {
+		var longerSweetSpot = library.resolve(5L, 86).orElseThrow();
+
+		assertThat(service.choiceFor(longerSweetSpot, Direction.SHORTER)).as("zurück zur Standardlänge")
+				.contains(new Choice(5, null));
+		assertThat(service.choiceFor(longerSweetSpot, Direction.HARDER)).contains(new Choice(16, 86));
+		assertThat(service.choiceFor(longerSweetSpot, Direction.EASIER)).contains(new Choice(14, 86));
 	}
 
 	@Test
@@ -54,6 +70,60 @@ class WorkoutCustomizationServiceTest {
 		for (Direction direction : Direction.values()) {
 			assertThat(service.choiceFor(ftpTest, direction)).isEmpty();
 		}
+	}
+
+	private List<Workout> resolved(List<Choice> choices) {
+		return choices.stream().map(c -> library.resolve(c.workoutId(), c.durationMinutes()).orElseThrow()).toList();
+	}
+
+	@Test
+	void randomKeepsEasyRidesEasyAndFillsTheAvailableTime() {
+		List<Choice> candidates = service.randomCandidates(WorkoutLibrary.endurance(90), 120);
+
+		assertThat(candidates).contains(new Choice(1, 60), new Choice(2, 120), new Choice(3, 120), new Choice(27, 120));
+		assertThat(resolved(candidates)).allSatisfy(workout -> {
+			assertThat(WorkoutCustomizationService.intensityLevel(workout.getType())).as("locker").isZero();
+			assertThat(workout.getDurationInMinutes()).isLessThanOrEqualTo(120);
+		});
+	}
+
+	@Test
+	void randomStaysOnTheSameIntensityAndNeverPicksTheSameOrATest() {
+		Workout sweetSpot = library.findById(5L).orElseThrow();
+
+		List<Workout> candidates = resolved(service.randomCandidates(sweetSpot, 75));
+
+		assertThat(candidates).isNotEmpty().allSatisfy(workout -> {
+			assertThat(workout.getType()).as("kein VO2max statt Sweet Spot")
+					.isIn(WorkoutType.TEMPO, WorkoutType.SWEET_SPOT);
+			assertThat(workout.getId()).isNotEqualTo(5L);
+			assertThat(workout.getDurationInMinutes()).isBetween(45, 75);
+		});
+		assertThat(candidates.stream().map(Workout::getType).distinct().count()).as("mehr als nur eine Art")
+				.isGreaterThan(1);
+
+		var vo2max = library.findById(8L).orElseThrow();
+		assertThat(resolved(service.randomCandidates(vo2max, 90))).isNotEmpty()
+				.allSatisfy(workout -> assertThat(workout.getType())
+						.isIn(WorkoutType.VO2MAX, WorkoutType.ANAEROBIC, WorkoutType.SPRINT));
+	}
+
+	@Test
+	void randomMayRunALittleLongerWhenNothingElseFits() {
+		Workout tempo = library.findById(12L).orElseThrow(); // 2 × 15, 60 min
+
+		List<Workout> candidates = resolved(service.randomCandidates(tempo, 60));
+
+		assertThat(candidates).isNotEmpty().allSatisfy(workout -> {
+			assertThat(workout.getType()).isIn(WorkoutType.TEMPO, WorkoutType.SWEET_SPOT);
+			assertThat(workout.getDurationInMinutes()).isLessThanOrEqualTo(66);
+		});
+	}
+
+	@Test
+	void randomFindsNothingWhenThereIsNoTime() {
+		assertThat(service.randomCandidates(library.findById(5L).orElseThrow(), 20)).isEmpty();
+		assertThat(service.randomCandidates(WorkoutLibrary.recovery(30), 30)).isEmpty();
 	}
 
 }

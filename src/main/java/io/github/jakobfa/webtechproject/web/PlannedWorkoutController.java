@@ -125,6 +125,22 @@ public class PlannedWorkoutController {
 		}
 	}
 
+	/**
+	 * "Überrasch mich": ein zufälliges anderes Workout, das in die verfügbare Zeit des Tages passt.
+	 * 409, wenn das nicht geht (schon erledigt, Krafttraining oder nichts Passendes).
+	 */
+	@PutMapping(path = "/planned-workouts/{id}/random")
+	public ResponseEntity<PlannedWorkoutResponse> shuffle(@AuthenticationPrincipal Jwt jwt, @PathVariable Long id) {
+		Long userId = CurrentUser.id(jwt);
+		try {
+			return customization.shuffle(id, userId)
+					.map(planned -> syncedResponse(userId, planned))
+					.orElse(ResponseEntity.notFound().build());
+		} catch (NotPossibleException e) {
+			return ResponseEntity.status(HttpStatus.CONFLICT).build();
+		}
+	}
+
 	public record SkipRequest(@NotNull SkipReason reason) {
 	}
 
