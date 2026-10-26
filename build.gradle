@@ -43,3 +43,11 @@ dependencies {
 tasks.named('test') {
 	useJUnitPlatform()
 }
+
+// Bericht für die wöchentliche Plan-Prüfung: Pläne für erfundene Profile (keine echten Nutzerdaten)
+tasks.register('planReport', JavaExec) {
+	description = 'Schreibt Beispielpläne für viele erfundene Fahrer nach build/plan-report.md'
+	classpath = sourceSets.test.runtimeClasspath
+	mainClass = 'io.github.jakobfa.webtechproject.service.PlanReport'
+	args = [layout.buildDirectory.file('plan-report.md').get().asFile.path]
+}
