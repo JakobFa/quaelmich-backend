@@ -218,6 +218,20 @@ public class PlannedWorkoutController {
 				.orElse(ResponseEntity.noContent().build());
 	}
 
+	/**
+	 * Einschätzung einer lockeren Fahrt (ohne Intervalle): wie gut wurde der Zielbereich gehalten?
+	 * 204, wenn es Intervalle gibt, keine Fahrt zugeordnet ist oder keine Watt-/Pulsdaten da sind.
+	 */
+	@GetMapping(path = "/planned-workouts/{id}/hold")
+	public ResponseEntity<IntervalAccuracy.HoldResult> hold(@AuthenticationPrincipal Jwt jwt, @PathVariable Long id) {
+		Long userId = CurrentUser.id(jwt);
+		if (plannedWorkoutService.findOwned(id, userId).isEmpty()) {
+			return ResponseEntity.notFound().build();
+		}
+		return intervalAccuracy.hold(id, userId).map(ResponseEntity::ok)
+				.orElse(ResponseEntity.noContent().build());
+	}
+
 	@GetMapping(path = "/planned-workouts/{id}")
 	public ResponseEntity<PlannedWorkoutResponse> getPlannedWorkout(@AuthenticationPrincipal Jwt jwt,
 			@PathVariable Long id) {
