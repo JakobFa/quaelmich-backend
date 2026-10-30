@@ -9,6 +9,7 @@ import io.github.jakobfa.webtechproject.model.HeartRateTargets;
 import io.github.jakobfa.webtechproject.model.StepKind;
 import io.github.jakobfa.webtechproject.model.Workout;
 import io.github.jakobfa.webtechproject.model.WorkoutStep;
+import io.github.jakobfa.webtechproject.model.WorkoutType;
 
 /**
  * Wie genau wurden die Intervalle getroffen? Ein Richtwert, kein Messgerät.
@@ -407,6 +408,110 @@ public final class IntervalAccuracy {
 			return "Sehr präzise gefahren.";
 		}
 		return null;
+	}
+
+	// ---------- Lockere Fahrten: wie gut wurde der Zielbereich gehalten? ----------
+
+	public enum Hold {
+		STEADY, A_BIT_HARD, TOO_HARD, VERY_EASY
+	}
+
+	/**
+	 * Für Fahrten ohne Intervalle (Grundlage, Ausrollen, lange Ausfahrt): kein Intervall zum Treffen, aber man
+	 * kann sagen, wie gut der Zielbereich gehalten wurde. targetLow/High = Zielbereich (Watt bzw. Puls),
+	 * average = Schnitt, percent* = Anteil der gefahrenen Zeit darunter/drin/darüber.
+	 */
+	public record HoldResult(Basis basis, int targetLow, int targetHigh, int average, int percentBelow,
+			int percentInZone, int percentAbove, Hold hold, String tip, List<Integer> trace) {
+	}
+
+	/** Zielbereich beim Watt-Training: ± so viel um die geplante Leistung */
+	static final double HOLD_BAND = 0.12;
+	/** so viel Zeit über dem Zielbereich gilt als "immer wieder zu hart" bzw. "deutlich zu hart" */
+	static final int A_BIT_HARD_ABOVE_PERCENT = 25;
+	static final int TOO_HARD_ABOVE_PERCENT = 45;
+	/** kürzere Fahrten lohnen die Auswertung nicht */
+	static final int MIN_HOLD_SECONDS = 20 * 60;
+
+	public static Optional<HoldResult> holdByPower(Workout workout, ActivityStream stream, int ftp) {
+		WorkoutStep main = mainSteadyStep(workout);
+		if (main == null || !stream.hasWatts()) {
+			return Optional.empty();
+		}
+		int target = (int) Math.round(main.powerStartPercent() * ftp / 100.0);
+		int low = (int) Math.round(target * (1 - HOLD_BAND));
+		int high = (int) Math.round(target * (1 + HOLD_BAND));
+		return hold(Basis.POWER, stream.watts(), low, high, workout.getType());
+	}
+
+	public static Optional<HoldResult> holdByHeartRate(Workout workout, ActivityStream stream,
+			HeartRateTargets targets) {
+		WorkoutStep main = mainSteadyStep(workout);
+		HeartRateTargets.Range range = main == null ? null : targets.forStep(main);
+		if (range == null || !stream.hasHeartRate()) {
+			return Optional.empty();
+		}
+		return hold(Basis.HEART_RATE, stream.heartRate(), range.low(), range.high(), workout.getType());
+	}
+
+	/** Der lange gleichmäßige Abschnitt, auf den es bei lockeren Fahrten ankommt; null bei Intervall-Workouts */
+	static WorkoutStep mainSteadyStep(Workout workout) {
+		if (hasIntervals(workout) || workout.getType() == WorkoutType.FTP_TEST) {
+			return null;
+		}
+		return workout.getSteps().stream().filter(step -> step.kind() == StepKind.STEADY)
+				.max(java.util.Comparator.comparingInt(WorkoutStep::durationSeconds)).orElse(null);
+	}
+
+	private static Optional<HoldResult> hold(Basis basis, Integer[] values, int low, int high, WorkoutType type) {
+		Sums sums = Sums.of(values);
+		int moving = sums.count(0, values.length);
+		if (moving < MIN_HOLD_SECONDS) {
+			return Optional.empty();
+		}
+		int above = 0;
+		int below = 0;
+		for (Integer value : values) {
+			if (value == null) {
+				continue;
+			}
+			if (value > high) {
+				above++;
+			} else if (value < low) {
+				below++;
+			}
+		}
+		int average = sums.mean(0, values.length);
+		int percentAbove = (int) Math.round(100.0 * above / moving);
+		int percentBelow = (int) Math.round(100.0 * below / moving);
+		int percentInZone = Math.max(0, 100 - percentAbove - percentBelow);
+		Hold verdict = verdictFor(average, low, high, percentAbove, type);
+		return Optional.of(new HoldResult(basis, low, high, average, percentBelow, percentInZone, percentAbove,
+				verdict, holdTip(verdict), trace(values)));
+	}
+
+	private static Hold verdictFor(int average, int low, int high, int percentAbove, WorkoutType type) {
+		if (average > high || percentAbove >= TOO_HARD_ABOVE_PERCENT) {
+			return Hold.TOO_HARD;
+		}
+		if (percentAbove >= A_BIT_HARD_ABOVE_PERCENT) {
+			return Hold.A_BIT_HARD;
+		}
+		// nur Grundlage/lange Ausfahrt können "zu locker" sein – Ausrollen soll locker sein
+		if (average < low && (type == WorkoutType.ENDURANCE || type == WorkoutType.LONG_RIDE)) {
+			return Hold.VERY_EASY;
+		}
+		return Hold.STEADY;
+	}
+
+	private static String holdTip(Hold hold) {
+		return switch (hold) {
+			case STEADY -> "Schön gleichmäßig im Zielbereich – genau so sollen lockere Tage aussehen.";
+			case A_BIT_HARD -> "Immer wieder über dem Zielbereich. An lockeren Tagen bringt konsequent locker mehr.";
+			case TOO_HARD -> "Deutlich härter als vorgesehen. Lockere Tage wirklich locker fahren schont die Beine "
+					+ "für die harten.";
+			case VERY_EASY -> "Sehr entspannt – völlig okay. An Grundlagentagen darf es ruhig etwas zügiger sein.";
+		};
 	}
 
 }
