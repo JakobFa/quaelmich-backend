@@ -29,6 +29,18 @@ class ProgressServiceTest {
 		return planned;
 	}
 
+	/** Abgehakte Einheit mit tatsächlichem TSS */
+	private PlannedWorkout done(LocalDate date, int actualTss) {
+		PlannedWorkout workout = planned(date, true);
+		workout.setActualTss(actualTss);
+		return workout;
+	}
+
+	/** Plan mit Startdatum, damit der chronische Schnitt eine Historie hat */
+	private static TrainingPlan planFrom(LocalDate start) {
+		return new TrainingPlan(new io.github.jakobfa.webtechproject.model.Athlete(), start);
+	}
+
 	@Test
 	void levelsGrowWithTrainingLoad() {
 		assertThat(ProgressService.levelFor(0).name()).isEqualTo("Kettenfett-Neuling");
@@ -138,7 +150,8 @@ class ProgressServiceTest {
 		extra.setDate(TODAY.minusDays(2));
 		extra.setTss(40);
 
-		var check = service.loadCheck(java.util.List.of(done, ridden, missed, old, upcoming),
+		var plan = planFrom(TODAY.minusWeeks(10));
+		var check = service.loadCheck(plan, java.util.List.of(done, ridden, missed, old, upcoming),
 				java.util.List.of(extra), TODAY);
 
 		assertThat(check.plannedTss()).isEqualTo(201);
@@ -147,14 +160,38 @@ class ProgressServiceTest {
 	}
 
 	@Test
-	void loadStatusThresholds() {
-		assertThat(ProgressService.statusOf(200, 100)).isEqualTo(ProgressService.LoadStatus.TOO_LITTLE);
-		assertThat(ProgressService.statusOf(200, 220)).isEqualTo(ProgressService.LoadStatus.ON_TRACK);
-		assertThat(ProgressService.statusOf(200, 260)).isEqualTo(ProgressService.LoadStatus.A_BIT_MUCH);
-		assertThat(ProgressService.statusOf(200, 330)).isEqualTo(ProgressService.LoadStatus.TOO_MUCH);
-		assertThat(ProgressService.statusOf(0, 0)).isEqualTo(ProgressService.LoadStatus.RESTING);
-		assertThat(ProgressService.statusOf(0, 150)).as("Pause, aber viel gefahren")
+	void aRelaxedExtraRideInATightlyPlannedWeekIsNotTooMuch() {
+		// genau dein Fall: knappe Woche (201 geplant), du fährst 232 – aber dein Schnitt ist ~220/Woche
+		assertThat(ProgressService.statusOf(201, 232, 220)).isEqualTo(ProgressService.LoadStatus.ON_TRACK);
+	}
+
+	@Test
+	void statusUsesTwoReferences() {
+		// "zu viel" am chronischen Schnitt (ACWR), nicht am Plan
+		assertThat(ProgressService.statusOf(300, 350, 250)).as("1,4× Schnitt")
+				.isEqualTo(ProgressService.LoadStatus.A_BIT_MUCH);
+		assertThat(ProgressService.statusOf(300, 450, 250)).as("1,8× Schnitt")
 				.isEqualTo(ProgressService.LoadStatus.TOO_MUCH);
+		// unter dem Plan geblieben → zu wenig (am Plan gemessen)
+		assertThat(ProgressService.statusOf(300, 150, 300)).isEqualTo(ProgressService.LoadStatus.TOO_LITTLE);
+		// geplante Erholungswoche wie geplant gefahren → nicht "zu wenig"
+		assertThat(ProgressService.statusOf(130, 130, 300)).isEqualTo(ProgressService.LoadStatus.ON_TRACK);
+		assertThat(ProgressService.statusOf(0, 0, 200)).isEqualTo(ProgressService.LoadStatus.RESTING);
+	}
+
+	@Test
+	void whenNewTheChronicBaselineComesFromThePlannedWeeks() {
+		LocalDate start = TODAY; // heute gestartet, noch keine Historie
+		java.util.List<PlannedWorkout> ahead = new java.util.ArrayList<>();
+		for (int day = 0; day < 28; day += 2) {
+			ahead.add(planned(TODAY.plusDays(day), false)); // 14 × 67 TSS über 4 Wochen ≈ 234/Woche
+		}
+
+		int chronic = service.chronicWeekly(planFrom(start), ahead, java.util.List.of(), TODAY);
+
+		assertThat(chronic).as("Basis ≈ geplantes Wochenpensum").isBetween(210, 240);
+		// wer am ersten Tag gleich das Doppelte fährt, bekommt eine Warnung
+		assertThat(ProgressService.statusOf(230, 470, chronic)).isEqualTo(ProgressService.LoadStatus.TOO_MUCH);
 	}
 
 }
