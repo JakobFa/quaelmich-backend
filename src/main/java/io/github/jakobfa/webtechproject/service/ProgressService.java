@@ -15,6 +15,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import io.github.jakobfa.webtechproject.model.Athlete;
+import io.github.jakobfa.webtechproject.model.Workout;
 import io.github.jakobfa.webtechproject.model.Event;
 import io.github.jakobfa.webtechproject.model.ExtraRide;
 import io.github.jakobfa.webtechproject.model.PlannedWorkout;
@@ -60,15 +61,27 @@ public class ProgressService {
 		TOO_LITTLE, ON_TRACK, A_BIT_MUCH, TOO_MUCH, RESTING
 	}
 
-	/** Geplante und tatsächliche Belastung (TSS) der letzten 7 Tage inklusive heute */
-	public record LoadCheck(int plannedTss, int actualTss, LoadStatus status) {
+	/**
+	 * Belastung der letzten 7 Tage: geplant (was laut Plan fällig war), gefahren (tatsächlich) und der
+	 * chronische Wochenschnitt, an dem "zu viel" gemessen wird.
+	 */
+	public record LoadCheck(int plannedTss, int actualTss, int chronicTss, LoadStatus status) {
 	}
 
 	static final int LOAD_DAYS = 7;
-	/** unter 70 % des Geplanten = zu wenig, bis 115 % = auf Kurs, bis 140 % = etwas viel, darüber zu viel */
+	static final int CHRONIC_DAYS = 28;
+	/** "Zu wenig" misst am Plan: unter 70 % des Geplanten bist du hinter deinem Plan zurück */
 	static final double TOO_LITTLE_BELOW = 0.7;
-	static final double ON_TRACK_UP_TO = 1.15;
-	static final double A_BIT_MUCH_UP_TO = 1.4;
+	/**
+	 * "Zu viel" misst nicht am Plan, sondern am Acute:Chronic-Verhältnis (ACWR): die Belastung der letzten
+	 * 7 Tage im Vergleich zu dem, was du in den letzten ~4 Wochen im Schnitt gemacht hast. Nur ein echter
+	 * Sprung gegenüber dem Gewohnten ist riskant – eine lockere Mehrfahrt in einer knapp geplanten Woche nicht.
+	 * Richtwerte aus der Sportwissenschaft: über 1,3 etwas viel, über 1,5 deutlich erhöhtes Risiko.
+	 */
+	static final double A_BIT_MUCH_ACWR = 1.3;
+	static final double TOO_MUCH_ACWR = 1.5;
+	/** So wenig Wochenbelastung nehmen wir mindestens als Basis an – sonst würde jede kleine Fahrt als Sprung gelten */
+	static final int MIN_CHRONIC_WEEKLY = 150;
 
 	/** Level-Namen und Schwellen – die Abstände wachsen, damit es später nicht zu schnell geht */
 	static final List<Level> LEVELS = List.of(
@@ -136,7 +149,7 @@ public class ProgressService {
 			LocalDate today = LocalDate.now(clock);
 			return new Progress(xp, levelFor(xp), nextLevel(xp), streakWeeks(workouts, today),
 					plan.map(p -> planProgress(p, athlete, moreEventsOf(athlete), today)).orElse(null),
-					plan.map(p -> loadCheck(workouts, extras, today)).orElse(null));
+					plan.map(p -> loadCheck(p, workouts, extras, today)).orElse(null));
 		});
 	}
 
@@ -240,45 +253,97 @@ public class ProgressService {
 	 * Belastung der letzten 7 Tage: geplant ist, was bis heute fällig war (ohne Pausen); gefahren sind die
 	 * zugeordneten Fahrten, abgehakte Workouts ohne Fahrt mit ihrem geplanten TSS und alle Zusatzeinheiten.
 	 */
-	LoadCheck loadCheck(List<PlannedWorkout> workouts, List<ExtraRide> extras, LocalDate today) {
+	LoadCheck loadCheck(TrainingPlan plan, List<PlannedWorkout> workouts, List<ExtraRide> extras, LocalDate today) {
 		LocalDate from = today.minusDays(LOAD_DAYS - 1L);
-		int planned = 0;
-		int actual = 0;
+		int planned = plannedLoad(workouts, from, today, true);
+		int actual = doneLoad(workouts, extras, from, today);
+		int chronic = chronicWeekly(plan, workouts, extras, today);
+		return new LoadCheck(planned, actual, chronic, statusOf(planned, actual, chronic));
+	}
+
+	/**
+	 * Chronischer Wochenschnitt: die tatsächliche Belastung der letzten 28 Tage, auf eine Woche gerechnet.
+	 * Für die Tage vor dem Trainingsstart (noch keine Historie) nehmen wir an, dass die geplante Belastung
+	 * der kommenden Wochen gefahren worden wäre – so wird der Schnitt beim Start nicht künstlich niedrig
+	 * (sonst sähe jede erste Woche wie ein großer Sprung aus). Nie unter {@link #MIN_CHRONIC_WEEKLY}.
+	 */
+	int chronicWeekly(TrainingPlan plan, List<PlannedWorkout> workouts, List<ExtraRide> extras, LocalDate today) {
+		LocalDate chronicFrom = today.minusDays(CHRONIC_DAYS - 1L);
+		int done = doneLoad(workouts, extras, chronicFrom, today);
+		LocalDate planStart = plan.getStartDate();
+		long missingDays = Math.clamp(ChronoUnit.DAYS.between(chronicFrom, planStart), 0, CHRONIC_DAYS);
+		double intendedWeekly = intendedWeekly(workouts, today);
+		double seeded = done + intendedWeekly / 7.0 * missingDays;
+		return Math.max(MIN_CHRONIC_WEEKLY, (int) Math.round(seeded / (CHRONIC_DAYS / 7.0)));
+	}
+
+	/** Geplante Wochenbelastung, an der sich der Trainierende orientiert: Schnitt der kommenden 4 Wochen */
+	private double intendedWeekly(List<PlannedWorkout> workouts, LocalDate today) {
+		int forward = rawPlannedLoad(workouts, today, today.plusDays(CHRONIC_DAYS - 1L));
+		if (forward > 0) {
+			return forward / (CHRONIC_DAYS / 7.0);
+		}
+		// Plan läuft aus: dann der Schnitt der letzten 4 Wochen
+		return rawPlannedLoad(workouts, today.minusDays(CHRONIC_DAYS - 1L), today) / (CHRONIC_DAYS / 7.0);
+	}
+
+	/** Tatsächlich gefahrene Belastung im Zeitraum: zugeordnete Fahrten, abgehakte Workouts, Zusatzfahrten */
+	private int doneLoad(List<PlannedWorkout> workouts, List<ExtraRide> extras, LocalDate from, LocalDate to) {
+		int sum = 0;
 		for (PlannedWorkout workout : workouts) {
-			boolean inWindow = !workout.getDate().isBefore(from) && !workout.getDate().isAfter(today);
-			boolean due = workout.getDate().isBefore(today) || workout.isCompleted() || workout.getActualTss() != null;
-			if (!inWindow || !due || workout.getSkipReason() == SkipReason.PAUSE) {
-				continue;
-			}
-			int plannedTss = library.resolve(workout.getWorkoutId(), workout.getDurationMinutes())
-					.map(w -> w.getTss()).orElse(0);
-			planned += plannedTss;
-			if (workout.getActualTss() != null) {
-				actual += workout.getActualTss();
-			} else if (workout.isCompleted()) {
-				actual += plannedTss;
+			if (inWindow(workout.getDate(), from, to) && workout.getSkipReason() != SkipReason.PAUSE) {
+				sum += xpOf(workout);
 			}
 		}
 		for (ExtraRide ride : extras) {
-			if (!ride.getDate().isBefore(from) && !ride.getDate().isAfter(today)) {
-				actual += xpOf(ride);
+			if (inWindow(ride.getDate(), from, to)) {
+				sum += xpOf(ride);
 			}
 		}
-		return new LoadCheck(planned, actual, statusOf(planned, actual));
+		return sum;
 	}
 
-	static LoadStatus statusOf(int planned, int actual) {
+	/** Geplante Belastung; dueOnly = nur was bis heute fällig war (für den Vergleich "hinter dem Plan") */
+	private int plannedLoad(List<PlannedWorkout> workouts, LocalDate from, LocalDate to, boolean dueOnly) {
+		int sum = 0;
+		for (PlannedWorkout workout : workouts) {
+			if (!inWindow(workout.getDate(), from, to) || workout.getSkipReason() == SkipReason.PAUSE) {
+				continue;
+			}
+			boolean due = workout.getDate().isBefore(to) || workout.isCompleted() || workout.getActualTss() != null;
+			if (dueOnly && !due) {
+				continue;
+			}
+			sum += library.resolve(workout.getWorkoutId(), workout.getDurationMinutes()).map(Workout::getTss).orElse(0);
+		}
+		return sum;
+	}
+
+	private int rawPlannedLoad(List<PlannedWorkout> workouts, LocalDate from, LocalDate to) {
+		return plannedLoad(workouts, from, to, false);
+	}
+
+	private static boolean inWindow(LocalDate date, LocalDate from, LocalDate to) {
+		return !date.isBefore(from) && !date.isAfter(to);
+	}
+
+	/**
+	 * "Zu wenig" am Plan gemessen (hast du Einheiten ausgelassen?), "zu viel" am chronischen Schnitt (ACWR,
+	 * echte Überlastung). So gilt eine lockere Mehrfahrt in einer knapp geplanten Woche nicht als zu viel.
+	 */
+	static LoadStatus statusOf(int planned, int actual, int chronicWeekly) {
 		if (planned == 0 && actual == 0) {
 			return LoadStatus.RESTING;
 		}
-		double ratio = (double) actual / Math.max(planned, 30);
-		if (ratio < TOO_LITTLE_BELOW) {
-			return LoadStatus.TOO_LITTLE;
+		double acwr = (double) actual / Math.max(chronicWeekly, MIN_CHRONIC_WEEKLY);
+		if (acwr > TOO_MUCH_ACWR) {
+			return LoadStatus.TOO_MUCH;
 		}
-		if (ratio <= ON_TRACK_UP_TO) {
-			return LoadStatus.ON_TRACK;
+		if (acwr > A_BIT_MUCH_ACWR) {
+			return LoadStatus.A_BIT_MUCH;
 		}
-		return ratio <= A_BIT_MUCH_UP_TO ? LoadStatus.A_BIT_MUCH : LoadStatus.TOO_MUCH;
+		double planRatio = (double) actual / Math.max(planned, 30);
+		return planRatio < TOO_LITTLE_BELOW ? LoadStatus.TOO_LITTLE : LoadStatus.ON_TRACK;
 	}
 
 	static PlanProgress planProgress(TrainingPlan plan, Athlete athlete, LocalDate today) {
