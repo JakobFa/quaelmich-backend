@@ -79,6 +79,34 @@ public class IntervalAccuracyService {
 		return streamOf(activityId, userId).flatMap(stream -> evaluate(workout, stream, athlete));
 	}
 
+	/** Lockere Fahrt (ohne Intervalle): wie gut wurde der Zielbereich gehalten? Leer ohne Fahrt oder Daten. */
+	public Optional<IntervalAccuracy.HoldResult> hold(Long plannedId, Long userId) {
+		return plannedWorkoutService.findOwned(plannedId, userId)
+				.filter(planned -> planned.getActivityId() != null)
+				.flatMap(planned -> {
+					Workout workout = library.resolve(planned.getWorkoutId(), planned.getDurationMinutes())
+							.orElseThrow();
+					if (IntervalAccuracy.mainSteadyStep(workout) == null) {
+						return Optional.empty();
+					}
+					Athlete athlete = planned.getPlan().getAthlete();
+					return streamOf(planned.getActivityId(), userId).flatMap(stream -> evaluateHold(workout, stream,
+							athlete));
+				});
+	}
+
+	private static Optional<IntervalAccuracy.HoldResult> evaluateHold(Workout workout, ActivityStream stream,
+			Athlete athlete) {
+		if (athlete.isHeartRateMode() && athlete.getHeartRateTargets() != null) {
+			return IntervalAccuracy.holdByHeartRate(workout, stream, athlete.getHeartRateTargets());
+		}
+		if (athlete.getFtp() != null && stream.hasWatts()) {
+			return IntervalAccuracy.holdByPower(workout, stream, athlete.getFtp());
+		}
+		return athlete.getHeartRateTargets() == null ? Optional.empty()
+				: IntervalAccuracy.holdByHeartRate(workout, stream, athlete.getHeartRateTargets());
+	}
+
 	/** Immer nach Watt, auch im Puls-Modus – fürs automatische Abhaken von Rollenfahrten */
 	public Optional<IntervalAccuracy.Result> powerAccuracyOf(Workout workout, String activityId, Long userId,
 			int ftp) {
