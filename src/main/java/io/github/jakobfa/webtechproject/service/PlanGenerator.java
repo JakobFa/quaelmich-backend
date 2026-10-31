@@ -549,10 +549,12 @@ public class PlanGenerator {
 						.thenComparing(Comparator.naturalOrder()))
 				.orElseThrow();
 
-		// Harte Einheiten nicht am Tag der langen Ausfahrt und nicht direkt davor oder danach
+		// Harte Einheiten nicht am Tag der langen Ausfahrt und nicht direkt davor oder danach. Sie sind kurz und
+		// kommen deshalb auf den Tag mit der knappsten Zeit, auf den sie noch passen – die Tage mit viel Zeit
+		// bleiben für Umfang (Grundlage, lange Ausfahrt). Bei gleicher Zeit gilt der frühere Tag.
 		List<LocalDate> candidates = days.stream()
 				.filter(day -> Math.abs(ChronoUnit.DAYS.between(longDay, day)) > 1)
-				.sorted(Comparator.comparingInt((LocalDate day) -> availableMinutes(availability, day)).reversed())
+				.sorted(Comparator.comparingInt((LocalDate day) -> availableMinutes(availability, day)))
 				.toList();
 
 		List<PlannedWorkout> week = new ArrayList<>();

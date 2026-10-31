@@ -95,6 +95,31 @@ class PlanGeneratorTest {
 	}
 
 	@Test
+	void hardSessionsGoToTheTightestDayThatFitsAndLongDaysAreKeptForVolume() {
+		Athlete athlete = athlete(Level.PERFORMANCE, MONDAY.plusWeeks(20).plusDays(5), 900, 8500, EventType.ULTRA);
+		WeeklyAvailability week = new WeeklyAvailability();
+		week.setMonday(4);
+		week.setTuesday(2);
+		week.setThursday(2);
+		week.setFriday(4);
+		week.setSaturday(4);
+		week.setSunday(4.5);
+		athlete.setAvailability(week);
+
+		List<PlannedWorkout> first = generator.generate(athlete, MONDAY).stream()
+				.filter(planned -> planned.getDate().isBefore(MONDAY.plusWeeks(1))).toList();
+
+		// die langen Tage (Mo, Fr) haben Zeit für Umfang, die kurzen (Di, Do) tragen die harten Einheiten
+		assertThat(first).filteredOn(planned -> isHard(workoutOf(planned)))
+				.extracting(planned -> planned.getDate().getDayOfWeek())
+				.isNotEmpty().doesNotContain(java.time.DayOfWeek.MONDAY, java.time.DayOfWeek.FRIDAY)
+				.allMatch(day -> day == java.time.DayOfWeek.TUESDAY || day == java.time.DayOfWeek.THURSDAY);
+		assertThat(first).filteredOn(planned -> planned.getDate().getDayOfWeek() == java.time.DayOfWeek.MONDAY)
+				.singleElement().satisfies(monday -> assertThat(workoutOf(monday).getDurationInMinutes())
+						.as("Montag mit 4 h wird für Umfang genutzt").isGreaterThanOrEqualTo(150));
+	}
+
+	@Test
 	void startsAtStartDateAndEndsWithRestDayAndOpener() {
 		LocalDate eventSunday = MONDAY.plusWeeks(8).plusDays(6);
 		LocalDate startWednesday = MONDAY.plusDays(2);
