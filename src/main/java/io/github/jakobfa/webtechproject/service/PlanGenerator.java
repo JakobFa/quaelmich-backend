@@ -37,6 +37,10 @@ import io.github.jakobfa.webtechproject.service.EventProfile.Focus;
  * - Phasen rückwärts vom Event: Tapering (Event-Woche + 1), Spitze (2–3 Wochen), Aufbau (ca. 40 % der
  *   übrigen Zeit), davor Grundlage. Nach 3 Belastungswochen folgt eine Erholungswoche – nie direkt vor der Spitze.
  * - Der Umfang steigt: Woche 1 nutzt ca. 70 % der verfügbaren Zeit, dann 5 % mehr pro Belastungswoche.
+ * - Jede Woche mit Zeit an allen sieben Tagen bekommt einen Pausentag (der Tag mit der knappsten Zeit, bevorzugt
+ *   mitten in der Woche).
+ * - Der Umfang einer Belastungswoche steigt höchstens um 10 % gegenüber der Belastungswoche davor – auch wenn die
+ *   eingetragene Zeit viel mehr hergäbe. Erholung und Tapering sind davon ausgenommen.
  * - Die lange Ausfahrt wächst aufs Ziel hin (bei langen Events von ca. 40 % auf 75 % der Event-Dauer, max. 6 h),
  *   bei langen Events im Aufbau mit Tempo-Blöcken im Renntempo.
  * - Die harten Workouts richten sich nach dem Schwerpunkt des Events (siehe {@link EventProfile})
@@ -53,6 +57,16 @@ public class PlanGenerator {
 	/** Umfang in Woche 1 und Steigerung pro Belastungswoche */
 	static final double START_VOLUME = 0.7;
 	static final double VOLUME_STEP = 0.05;
+
+	/** Eine Belastungswoche darf höchstens so viel mehr Zeit haben wie die davor (mindestens aber 30 min mehr) */
+	static final double MAX_WEEKLY_GROWTH = 1.10;
+	/** Eine Erholungswoche hat höchstens so viel von der letzten Belastungswoche */
+	static final double RECOVERY_SHARE = 0.7;
+	static final int MIN_WEEKLY_GROWTH_MINUTES = 30;
+	/** Nach einer leichten Woche sinkt der Bezugswert nur um so viel – sonst bremst sie die Woche danach aus */
+	static final double REFERENCE_DECAY = 0.85;
+	/** Beim Kürzen für den Wochendeckel werden lockere Fahrten nicht kürzer als das */
+	static final int MIN_CAPPED_RIDE = 45;
 
 	/** Lange Ausfahrt: höchstens 6 h, mindestens 1:30 h */
 	static final int MAX_LONG_RIDE = 360;
@@ -316,6 +330,8 @@ public class PlanGenerator {
 		List<PlannedWorkout> plan = new ArrayList<>();
 		Map<Phase, Integer> weeksInPhase = new EnumMap<>(Phase.class);
 		int loadWeek = 0;
+		// Umfang der letzten Belastungswoche (Minuten); 0 = noch keiner bekannt
+		double reference = 0;
 		int lastFtpTest = -FTP_TEST_EVERY_WEEKS;
 		// ohne Event: passt der Test nicht in die Woche (z. B. Start am Sonntag), kommt er in die nächste
 		boolean ftpTestPending = false;
@@ -330,6 +346,7 @@ public class PlanGenerator {
 					.filter(day -> !day.isBefore(startDate) && (eventDate == null || day.isBefore(eventDate)))
 					.filter(day -> availableMinutes(availability, day) > 0)
 					.toList();
+			trainingDays = withRestDay(trainingDays, availability);
 
 			if (weeksUntilEvent == 0) {
 				plan.addAll(planEventWeek(availability, trainingDays, eventDate, profile));
@@ -352,9 +369,14 @@ public class PlanGenerator {
 					useTempoLongRide(profile, phase, loadWeek),
 					hardWorkoutsFor(athlete.getLevel(), profile.focus(), phase, weekIndex, weeksUntilEvent,
 							weeklyHours, ftpTest,
-							profile.goal()));
+							profile.goal()),
+					weekCap(phase, reference));
 			List<PlannedWorkout> planned = planWeek(availability, trainingDays, week);
 			plan.addAll(planned);
+			if (isLoadPhase(phase) && !startDate.isAfter(monday)) {
+				// angefangene Startwoche zählt nicht als Bezug, sie ist nur kurz
+				reference = Math.max(minutesOf(planned), reference * REFERENCE_DECAY);
+			}
 			boolean testMissed = ftpTest
 					&& planned.stream().noneMatch(workout -> workout.getWorkoutId() == WorkoutLibrary.FTP_TEST);
 			// offen bleibt er, bis er eingeplant werden konnte (in Erholungswochen wird nicht getestet)
@@ -369,7 +391,45 @@ public class PlanGenerator {
 
 	/** Was in einer normalen Woche geplant wird */
 	record WeekPlan(Phase phase, int weekIndex, int step, double volume, int longRideMinutes,
-			boolean tempoLongRide, List<WorkoutType> hardWorkouts) {
+			boolean tempoLongRide, List<WorkoutType> hardWorkouts, Integer maxMinutes) {
+	}
+
+	/** Deckel für die Woche in dieser Phase; null = keiner (noch kein Bezug, Tapering) */
+	static Integer weekCap(Phase phase, double reference) {
+		if (reference <= 0) {
+			return null;
+		}
+		if (phase == Phase.RECOVERY) {
+			return (int) (reference * RECOVERY_SHARE);
+		}
+		return isLoadPhase(phase) ? weeklyCap(reference) : null;
+	}
+
+	/** So viele Minuten darf die nächste Belastungswoche höchstens haben, wenn die davor reference hatte */
+	static int weeklyCap(double reference) {
+		return (int) Math.max(reference * MAX_WEEKLY_GROWTH, reference + MIN_WEEKLY_GROWTH_MINUTES);
+	}
+
+	private int minutesOf(List<PlannedWorkout> week) {
+		return week.stream()
+				.mapToInt(planned -> library.resolve(planned.getWorkoutId(), planned.getDurationMinutes())
+						.orElseThrow().getDurationInMinutes())
+				.sum();
+	}
+
+	/**
+	 * Hat eine Woche an allen sieben Tagen Zeit, bleibt ein Tag frei: der mit der knappsten Zeit, bei Gleichstand
+	 * der, der der Wochenmitte am nächsten liegt (so grenzt er nicht an die lange Ausfahrt am Wochenende).
+	 */
+	static List<LocalDate> withRestDay(List<LocalDate> days, WeeklyAvailability availability) {
+		if (days.size() < 7) {
+			return days;
+		}
+		LocalDate rest = days.stream()
+				.min(Comparator.comparingInt((LocalDate day) -> availableMinutes(availability, day))
+						.thenComparingInt(day -> Math.abs(day.getDayOfWeek().getValue() - DayOfWeek.WEDNESDAY.getValue())))
+				.orElseThrow();
+		return days.stream().filter(day -> !day.equals(rest)).toList();
 	}
 
 	// ---------- Phasen ----------
@@ -695,9 +755,8 @@ public class PlanGenerator {
 			}
 		}
 
-		// ein lockerer Tag pro Woche bekommt Einlagen (Antritte oder Tempo), damit nicht jeder Tag gleich aussieht
-		boolean spiceWeek = plan.phase() == Phase.BASE || plan.phase() == Phase.BUILD || plan.phase() == Phase.PEAK;
-		boolean spiced = false;
+		// Minuten der lockeren Tage und der langen Ausfahrt erst festlegen, dann für den Wochendeckel kürzen
+		java.util.Map<LocalDate, Integer> flexible = new java.util.TreeMap<>();
 		for (LocalDate day : days) {
 			if (hardDays.contains(day)) {
 				continue;
@@ -711,10 +770,26 @@ public class PlanGenerator {
 					case TAPER -> 0.6;
 					default -> 1.0;
 				});
-				week.add(longRide(day, Math.min(plan.longRideMinutes(), possible), plan));
+				flexible.put(day, Math.min(plan.longRideMinutes(), possible));
 			} else {
 				// lockere Tage nie länger als die lange Ausfahrt
-				int minutes = floorToQuarterHour(Math.min(available * plan.volume(), plan.longRideMinutes()));
+				flexible.put(day, floorToQuarterHour(Math.min(available * plan.volume(), plan.longRideMinutes())));
+			}
+		}
+		if (plan.maxMinutes() != null) {
+			shrinkToCap(flexible, minutesOf(week), plan.maxMinutes());
+		}
+
+		// ein lockerer Tag pro Woche bekommt Einlagen (Antritte oder Tempo), damit nicht jeder Tag gleich aussieht
+		boolean spiceWeek = plan.phase() == Phase.BASE || plan.phase() == Phase.BUILD || plan.phase() == Phase.PEAK;
+		boolean spiced = false;
+		for (var entry : flexible.entrySet()) {
+			LocalDate day = entry.getKey();
+			int minutes = entry.getValue();
+			if (day.equals(longDay)) {
+				week.add(longRide(day, minutes, plan));
+			} else {
+				int available = availableMinutes(availability, day);
 				PlannedWorkout easy = easyWorkout(day, minutes, available, plan.phase());
 				if (spiceWeek && !spiced && easy.getWorkoutId() == WorkoutLibrary.endurance(60).getId()) {
 					int length = easy.getDurationMinutes();
@@ -729,6 +804,21 @@ public class PlanGenerator {
 
 		week.sort(Comparator.comparing(PlannedWorkout::getDate));
 		return week;
+	}
+
+	/**
+	 * Hält die Woche unter dem Deckel: Die harten Einheiten bleiben, alle lockeren Fahrten und die lange Ausfahrt
+	 * werden im gleichen Verhältnis kürzer (so bleibt die lange Ausfahrt die längste). Eine Fahrt wird nicht
+	 * kürzer als {@link #MIN_CAPPED_RIDE}.
+	 */
+	private static void shrinkToCap(java.util.Map<LocalDate, Integer> flexible, int fixedMinutes, int cap) {
+		int flexibleMinutes = flexible.values().stream().mapToInt(Integer::intValue).sum();
+		if (flexibleMinutes == 0 || fixedMinutes + flexibleMinutes <= cap) {
+			return;
+		}
+		double scale = Math.max(0, cap - fixedMinutes) / (double) flexibleMinutes;
+		flexible.replaceAll((day, minutes) -> Math.min(minutes,
+				Math.max(MIN_CAPPED_RIDE, floorToQuarterHour(minutes * scale))));
 	}
 
 	/** Passt das Workout in die Zeit – notfalls mit gekürztem Rahmen (die Intervalle bleiben gleich)? */
