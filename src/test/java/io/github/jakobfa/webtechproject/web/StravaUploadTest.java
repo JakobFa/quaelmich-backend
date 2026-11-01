@@ -5,6 +5,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -85,6 +86,30 @@ class StravaUploadTest {
 		upload().andExpect(status().isOk())
 				.andExpect(jsonPath("$.outcome").value("DONE"))
 				.andExpect(jsonPath("$.activityId").value(555));
+
+		verify(client).updateSportType("acc", 555L, "VirtualRide");
+	}
+
+	@Test
+	void theRideStaysUploadedEvenIfStravaRefusesToChangeTheSport() throws Exception {
+		connect("read,activity:write");
+		when(client.upload(anyString(), any(byte[].class), anyString(), anyString()))
+				.thenReturn(new UploadStatus(7L, null, "ready", 555L));
+		doThrow(new org.springframework.web.client.RestClientException("kaputt")).when(client)
+				.updateSportType(anyString(), anyLong(), anyString());
+
+		upload().andExpect(status().isOk()).andExpect(jsonPath("$.outcome").value("DONE"));
+	}
+
+	@Test
+	void aRideThatIsStillProcessingIsNotChangedYet() throws Exception {
+		connect("read,activity:write");
+		when(client.upload(anyString(), any(byte[].class), anyString(), anyString()))
+				.thenReturn(new UploadStatus(7L, "Fehler", "error", null));
+
+		upload().andExpect(status().isOk());
+
+		verify(client, never()).updateSportType(anyString(), anyLong(), anyString());
 	}
 
 	@Test
