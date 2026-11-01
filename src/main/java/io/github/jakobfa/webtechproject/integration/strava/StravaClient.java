@@ -209,20 +209,6 @@ public class StravaClient {
 				.body(UploadStatus.class);
 	}
 
-	/**
-	 * Setzt die Sportart einer Aktivität (braucht activity:write), z. B. "VirtualRide". Der Upload selbst kennt
-	 * nur das Trainer-Kennzeichen, die Sportart lässt sich erst an der fertigen Aktivität ändern.
-	 */
-	public void updateSportType(String accessToken, long activityId, String sportType) {
-		restClient.put()
-				.uri("/api/v3/activities/{id}", activityId)
-				.header(HttpHeaders.AUTHORIZATION, "Bearer " + accessToken)
-				.contentType(MediaType.APPLICATION_JSON)
-				.body(java.util.Map.of("sport_type", sportType))
-				.retrieve()
-				.toBodilessEntity();
-	}
-
 	/** Entzieht quaelmich den Zugriff auf das Strava-Konto */
 	public void deauthorize(String accessToken) {
 		restClient.post()
