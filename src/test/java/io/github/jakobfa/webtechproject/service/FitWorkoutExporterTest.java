@@ -66,12 +66,13 @@ class FitWorkoutExporterTest {
 
 		assertThat(decoded.fileIds()).singleElement()
 				.satisfies(fileId -> assertThat(fileId.getType()).isEqualTo(File.WORKOUT));
+		int steps = FitWorkoutExporter.withoutRamps(sweetSpot.getSteps()).size();
 		assertThat(decoded.workouts()).singleElement().satisfies(workout -> {
 			assertThat(workout.getWktName()).isEqualTo("Sweet Spot 3 × 12");
 			assertThat(workout.getSport()).isEqualTo(Sport.CYCLING);
-			assertThat(workout.getNumValidSteps()).isEqualTo(sweetSpot.getSteps().size());
+			assertThat(workout.getNumValidSteps()).isEqualTo(steps);
 		});
-		assertThat(decoded.steps()).hasSize(sweetSpot.getSteps().size());
+		assertThat(decoded.steps()).hasSize(steps);
 	}
 
 	@Test
@@ -81,16 +82,35 @@ class FitWorkoutExporterTest {
 		WorkoutStepMesg warmup = decoded.steps().get(0);
 		assertThat(warmup.getIntensity()).isEqualTo(Intensity.WARMUP);
 		assertThat(warmup.getDurationType()).isEqualTo(WktStepDuration.TIME);
-		assertThat(warmup.getDurationTime()).isEqualTo(600f);
 		assertThat(warmup.getTargetType()).isEqualTo(WktStepTarget.POWER);
-		assertThat(warmup.getCustomTargetPowerLow()).isEqualTo(50L);
-		assertThat(warmup.getCustomTargetPowerHigh()).isEqualTo(75L);
+		assertThat(warmup.getDurationTime()).isEqualTo(120f); // Rampe 50 → 75 % in Blöcken à 2 Minuten
+		assertThat(warmup.getCustomTargetPowerLow()).isEqualTo(53L); // fester Wert, kein Bereich
+		assertThat(warmup.getCustomTargetPowerHigh()).isEqualTo(53L);
 
-		WorkoutStepMesg interval = decoded.steps().get(1);
+		WorkoutStepMesg interval = decoded.steps().get(5);
 		assertThat(interval.getIntensity()).isEqualTo(Intensity.INTERVAL);
 		assertThat(interval.getDurationTime()).isEqualTo(720f);
 		assertThat(interval.getCustomTargetPowerLow()).isEqualTo(90L);
 		assertThat(interval.getCustomTargetPowerHigh()).isEqualTo(90L);
+	}
+
+	@Test
+	void everyPowerStepHasOneFixedValue() {
+		assertThat(library.findAll()).allSatisfy(workout -> assertThat(decode(exporter.export(workout)).steps())
+				.as(workout.getTitle())
+				.allSatisfy(step -> assertThat(step.getCustomTargetPowerLow()).isEqualTo(step.getCustomTargetPowerHigh())));
+	}
+
+	@Test
+	void aRampBecomesARisingStaircaseWithTheSameTotalTime() {
+		var steps = FitWorkoutExporter.withoutRamps(
+				List.of(new io.github.jakobfa.webtechproject.model.WorkoutStep(
+						io.github.jakobfa.webtechproject.model.StepKind.WARMUP, 600, 56, 84)));
+
+		assertThat(steps).extracting(io.github.jakobfa.webtechproject.model.WorkoutStep::powerStartPercent)
+				.containsExactly(59, 64, 70, 76, 81);
+		assertThat(steps).extracting(io.github.jakobfa.webtechproject.model.WorkoutStep::durationSeconds)
+				.containsExactly(120, 120, 120, 120, 120);
 	}
 
 	@Test
