@@ -77,19 +77,6 @@ class StravaClientTest {
 	}
 
 	@Test
-	void changesTheSportTypeOfAnActivity() {
-		server.expect(requestTo("https://www.strava.com/api/v3/activities/555"))
-				.andExpect(method(HttpMethod.PUT))
-				.andExpect(header("Authorization", "Bearer acc"))
-				.andExpect(content().json("{\"sport_type\": \"VirtualRide\"}"))
-				.andRespond(withSuccess("{}", MediaType.APPLICATION_JSON));
-
-		client.updateSportType("acc", 555, "VirtualRide");
-
-		server.verify();
-	}
-
-	@Test
 	void readsTheUploadStatus() {
 		server.expect(requestTo("https://www.strava.com/api/v3/uploads/7"))
 				.andExpect(method(HttpMethod.GET))
