@@ -57,6 +57,10 @@ public class StravaConnection {
 	@ColumnDefault("false")
 	private boolean writeDescriptions;
 
+	/** Im Player aufgezeichnete Fahrten nach dem Training automatisch zu Strava hochladen (nur auf Wunsch) */
+	@ColumnDefault("false")
+	private boolean uploadRides;
+
 	public boolean canReadProfile() {
 		return scope != null && scope.contains("profile:read_all");
 	}

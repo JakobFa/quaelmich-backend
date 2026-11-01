@@ -54,6 +54,8 @@ class RideRecordingTest {
 
 		send(token, RIDE.replace("\"power\": 200", "\"power\": 5000")).andExpect(status().isBadRequest());
 		send(token, RIDE.replace("\"second\": 1", "\"second\": 0")).andExpect(status().isBadRequest());
+		send(token, RIDE.replace("\"power\": 200,", "\"power\": 200, \"speed\": 400,")).andExpect(status().isBadRequest());
+		send(token, RIDE.replace("\"power\": 200,", "\"power\": 200, \"speed\": 31.5,")).andExpect(status().isOk());
 		send(token, """
 				{ "startedAt": "2026-10-26T17:00:00Z", "samples": [] }
 				""").andExpect(status().isBadRequest());

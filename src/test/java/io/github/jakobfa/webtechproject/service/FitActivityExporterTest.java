@@ -58,7 +58,7 @@ class FitActivityExporterTest {
 	private static List<Sample> steady(int from, int seconds, int watts) {
 		List<Sample> samples = new ArrayList<>();
 		for (int s = from; s < from + seconds; s++) {
-			samples.add(new Sample(s, watts, 90, 140));
+			samples.add(new Sample(s, watts, 90, 140, null));
 		}
 		return samples;
 	}
@@ -102,6 +102,45 @@ class FitActivityExporterTest {
 		assertThat(session.getAvgHeartRate()).isEqualTo((short) 140);
 	}
 
+	/** seconds Sekunden mit fester Geschwindigkeit (km/h vom Trainer) */
+	private static List<Sample> ridingAt(int from, int seconds, double kmh) {
+		List<Sample> samples = new ArrayList<>();
+		for (int s = from; s < from + seconds; s++) {
+			samples.add(new Sample(s, 200, 90, 140, kmh));
+		}
+		return samples;
+	}
+
+	@Test
+	void writesDistanceAndSpeedFromTheTrainerSpeed() {
+		// 36 km/h = 10 m/s, 10 Minuten lang = 6 km
+		Decoded decoded = decode(exporter.export(START, ridingAt(0, 600, 36)));
+
+		assertThat(decoded.records().getFirst().getSpeed()).isEqualTo(10f);
+		assertThat(decoded.records().getLast().getDistance()).isEqualTo(6000f);
+		SessionMesg session = decoded.sessions().getFirst();
+		assertThat(session.getTotalDistance()).isEqualTo(6000f);
+		assertThat(session.getAvgSpeed()).isEqualTo(10f);
+		assertThat(session.getMaxSpeed()).isEqualTo(10f);
+	}
+
+	@Test
+	void pausesAddNoDistance() {
+		List<Sample> samples = new ArrayList<>(ridingAt(0, 300, 36));
+		samples.addAll(ridingAt(420, 300, 36)); // 2 min Pause
+
+		assertThat(decode(exporter.export(START, samples)).sessions().getFirst().getTotalDistance())
+				.isEqualTo(6000f);
+	}
+
+	@Test
+	void writesNoDistanceWithoutTrainerSpeed() {
+		SessionMesg session = decode(exporter.export(START, steady(0, 300, 200))).sessions().getFirst();
+
+		assertThat(session.getTotalDistance()).isNull();
+		assertThat(session.getAvgSpeed()).isNull();
+	}
+
 	@Test
 	void writesPausesAsTimerStopSoMovingTimeIsRight() {
 		List<Sample> samples = new ArrayList<>(steady(0, 300, 200));
@@ -118,7 +157,7 @@ class FitActivityExporterTest {
 
 	@Test
 	void keepsSecondsWithoutValues() {
-		List<Sample> samples = List.of(new Sample(0, null, null, 120), new Sample(1, 180, null, 121));
+		List<Sample> samples = List.of(new Sample(0, null, null, 120, null), new Sample(1, 180, null, 121, null));
 
 		Decoded decoded = decode(exporter.export(START, samples));
 
@@ -129,7 +168,7 @@ class FitActivityExporterTest {
 
 	@Test
 	void rejectsSecondsThatAreNotAscending() {
-		List<Sample> samples = List.of(new Sample(5, 200, 90, null), new Sample(5, 200, 90, null));
+		List<Sample> samples = List.of(new Sample(5, 200, 90, null, null), new Sample(5, 200, 90, null, null));
 
 		assertThatThrownBy(() -> exporter.export(START, samples)).isInstanceOf(IllegalArgumentException.class);
 	}
