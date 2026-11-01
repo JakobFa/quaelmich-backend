@@ -225,10 +225,23 @@ public class StravaService {
 				pause(UPLOAD_CHECK_MILLIS);
 				status = client.uploadStatus(accessToken, status.id());
 			}
-			return outcomeOf(status);
+			RideUpload result = outcomeOf(status);
+			if (result.activityId() != null) {
+				markAsVirtualRide(accessToken, result.activityId(), userId);
+			}
+			return result;
 		} catch (HttpClientErrorException e) {
 			log.warn("Strava hat die Fahrt von Nutzer {} abgelehnt: {}", userId, e.getStatusCode());
 			return new RideUpload(UploadOutcome.FAILED, null, "Strava hat die Fahrt abgelehnt.");
+		}
+	}
+
+	/** Eine Fahrt auf dem Trainer zählt bei Strava als virtuelle Fahrt – scheitert das, bleibt es eine normale Fahrt */
+	private void markAsVirtualRide(String accessToken, long activityId, Long userId) {
+		try {
+			client.updateSportType(accessToken, activityId, "VirtualRide");
+		} catch (RestClientException e) {
+			log.warn("Strava-Sportart für Nutzer {} nicht geändert: {}", userId, e.getMessage());
 		}
 	}
 
