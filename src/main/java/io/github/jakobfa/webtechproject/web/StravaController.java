@@ -31,8 +31,12 @@ import jakarta.validation.constraints.Size;
 @RestController
 public class StravaController {
 
-	/** scope: die von Strava im Rücksprung gemeldeten Erlaubnisse */
-	public record ConnectRequest(@NotBlank @Size(max = 200) String code, @Size(max = 200) String scope) {
+	/**
+	 * scope: die von Strava im Rücksprung gemeldeten Erlaubnisse; purpose: wofür neu verbunden wurde ("uploads" =
+	 * für den automatischen Upload, sonst für die Beschreibung)
+	 */
+	public record ConnectRequest(@NotBlank @Size(max = 200) String code, @Size(max = 200) String scope,
+			@Size(max = 20) String purpose) {
 	}
 
 	/**
@@ -42,7 +46,7 @@ public class StravaController {
 	 * @param writeDescriptions  Training in die Beschreibung bestätigter Fahrten schreiben
 	 */
 	public record StatusResponse(boolean available, String clientId, boolean connected, String athleteName,
-			Instant connectedAt, boolean canWriteActivities, boolean writeDescriptions) {
+			Instant connectedAt, boolean canWriteActivities, boolean writeDescriptions, boolean uploadRides) {
 	}
 
 	public record DescriptionSetting(boolean enabled) {
@@ -65,7 +69,7 @@ public class StravaController {
 			@Valid @RequestBody ConnectRequest request) {
 		Long userId = CurrentUser.id(jwt);
 		try {
-			stravaService.connect(userId, request.code(), request.scope());
+			stravaService.connect(userId, request.code(), request.scope(), request.purpose());
 			return ResponseEntity.ok(statusOf(userId));
 		} catch (NotConfiguredException e) {
 			return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE).build();
@@ -105,6 +109,20 @@ public class StravaController {
 		}
 	}
 
+	/** Schalter für den automatischen Upload der Player-Fahrten. 404 ohne Verbindung, 409 ohne Erlaubnis */
+	@PutMapping(path = "/me/strava/uploads")
+	public ResponseEntity<StatusResponse> setUploads(@AuthenticationPrincipal Jwt jwt,
+			@RequestBody DescriptionSetting setting) {
+		Long userId = CurrentUser.id(jwt);
+		try {
+			return stravaService.setUploadRides(userId, setting.enabled())
+					.map(connection -> ResponseEntity.ok(statusOf(userId)))
+					.orElse(ResponseEntity.notFound().build());
+		} catch (StravaService.MissingScopeException e) {
+			return ResponseEntity.status(HttpStatus.CONFLICT).build();
+		}
+	}
+
 	/** Trennt die Verbindung und löscht alle von Strava übernommenen Fahrten */
 	@DeleteMapping(path = "/me/strava")
 	public ResponseEntity<Void> disconnect(@AuthenticationPrincipal Jwt jwt) {
@@ -119,7 +137,8 @@ public class StravaController {
 				connection.map(StravaConnection::getAthleteName).orElse(null),
 				connection.map(StravaConnection::getConnectedAt).orElse(null),
 				connection.map(StravaConnection::canWriteActivities).orElse(false),
-				connection.map(StravaConnection::isWriteDescriptions).orElse(false));
+				connection.map(StravaConnection::isWriteDescriptions).orElse(false),
+				connection.map(StravaConnection::isUploadRides).orElse(false));
 	}
 
 }

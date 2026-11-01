@@ -118,6 +118,12 @@ public class StravaService {
 	 */
 	@Transactional
 	public StravaConnection connect(Long userId, String code, String scope) {
+		return connect(userId, code, scope, null);
+	}
+
+	/** purpose "uploads": die neue Erlaubnis gilt dem Upload der Player-Fahrten, die Beschreibung bleibt wie sie war */
+	@Transactional
+	public StravaConnection connect(Long userId, String code, String scope, String purpose) {
 		if (!isConfigured()) {
 			throw new NotConfiguredException();
 		}
@@ -134,8 +140,14 @@ public class StravaService {
 		}
 		connection.setConnectedAt(clock.instant());
 		connection.setScope(scope);
-		// Schreibrecht wird nur über den Schalter "In Strava-Beschreibung schreiben" angefragt
-		connection.setWriteDescriptions(connection.canWriteActivities());
+		// Schreibrecht wird nur über einen der beiden Schalter angefragt: Beschreibung oder Upload der Player-Fahrten
+		if ("uploads".equals(purpose)) {
+			connection.setUploadRides(connection.canWriteActivities());
+			connection.setWriteDescriptions(connection.isWriteDescriptions() && connection.canWriteActivities());
+		} else {
+			connection.setWriteDescriptions(connection.canWriteActivities());
+			connection.setUploadRides(connection.isUploadRides() && connection.canWriteActivities());
+		}
 		return repository.save(connection);
 	}
 
@@ -153,6 +165,97 @@ public class StravaService {
 			connection.setWriteDescriptions(enabled);
 			return repository.save(connection);
 		});
+	}
+
+	/** Schalter "Fahrten aus dem Player automatisch hochladen"; leer, wenn nicht verbunden */
+	@Transactional
+	public Optional<StravaConnection> setUploadRides(Long userId, boolean enabled) {
+		return repository.findByOwnerId(userId).map(connection -> {
+			if (enabled && !connection.canWriteActivities()) {
+				throw new MissingScopeException();
+			}
+			connection.setUploadRides(enabled);
+			return repository.save(connection);
+		});
+	}
+
+	/** Wird geworfen, wenn jemand ohne Strava-Verbindung hochladen will */
+	public static class NotConnectedException extends RuntimeException {
+	}
+
+	public enum UploadOutcome {
+		/** Strava hat die Aktivität angelegt */
+		DONE,
+		/** Strava verarbeitet die Datei noch – die Aktivität erscheint gleich */
+		PROCESSING,
+		/** dieselbe Fahrt ist schon bei Strava */
+		DUPLICATE,
+		/** Strava hat die Datei abgelehnt */
+		FAILED
+	}
+
+	public record RideUpload(UploadOutcome outcome, Long activityId, String message) {
+	}
+
+	/** So oft und so lange wird nach dem Hochladen auf die fertige Aktivität gewartet */
+	private static final int UPLOAD_CHECKS = 5;
+	private static final long UPLOAD_CHECK_MILLIS = 1000;
+
+	/**
+	 * Lädt eine aufgezeichnete Fahrt als .fit-Datei zu Strava hoch.
+	 *
+	 * @param externalId  eindeutig je Fahrt – so legt Strava dieselbe Fahrt nicht zweimal an
+	 * @throws NotConnectedException wenn Strava nicht verbunden ist
+	 * @throws MissingScopeException wenn die Erlaubnis activity:write fehlt (neu verbinden)
+	 */
+	@Transactional
+	public RideUpload uploadRide(Long userId, byte[] fit, String title, String externalId) {
+		StravaConnection connection = repository.findByOwnerId(userId).filter(c -> isConfigured())
+				.orElseThrow(NotConnectedException::new);
+		if (!connection.canWriteActivities()) {
+			throw new MissingScopeException();
+		}
+		String accessToken = validAccessToken(userId, connection);
+		if (accessToken == null) {
+			throw new NotConnectedException();
+		}
+		try {
+			StravaClient.UploadStatus status = client.upload(accessToken, fit, title, externalId);
+			for (int check = 0; check < UPLOAD_CHECKS && !isFinished(status); check++) {
+				pause(UPLOAD_CHECK_MILLIS);
+				status = client.uploadStatus(accessToken, status.id());
+			}
+			return outcomeOf(status);
+		} catch (HttpClientErrorException e) {
+			log.warn("Strava hat die Fahrt von Nutzer {} abgelehnt: {}", userId, e.getStatusCode());
+			return new RideUpload(UploadOutcome.FAILED, null, "Strava hat die Fahrt abgelehnt.");
+		}
+	}
+
+	private static boolean isFinished(StravaClient.UploadStatus status) {
+		return status == null || status.activityId() != null || status.error() != null;
+	}
+
+	private static RideUpload outcomeOf(StravaClient.UploadStatus status) {
+		if (status == null) {
+			return new RideUpload(UploadOutcome.FAILED, null, "Strava hat nicht geantwortet.");
+		}
+		if (status.activityId() != null) {
+			return new RideUpload(UploadOutcome.DONE, status.activityId(), null);
+		}
+		if (status.error() != null) {
+			boolean duplicate = status.error().toLowerCase().contains("duplicate");
+			return new RideUpload(duplicate ? UploadOutcome.DUPLICATE : UploadOutcome.FAILED, null, status.error());
+		}
+		return new RideUpload(UploadOutcome.PROCESSING, null, null);
+	}
+
+	private static void pause(long millis) {
+		try {
+			Thread.sleep(millis);
+		} catch (InterruptedException e) {
+			Thread.currentThread().interrupt();
+		}
 	}
 
 	/** Hat der Nutzer das Schreiben eingeschaltet und erlaubt? */

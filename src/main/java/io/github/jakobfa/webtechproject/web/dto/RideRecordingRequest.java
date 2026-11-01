@@ -4,6 +4,8 @@ import java.time.Instant;
 import java.util.List;
 
 import jakarta.validation.Valid;
+import jakarta.validation.constraints.DecimalMax;
+import jakarta.validation.constraints.DecimalMin;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotNull;
@@ -25,9 +27,11 @@ public record RideRecordingRequest(@NotNull Instant startedAt, @Size(max = 200) 
 	/**
 	 * @param second Sekunden seit startedAt (Uhrzeit, Pausen mitgezählt)
 	 * @param power  Watt, null = kein Wert
+	 * @param speed  km/h laut Trainer, null = kein Wert (ältere Aufzeichnungen, reine Wattmesser)
 	 */
 	public record Sample(@Min(0) @Max(24 * 3600) int second, @Min(0) @Max(3000) Integer power,
-			@Min(0) @Max(255) Integer cadence, @Min(0) @Max(255) Integer heartRate) {
+			@Min(0) @Max(255) Integer cadence, @Min(0) @Max(255) Integer heartRate,
+			@DecimalMin("0") @DecimalMax("150") Double speed) {
 	}
 
 }

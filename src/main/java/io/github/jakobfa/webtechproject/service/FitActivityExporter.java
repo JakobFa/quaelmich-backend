@@ -37,7 +37,8 @@ import com.garmin.fit.TimerTrigger;
 public class FitActivityExporter {
 
 	/** Ein Messpunkt: Sekunden seit dem Start (Uhrzeit), Werte null = nicht gemessen */
-	public record Sample(int second, Integer power, Integer cadence, Integer heartRate) {
+	/** @param speed km/h laut Trainer (virtuelle Geschwindigkeit), null = nicht gemessen */
+	public record Sample(int second, Integer power, Integer cadence, Integer heartRate, Double speed) {
 	}
 
 	private final Clock clock;
@@ -69,18 +70,21 @@ public class FitActivityExporter {
 		encoder.write(timer(start, EventType.START));
 
 		Sample previous = null;
+		double meters = 0;
 		for (Sample sample : samples) {
 			if (previous != null && sample.second() > previous.second() + 1) {
 				encoder.write(timer(at(startedAt, previous.second() + 1), EventType.STOP_ALL));
 				encoder.write(timer(at(startedAt, sample.second()), EventType.START));
 			}
-			encoder.write(record(at(startedAt, sample.second()), sample));
+			// jeder Messpunkt steht für eine gefahrene Sekunde: km/h geteilt durch 3,6 sind Meter in dieser Sekunde
+			meters += sample.speed() == null ? 0 : sample.speed() / 3.6;
+			encoder.write(record(at(startedAt, sample.second()), sample, meters));
 			previous = sample;
 		}
 
 		encoder.write(timer(end, EventType.STOP_ALL));
-		encoder.write(lap(start, end, elapsedSeconds, timerSeconds, summary));
-		encoder.write(session(start, end, elapsedSeconds, timerSeconds, summary));
+		encoder.write(lap(start, end, elapsedSeconds, timerSeconds, summary, meters));
+		encoder.write(session(start, end, elapsedSeconds, timerSeconds, summary, meters));
 		encoder.write(activity(end, timerSeconds));
 		return encoder.close();
 	}
@@ -108,9 +112,13 @@ public class FitActivityExporter {
 		return event;
 	}
 
-	private static RecordMesg record(DateTime timestamp, Sample sample) {
+	private static RecordMesg record(DateTime timestamp, Sample sample, double meters) {
 		RecordMesg record = new RecordMesg();
 		record.setTimestamp(timestamp);
+		if (sample.speed() != null) {
+			record.setSpeed((float) (sample.speed() / 3.6));
+			record.setDistance((float) meters);
+		}
 		if (sample.power() != null) {
 			record.setPower(sample.power());
 		}
@@ -123,7 +131,8 @@ public class FitActivityExporter {
 		return record;
 	}
 
-	private static LapMesg lap(DateTime start, DateTime end, float elapsed, float timer, Summary summary) {
+	private static LapMesg lap(DateTime start, DateTime end, float elapsed, float timer, Summary summary,
+			double meters) {
 		LapMesg lap = new LapMesg();
 		lap.setMessageIndex(0);
 		lap.setTimestamp(end);
@@ -142,10 +151,12 @@ public class FitActivityExporter {
 		lap.setMaxCadence(summary.maxCadence());
 		lap.setAvgHeartRate(summary.avgHeartRate());
 		lap.setMaxHeartRate(summary.maxHeartRate());
+		setDistance(lap, summary, meters, timer);
 		return lap;
 	}
 
-	private static SessionMesg session(DateTime start, DateTime end, float elapsed, float timer, Summary summary) {
+	private static SessionMesg session(DateTime start, DateTime end, float elapsed, float timer, Summary summary,
+			double meters) {
 		SessionMesg session = new SessionMesg();
 		session.setMessageIndex(0);
 		session.setTimestamp(end);
@@ -166,7 +177,27 @@ public class FitActivityExporter {
 		session.setMaxCadence(summary.maxCadence());
 		session.setAvgHeartRate(summary.avgHeartRate());
 		session.setMaxHeartRate(summary.maxHeartRate());
+		setDistance(session, summary, meters, timer);
 		return session;
+	}
+
+	/** Strecke und Geschwindigkeit nur, wenn der Trainer sie geliefert hat – sonst bleibt die Strecke leer */
+	private static void setDistance(LapMesg lap, Summary summary, double meters, float timer) {
+		if (summary.maxSpeed() == null) {
+			return;
+		}
+		lap.setTotalDistance((float) meters);
+		lap.setAvgSpeed((float) (meters / timer));
+		lap.setMaxSpeed((float) (summary.maxSpeed() / 3.6));
+	}
+
+	private static void setDistance(SessionMesg session, Summary summary, double meters, float timer) {
+		if (summary.maxSpeed() == null) {
+			return;
+		}
+		session.setTotalDistance((float) meters);
+		session.setAvgSpeed((float) (meters / timer));
+		session.setMaxSpeed((float) (summary.maxSpeed() / 3.6));
 	}
 
 	private ActivityMesg activity(DateTime end, float timer) {
@@ -184,7 +215,7 @@ public class FitActivityExporter {
 
 	/** Durchschnitte und Spitzen; null, wenn der Wert nie gemessen wurde */
 	record Summary(Integer avgPower, Integer maxPower, Integer normalizedPower, Long work, Short avgCadence,
-			Short maxCadence, Short avgHeartRate, Short maxHeartRate) {
+			Short maxCadence, Short avgHeartRate, Short maxHeartRate, Double maxSpeed) {
 
 		static Summary of(List<Sample> samples) {
 			List<Integer> power = samples.stream().map(Sample::power).filter(Objects::nonNull).toList();
@@ -193,7 +224,8 @@ public class FitActivityExporter {
 			return new Summary(average(power), max(power), normalizedPower(power),
 					power.isEmpty() ? null : power.stream().mapToLong(Integer::longValue).sum(),
 					toShort(average(cadence)), toShort(max(cadence)), toShort(average(heartRate)),
-					toShort(max(heartRate)));
+					toShort(max(heartRate)),
+					samples.stream().map(Sample::speed).filter(Objects::nonNull).max(Double::compare).orElse(null));
 		}
 
 		/** Gleitender 30-s-Schnitt, davon die vierte Potenz gemittelt – wie bei TrainingPeaks & Co. */
