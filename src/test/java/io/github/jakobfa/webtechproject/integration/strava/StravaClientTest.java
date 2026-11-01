@@ -53,6 +53,42 @@ class StravaClientTest {
 	}
 
 	@Test
+	void uploadsAFitFileAsIndoorRide() {
+		server.expect(requestTo("https://www.strava.com/api/v3/uploads"))
+				.andExpect(method(HttpMethod.POST))
+				.andExpect(header("Authorization", "Bearer acc"))
+				.andExpect(content().contentTypeCompatibleWith(MediaType.MULTIPART_FORM_DATA))
+				.andExpect(content().string(org.hamcrest.Matchers.allOf(
+						org.hamcrest.Matchers.containsString("name=\"data_type\""),
+						org.hamcrest.Matchers.containsString("name=\"trainer\""),
+						org.hamcrest.Matchers.containsString("name=\"external_id\""),
+						org.hamcrest.Matchers.containsString("quaelmich-123"),
+						org.hamcrest.Matchers.containsString("filename=\"quaelmich.fit\""))))
+				.andRespond(withSuccess("""
+						{ "id": 7, "status": "Your activity is still being processed.", "error": null,
+						  "activity_id": null, "external_id": "quaelmich-123" }
+						""", MediaType.APPLICATION_JSON));
+
+		var status = client.upload("acc", new byte[] { 1, 2, 3 }, "Tempo 2 × 15", "quaelmich-123");
+
+		assertThat(status.id()).isEqualTo(7L);
+		assertThat(status.activityId()).isNull();
+		assertThat(status.error()).isNull();
+	}
+
+	@Test
+	void readsTheUploadStatus() {
+		server.expect(requestTo("https://www.strava.com/api/v3/uploads/7"))
+				.andExpect(method(HttpMethod.GET))
+				.andExpect(header("Authorization", "Bearer acc"))
+				.andRespond(withSuccess("""
+						{ "id": 7, "status": "Your activity is ready.", "error": null, "activity_id": 555 }
+						""", MediaType.APPLICATION_JSON));
+
+		assertThat(client.uploadStatus("acc", 7).activityId()).isEqualTo(555L);
+	}
+
+	@Test
 	void listsActivitiesWithBearerToken() {
 		server.expect(requestTo(
 				"https://www.strava.com/api/v3/athlete/activities?after=1791000000&before=1792000000&per_page=100"))

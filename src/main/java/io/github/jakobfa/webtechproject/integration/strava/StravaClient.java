@@ -5,6 +5,7 @@ import java.util.List;
 
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.core.ParameterizedTypeReference;
+import org.springframework.core.io.ByteArrayResource;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.stereotype.Component;
@@ -168,6 +169,44 @@ public class StravaClient {
 				.body(java.util.Map.of("description", description))
 				.retrieve()
 				.toBodilessEntity();
+	}
+
+	/**
+	 * Stand eines Uploads: Strava verarbeitet die Datei im Hintergrund. activityId ist gefüllt, sobald die
+	 * Aktivität steht; error, wenn Strava die Datei ablehnt (z. B. "duplicate of activity 123")
+	 */
+	@JsonIgnoreProperties(ignoreUnknown = true)
+	public record UploadStatus(Long id, String error, String status, @JsonProperty("activity_id") Long activityId) {
+	}
+
+	/** Lädt eine .fit-Datei als Indoor-Fahrt hoch (braucht activity:write). externalId verhindert Doppelte. */
+	public UploadStatus upload(String accessToken, byte[] fit, String name, String externalId) {
+		MultiValueMap<String, Object> parts = new LinkedMultiValueMap<>();
+		parts.add("file", new ByteArrayResource(fit) {
+			@Override
+			public String getFilename() {
+				return "quaelmich.fit";
+			}
+		});
+		parts.add("data_type", "fit");
+		parts.add("name", name);
+		parts.add("trainer", "1");
+		parts.add("external_id", externalId);
+		return restClient.post()
+				.uri("/api/v3/uploads")
+				.header(HttpHeaders.AUTHORIZATION, "Bearer " + accessToken)
+				.contentType(MediaType.MULTIPART_FORM_DATA)
+				.body(parts)
+				.retrieve()
+				.body(UploadStatus.class);
+	}
+
+	public UploadStatus uploadStatus(String accessToken, long uploadId) {
+		return restClient.get()
+				.uri("/api/v3/uploads/{id}", uploadId)
+				.header(HttpHeaders.AUTHORIZATION, "Bearer " + accessToken)
+				.retrieve()
+				.body(UploadStatus.class);
 	}
 
 	/** Entzieht quaelmich den Zugriff auf das Strava-Konto */
