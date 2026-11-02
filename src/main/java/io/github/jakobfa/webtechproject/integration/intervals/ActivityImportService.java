@@ -122,7 +122,8 @@ public class ActivityImportService {
 		// kam die Strava-Version erst nach der intervals.icu-Version (Wahoo synchronisiert dorthin langsamer),
 		// wird die gespeicherte Fahrt auf Strava umgehängt – Bestätigung und Plan-Anpassung bleiben erhalten
 		relinkToStrava(athleteId, intervalsRides, stravaRides.orElse(List.of()), knownIds, from, today);
-		List<RecordedActivity> rides = merge(intervalsRides, stravaRides.orElse(List.of()));
+		List<RecordedActivity> rides = merge(intervalsRides, stravaRides.orElse(List.of())).stream()
+				.map(ride -> withPulseVariability(ride, userId, thresholdHeartRate)).toList();
 
 		// sehr sichere Hinweise, dass die eingetragene FTP zu niedrig ist
 		FtpSuggestions.evaluate(athlete.get(), rides);
@@ -364,6 +365,18 @@ public class ActivityImportService {
 		}
 		intervalsRides.stream().filter(intervals -> !replaced.contains(intervals.id())).forEach(merged::add);
 		return merged;
+	}
+
+	/**
+	 * Fahrten, deren TSS nur aus dem Durchschnittspuls kommt: mit den Pulswerten der Fahrt nachkorrigieren
+	 * (unruhige Fahrten wie Gravel mit Stopps wurden sonst zu leicht gewertet). Ohne Pulswerte bleibt der Wert.
+	 */
+	private RecordedActivity withPulseVariability(RecordedActivity ride, Long userId, Integer thresholdHeartRate) {
+		if (!ride.tssFromHeartRate() || ride.tss() == null || ride.tssFromDuration()) {
+			return ride;
+		}
+		var factor = intervalAccuracy.pulseVariabilityOf(ride.id(), userId, thresholdHeartRate);
+		return factor.isPresent() ? ride.withTss((int) Math.round(ride.tss() * factor.getAsDouble())) : ride;
 	}
 
 	/** Gespeicherte intervals.icu-Fahrten, zu denen es jetzt dieselbe Fahrt bei Strava gibt, auf Strava umhängen */

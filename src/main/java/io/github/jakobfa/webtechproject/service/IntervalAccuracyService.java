@@ -10,6 +10,7 @@ import org.springframework.web.client.RestClientException;
 
 import io.github.jakobfa.webtechproject.integration.ActivityStream;
 import io.github.jakobfa.webtechproject.integration.RecordedActivity;
+import io.github.jakobfa.webtechproject.integration.TrainingLoad;
 import io.github.jakobfa.webtechproject.integration.intervals.IntervalsConnectionService;
 import io.github.jakobfa.webtechproject.integration.intervals.IntervalsIcuClient;
 import io.github.jakobfa.webtechproject.integration.strava.StravaService;
@@ -126,6 +127,29 @@ public class IntervalAccuracyService {
 		// kein Wattmesser, aber Puls bekannt: dann eben nach Puls
 		return athlete.getHeartRateTargets() == null ? Optional.empty()
 				: IntervalAccuracy.byHeartRate(workout, stream, athlete.getHeartRateTargets());
+	}
+
+	/** Gemerkt je Fahrt und Schwellenpuls, damit nicht bei jedem Abgleich die Pulswerte neu geladen werden */
+	private final java.util.Map<String, Double> pulseVariability = java.util.Collections
+			.synchronizedMap(new java.util.LinkedHashMap<>(16, 0.75f, true) {
+				@Override
+				protected boolean removeEldestEntry(java.util.Map.Entry<String, Double> eldest) {
+					return size() > 500;
+				}
+			});
+
+	/** Faktor für den Puls-TSS aus den Pulswerten der Fahrt, siehe {@link TrainingLoad#pulseVariability} */
+	public java.util.OptionalDouble pulseVariabilityOf(String activityId, Long userId, Integer thresholdHeartRate) {
+		String key = activityId + "|" + thresholdHeartRate;
+		Double known = pulseVariability.get(key);
+		if (known != null) {
+			return java.util.OptionalDouble.of(known);
+		}
+		var factor = streamOf(activityId, userId)
+				.map(stream -> TrainingLoad.pulseVariability(stream.heartRate(), thresholdHeartRate))
+				.orElse(java.util.OptionalDouble.empty());
+		factor.ifPresent(value -> pulseVariability.put(key, value));
+		return factor;
 	}
 
 	private Optional<ActivityStream> streamOf(String id, Long userId) {

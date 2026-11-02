@@ -35,4 +35,15 @@ class HeartRateTargetsTest {
 		assertThat(targets.forStep(new WorkoutStep(StepKind.INTERVAL, 240, 115, 115)).zone()).isEqualTo(5);
 	}
 
+	@Test
+	void longEasyStepsEndAtThreeQuartersOfMaxHeartRate() {
+		var longEasy = new WorkoutStep(StepKind.STEADY, 250 * 60, 68, 68);
+		var shortEasy = new WorkoutStep(StepKind.STEADY, 60 * 60, 68, 68);
+
+		assertThat(targets.forStep(longEasy)).isEqualTo(new HeartRateTargets.Range(2, 123, 142));
+		assertThat(targets.forStep(shortEasy)).as("unter 90 min bleibt die ganze Zone 2")
+				.isEqualTo(new HeartRateTargets.Range(2, 123, 152));
+		assertThat(targets.forStep(new WorkoutStep(StepKind.STEADY, 250 * 60, 85, 85)).zone()).isEqualTo(3);
+	}
+
 }
