@@ -42,4 +42,37 @@ public final class TrainingLoad {
 		return (int) Math.round(movingSeconds / 3600.0 * intensity * intensity * 100);
 	}
 
+	/** Mehr als diesen Faktor gibt es nicht: Pausen und Ausreißer sollen den TSS nicht aufblasen */
+	static final double MAX_PULSE_VARIABILITY = 1.25;
+
+	/**
+	 * Korrektur für den Puls-TSS bei unruhigen Fahrten: Der Durchschnittspuls unterschätzt, weil die Last mit dem
+	 * Quadrat der Intensität wächst. Der Faktor ist Mittel(IF²) / Mittel(IF)² über die Pulswerte der Fahrt
+	 * (mindestens 1, höchstens {@value #MAX_PULSE_VARIABILITY}) und wird mit dem Durchschnitts-TSS multipliziert.
+	 * Leer ohne brauchbare Pulswerte.
+	 */
+	public static java.util.OptionalDouble pulseVariability(Integer[] heartRate, Integer thresholdHeartRate) {
+		if (thresholdHeartRate == null || thresholdHeartRate <= RESTING_HEART_RATE) {
+			return java.util.OptionalDouble.empty();
+		}
+		double sum = 0;
+		double sumOfSquares = 0;
+		int count = 0;
+		for (Integer value : heartRate) {
+			if (value == null || value <= 0) {
+				continue;
+			}
+			double intensity = Math.max(0, value - RESTING_HEART_RATE) / (double) (thresholdHeartRate - RESTING_HEART_RATE);
+			sum += intensity;
+			sumOfSquares += intensity * intensity;
+			count++;
+		}
+		if (count < 60 || sum <= 0) {
+			return java.util.OptionalDouble.empty();
+		}
+		double mean = sum / count;
+		double factor = (sumOfSquares / count) / (mean * mean);
+		return java.util.OptionalDouble.of(Math.clamp(factor, 1.0, MAX_PULSE_VARIABILITY));
+	}
+
 }

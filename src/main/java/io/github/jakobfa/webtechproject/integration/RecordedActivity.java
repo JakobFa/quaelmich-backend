@@ -36,6 +36,11 @@ public record RecordedActivity(String id, Sport sport, LocalDateTime start, int 
 				tssFromDuration, commute, watts, indoor);
 	}
 
+	public RecordedActivity withTss(Integer newTss) {
+		return new RecordedActivity(id, sport, start, movingSeconds, distanceMeters, newTss, tssFromHeartRate,
+				tssFromDuration, commute, normalizedPower, indoor);
+	}
+
 	public RecordedActivity withIndoor(boolean onTrainer) {
 		return new RecordedActivity(id, sport, start, movingSeconds, distanceMeters, tss, tssFromHeartRate,
 				tssFromDuration, commute, normalizedPower, onTrainer);
