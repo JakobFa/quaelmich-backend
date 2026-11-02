@@ -119,7 +119,10 @@ public class ActivityImportService {
 		});
 		extraRideRepository.findByAthleteIdAndDateBetween(athleteId, from, today)
 				.forEach(ride -> knownIds.add(ride.getActivityId()));
-		List<RecordedActivity> rides = merge(intervalsRides, stravaRides.orElse(List.of()), knownIds);
+		// kam die Strava-Version erst nach der intervals.icu-Version (Wahoo synchronisiert dorthin langsamer),
+		// wird die gespeicherte Fahrt auf Strava umgehängt – Bestätigung und Plan-Anpassung bleiben erhalten
+		relinkToStrava(athleteId, intervalsRides, stravaRides.orElse(List.of()), knownIds, from, today);
+		List<RecordedActivity> rides = merge(intervalsRides, stravaRides.orElse(List.of()));
 
 		// sehr sichere Hinweise, dass die eingetragene FTP zu niedrig ist
 		FtpSuggestions.evaluate(athlete.get(), rides);
@@ -345,12 +348,10 @@ public class ActivityImportService {
 	}
 
 	/**
-	 * Dieselbe Fahrt aus beiden Quellen zählt einmal – bevorzugt die Strava-Version: Deren TSS rechnet
+	 * Dieselbe Fahrt aus beiden Quellen zählt einmal – immer die Strava-Version: Deren TSS rechnet
 	 * quaelmich mit der eigenen FTP, und Sekundenwerte und "View on Strava" gibt es nur dort.
-	 * Ausnahme: Ist die intervals.icu-Version schon bekannt (zugeordnet, abgelehnt, Zusatzfahrt), bleibt sie.
 	 */
-	static List<RecordedActivity> merge(List<RecordedActivity> intervalsRides, List<RecordedActivity> stravaRides,
-			Set<String> known) {
+	static List<RecordedActivity> merge(List<RecordedActivity> intervalsRides, List<RecordedActivity> stravaRides) {
 		List<RecordedActivity> merged = new ArrayList<>();
 		Set<String> replaced = new java.util.HashSet<>();
 		for (RecordedActivity strava : stravaRides) {
@@ -359,11 +360,41 @@ public class ActivityImportService {
 			if (twin != null) {
 				replaced.add(twin.id());
 			}
-			boolean keepIntervals = twin != null && known.contains(twin.id()) && !known.contains(strava.id());
-			merged.add(keepIntervals ? twin : strava);
+			merged.add(strava);
 		}
 		intervalsRides.stream().filter(intervals -> !replaced.contains(intervals.id())).forEach(merged::add);
 		return merged;
+	}
+
+	/** Gespeicherte intervals.icu-Fahrten, zu denen es jetzt dieselbe Fahrt bei Strava gibt, auf Strava umhängen */
+	private void relinkToStrava(Long athleteId, List<RecordedActivity> intervalsRides,
+			List<RecordedActivity> stravaRides, Set<String> known, LocalDate from, LocalDate today) {
+		Map<String, String> toStrava = new HashMap<>();
+		for (RecordedActivity strava : stravaRides) {
+			intervalsRides.stream()
+					.filter(intervals -> known.contains(intervals.id()) && !known.contains(strava.id())
+							&& !toStrava.containsKey(intervals.id()) && strava.isSameActivityAs(intervals))
+					.findFirst().ifPresent(twin -> toStrava.put(twin.id(), strava.id()));
+		}
+		if (toStrava.isEmpty()) {
+			return;
+		}
+		plannedWorkoutRepository.findByPlanAthleteIdAndDateBetween(athleteId, from, today).forEach(planned -> {
+			if (toStrava.containsKey(planned.getActivityId())) {
+				planned.setActivityId(toStrava.get(planned.getActivityId()));
+			}
+			if (toStrava.containsKey(planned.getRejectedActivityId())) {
+				planned.setRejectedActivityId(toStrava.get(planned.getRejectedActivityId()));
+			}
+		});
+		extraRideRepository.findByAthleteIdAndDateBetween(athleteId, from, today).forEach(ride -> {
+			if (toStrava.containsKey(ride.getActivityId())) {
+				ride.setActivityId(toStrava.get(ride.getActivityId()));
+			}
+		});
+		known.removeAll(toStrava.keySet());
+		known.addAll(toStrava.values());
+		log.info("{} Fahrt(en) von intervals.icu auf Strava umgehängt", toStrava.size());
 	}
 
 	static void apply(ExtraRide extraRide, RecordedActivity ride) {

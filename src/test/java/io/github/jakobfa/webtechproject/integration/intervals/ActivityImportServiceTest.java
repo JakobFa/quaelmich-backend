@@ -358,7 +358,7 @@ class ActivityImportServiceTest {
 	}
 
 	@Test
-	void alreadyLinkedIntervalsRideKeepsItsSource() {
+	void laterStravaVersionReplacesTheLinkedIntervalsRide() {
 		PlannedWorkout today = planned(TODAY);
 		today.setActivityId("i1");
 		today.setCompleted(true);
@@ -369,8 +369,27 @@ class ActivityImportServiceTest {
 
 		var result = service.importRecent(1L).orElseThrow();
 
-		assertThat(today.getActivityId()).as("keine doppelte Anpassung durch Quellwechsel").isEqualTo("i1");
+		assertThat(today.getActivityId()).as("Strava hat Vorrang, auch wenn intervals.icu schneller war")
+				.isEqualTo("strava-6");
+		assertThat(today.isAdaptationApplied()).as("keine doppelte Anpassung durch Quellwechsel").isTrue();
 		assertThat(result.matched()).isZero();
+		assertThat(result.extra()).isZero();
+	}
+
+	@Test
+	void laterStravaVersionReplacesAKnownExtraRide() {
+		givenPlan(planned(TODAY.plusDays(1)));
+		ExtraRide known = new ExtraRide(new Athlete(), "i8");
+		known.setDate(TODAY);
+		known.setAdaptationApplied(true);
+		when(extraRides.findByAthleteIdAndDateBetween(eq(7L), any(), any())).thenReturn(List.of(known));
+		when(client.listActivities(any(), any(), any())).thenReturn(List.of(ride("i8", TODAY, 150, 110)));
+		givenStrava(stravaRide("9", TODAY, "17:02:00", 150));
+
+		var result = service.importRecent(1L).orElseThrow();
+
+		assertThat(known.getActivityId()).isEqualTo("strava-9");
+		assertThat(known.isAdaptationApplied()).isTrue();
 		assertThat(result.extra()).isZero();
 	}
 
