@@ -40,14 +40,28 @@ public record HeartRateTargets(List<Integer> zoneStarts, int maxHeartRate) {
 		return 5;
 	}
 
-	/** Pulsbereich eines Abschnitts; null bei kurzen, harten Abschnitten (dann nach Gefühl) */
+	/** Ab dieser Dauer ist lockeres Fahren "lang": der Puls driftet nach oben, die Zone-2-Obergrenze sinkt */
+	static final int LONG_STEP_SECONDS = 90 * 60;
+	/** Obergrenze für lange lockere Abschnitte, als Anteil des Maximalpulses (Zone 2 geht sonst bis 81 %) */
+	static final double LONG_EASY_MAX_SHARE = 0.75;
+
+	/**
+	 * Pulsbereich eines Abschnitts; null bei kurzen, harten Abschnitten (dann nach Gefühl). Lange lockere
+	 * Abschnitte (ab 90 min, Zone 2) enden bei 75 % des Maximalpulses – die obere Kante von Zone 2 ist über viele
+	 * Stunden schon zu hoch für Grundlage.
+	 */
 	public Range forStep(WorkoutStep step) {
 		double averagePercent = (step.powerStartPercent() + step.powerEndPercent()) / 2.0;
 		int zone = zoneFor(averagePercent);
 		if (zone == 5 && step.durationSeconds() < MIN_SECONDS_FOR_TARGET) {
 			return null;
 		}
-		return range(zone);
+		Range range = range(zone);
+		if (zone == 2 && step.durationSeconds() >= LONG_STEP_SECONDS) {
+			int cap = Math.max(range.low() + 10, (int) Math.round(maxHeartRate * LONG_EASY_MAX_SHARE));
+			return new Range(zone, range.low(), Math.min(range.high(), cap));
+		}
+		return range;
 	}
 
 	public Range range(int zone) {
