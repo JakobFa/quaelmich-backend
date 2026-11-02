@@ -201,7 +201,8 @@ class PlanGeneratorTest {
 		assertThat(phasePerWeek.get(0L)).isEqualTo(Phase.BASE);
 		assertThat(phasePerWeek.get(3L)).isEqualTo(Phase.RECOVERY);
 		assertThat(phasePerWeek.get(8L)).isEqualTo(Phase.BUILD);
-		assertThat(phasePerWeek.get(11L)).isEqualTo(Phase.PEAK);
+		assertThat(phasePerWeek.get(11L)).isEqualTo(Phase.RECOVERY);
+		assertThat(phasePerWeek.get(12L)).isEqualTo(Phase.PEAK);
 		assertThat(phasePerWeek.get(13L)).isEqualTo(Phase.PEAK);
 		assertThat(phasePerWeek.get(14L)).isEqualTo(Phase.TAPER);
 		assertThat(phasePerWeek.get(15L)).isEqualTo(Phase.TAPER);
@@ -243,19 +244,21 @@ class PlanGeneratorTest {
 	// ---------- neue Trainingslogik ----------
 
 	@Test
-	void phasesAreCountedBackwardsAndNoRecoveryRightBeforeThePeak() {
+	void phasesAreCountedBackwardsAndNeverMoreThanFourLoadWeeksInARow() {
 		for (int weeks = 1; weeks <= 30; weeks++) {
 			List<Phase> phases = PlanGenerator.phasesFor(weeks);
 			assertThat(phases).hasSize(weeks);
 			assertThat(phases.getLast()).isEqualTo(Phase.TAPER);
-			int firstPeak = phases.indexOf(Phase.PEAK);
-			if (firstPeak > 0) {
-				assertThat(phases.get(firstPeak - 1)).as("%d Wochen", weeks).isNotEqualTo(Phase.RECOVERY);
+			int run = 0;
+			for (Phase phase : phases) {
+				run = PlanGenerator.isLoadPhase(phase) ? run + 1 : 0;
+				assertThat(run).as("%d Wochen: Belastungswochen am Stück", weeks).isLessThanOrEqualTo(4);
 			}
 		}
-		// 16 Wochen: Grundlage, Aufbau, 3 Wochen Spitze, 2 Wochen Tapering
-		assertThat(PlanGenerator.phasesFor(16).subList(11, 16))
-				.containsExactly(Phase.PEAK, Phase.PEAK, Phase.PEAK, Phase.TAPER, Phase.TAPER);
+		// 16 Wochen: Grundlage, Aufbau, Spitze, 2 Wochen Tapering – am Ende keine Erholung direkt vor dem Tapering
+		List<Phase> sixteen = PlanGenerator.phasesFor(16);
+		assertThat(sixteen.subList(14, 16)).containsExactly(Phase.TAPER, Phase.TAPER);
+		assertThat(sixteen.get(13)).isNotEqualTo(Phase.RECOVERY);
 	}
 
 	@Test

@@ -341,8 +341,9 @@ public class PlanGenerator {
 
 	/**
 	 * Phasen rückwärts vom Event: zuletzt Tapering (Event-Woche + eine Woche), davor Spitze, davor Aufbau
-	 * (ca. 40 % der übrigen Wochen), ganz vorn Grundlage. In Grundlage und Aufbau folgt auf 3 Belastungswochen
-	 * eine Erholungswoche – außer direkt vor der Spitze.
+	 * (ca. 40 % der übrigen Wochen), ganz vorn Grundlage. Nach höchstens 3 Belastungswochen folgt eine
+	 * Erholungswoche, auch in der Spitze – nur die letzte Woche vor dem Tapering bleibt Belastung (das Tapering
+	 * ist selbst die Entlastung). So gibt es nie mehr als 4 harte Wochen am Stück.
 	 */
 	static List<Phase> phasesFor(int weeks) {
 		int taper = weeks >= 3 ? 2 : 1;
@@ -357,9 +358,10 @@ public class PlanGenerator {
 					: Phase.TAPER);
 		}
 		int loaded = 0;
-		for (int i = 0; i < rest; i++) {
-			boolean lastBeforePeak = i == rest - 1 && peak > 0;
-			if (loaded == 3 && !lastBeforePeak) {
+		int loadSpan = rest + peak;
+		for (int i = 0; i < loadSpan; i++) {
+			boolean lastBeforeTaper = i == loadSpan - 1;
+			if (loaded == 3 && !lastBeforeTaper) {
 				phases.set(i, Phase.RECOVERY);
 				loaded = 0;
 			} else {
@@ -369,7 +371,7 @@ public class PlanGenerator {
 		return phases;
 	}
 
-	private static boolean isLoadPhase(Phase phase) {
+	static boolean isLoadPhase(Phase phase) {
 		return phase == Phase.BASE || phase == Phase.BUILD || phase == Phase.PEAK;
 	}
 
