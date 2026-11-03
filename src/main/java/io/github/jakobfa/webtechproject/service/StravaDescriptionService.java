@@ -48,8 +48,11 @@ public class StravaDescriptionService {
 				.filter(planned -> RecordedActivity.isFromStrava(planned.getActivityId()))
 				.ifPresent(planned -> {
 					long activityId = stravaId(planned.getActivityId());
-					String block = isConfirmedTraining(planned) ? blockFor(planned, userId) : null;
-					edit(userId, activityId, block);
+					boolean confirmed = isConfirmedTraining(planned);
+					String block = confirmed ? blockFor(planned, userId) : null;
+					String title = confirmed ? library.resolve(planned.getWorkoutId(), planned.getDurationMinutes())
+							.map(Workout::getTitle).orElse(null) : null;
+					edit(userId, activityId, block, title);
 				});
 	}
 
@@ -58,18 +61,19 @@ public class StravaDescriptionService {
 	@Transactional
 	public void remove(Long userId, String activityId) {
 		if (RecordedActivity.isFromStrava(activityId) && strava.writesDescriptions(userId)) {
-			edit(userId, stravaId(activityId), null);
+			edit(userId, stravaId(activityId), null, null);
 		}
 	}
 
-	private void edit(Long userId, long activityId, String block) {
+	/** title: Name des Trainings als neuer Titel (nur bei Standardnamen), null = Titel nicht anfassen */
+	private void edit(Long userId, long activityId, String block, String title) {
 		synchronized (locks.computeIfAbsent(activityId, id -> new Object())) {
-			strava.editDescription(userId, activityId, (description, commute) -> {
+			strava.editActivity(userId, activityId, (description, commute) -> {
 				if (commute && block != null) {
 					return null; // Pendelfahrt: nichts reinschreiben
 				}
 				return StravaDescription.merge(description, block);
-			});
+			}, title);
 		}
 	}
 

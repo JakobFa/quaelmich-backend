@@ -145,7 +145,7 @@ public class StravaClient {
 
 	/** Die Teile einer einzelnen Aktivität, die quaelmich zum Bearbeiten der Beschreibung braucht */
 	@JsonIgnoreProperties(ignoreUnknown = true)
-	public record ActivityDetails(Long id, String description, Boolean commute) {
+	public record ActivityDetails(Long id, String name, String description, Boolean commute) {
 
 		public boolean isCommute() {
 			return Boolean.TRUE.equals(commute);
@@ -162,11 +162,23 @@ public class StravaClient {
 
 	/** Ersetzt die Beschreibung einer Aktivität (braucht activity:write) */
 	public void updateDescription(String accessToken, long activityId, String description) {
+		updateActivity(accessToken, activityId, description, null);
+	}
+
+	/** Ersetzt Beschreibung und/oder Titel (null = unverändert) in einem Aufruf */
+	public void updateActivity(String accessToken, long activityId, String description, String name) {
+		java.util.Map<String, String> body = new java.util.LinkedHashMap<>();
+		if (description != null) {
+			body.put("description", description);
+		}
+		if (name != null) {
+			body.put("name", name);
+		}
 		restClient.put()
 				.uri("/api/v3/activities/{id}", activityId)
 				.header(HttpHeaders.AUTHORIZATION, "Bearer " + accessToken)
 				.contentType(MediaType.APPLICATION_JSON)
-				.body(java.util.Map.of("description", description))
+				.body(body)
 				.retrieve()
 				.toBodilessEntity();
 	}

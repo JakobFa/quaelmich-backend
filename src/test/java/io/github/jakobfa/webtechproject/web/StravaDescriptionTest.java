@@ -1,10 +1,12 @@
 package io.github.jakobfa.webtechproject.web;
 
 import static io.github.jakobfa.webtechproject.web.TestUsers.registerWithProfile;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.after;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.timeout;
@@ -33,6 +35,7 @@ import io.github.jakobfa.webtechproject.integration.strava.StravaClient.StravaAt
 import io.github.jakobfa.webtechproject.integration.strava.StravaClient.TokenResponse;
 import io.github.jakobfa.webtechproject.model.PlannedWorkout;
 import io.github.jakobfa.webtechproject.repository.PlannedWorkoutRepository;
+import io.github.jakobfa.webtechproject.service.WorkoutLibrary;
 
 /** Bestätigte Trainings landen in der Strava-Beschreibung – nur auf Wunsch und nie bei Pendelfahrten */
 @SpringBootTest
@@ -46,6 +49,9 @@ class StravaDescriptionTest {
 
 	@Autowired
 	private PlannedWorkoutRepository repository;
+
+	@Autowired
+	private WorkoutLibrary library;
 
 	@MockitoBean
 	private StravaClient client;
@@ -88,7 +94,11 @@ class StravaDescriptionTest {
 	}
 
 	private void stravaHas(String description, boolean commute) {
-		when(client.activity("acc", ACTIVITY)).thenReturn(new ActivityDetails(ACTIVITY, description, commute));
+		stravaHas("Radfahrt am Abend", description, commute);
+	}
+
+	private void stravaHas(String name, String description, boolean commute) {
+		when(client.activity("acc", ACTIVITY)).thenReturn(new ActivityDetails(ACTIVITY, name, description, commute));
 	}
 
 	@Test
@@ -100,9 +110,32 @@ class StravaDescriptionTest {
 
 		confirm(true).andExpect(status().isOk());
 
-		verify(client, timeout(5000)).updateDescription(eq("acc"), eq(ACTIVITY), argThat(text -> text
+		verify(client, timeout(5000)).updateActivity(eq("acc"), eq(ACTIVITY), argThat(text -> text
 				.startsWith("Schöne Runde\n\n── quaelmich ──") && text.contains("gefahren 62 min / 48 TSS")
-				&& text.endsWith("Plan von quaelmich.com")));
+				&& text.endsWith("Plan von quaelmich.com")), argThat(title -> title != null
+				&& !title.equals("Radfahrt am Abend")));
+	}
+
+	@Test
+	void replacesStravasDefaultTitleWithTheNameOfTheTraining() throws Exception {
+		connect("read,activity:read_all,activity:write");
+		stravaHas("Radfahrt am Abend", "", false);
+
+		confirm(true).andExpect(status().isOk());
+
+		String title = library.resolve(repository.findById(plannedId).orElseThrow().getWorkoutId(), null)
+				.orElseThrow().getTitle();
+		verify(client, timeout(5000)).updateActivity(eq("acc"), eq(ACTIVITY), anyString(), eq(title));
+	}
+
+	@Test
+	void keepsATitleTheUserWroteHimself() throws Exception {
+		connect("read,activity:read_all,activity:write");
+		stravaHas("Become the Base Layer Slayer", "", false);
+
+		confirm(true).andExpect(status().isOk());
+
+		verify(client, timeout(5000)).updateActivity(eq("acc"), eq(ACTIVITY), anyString(), isNull());
 	}
 
 	@Test
@@ -113,7 +146,7 @@ class StravaDescriptionTest {
 		confirm(true).andExpect(status().isOk());
 
 		verify(client, timeout(5000)).activity("acc", ACTIVITY);
-		verify(client, after(500).never()).updateDescription(anyString(), anyLong(), anyString());
+		verify(client, after(500).never()).updateActivity(anyString(), anyLong(), any(), any());
 	}
 
 	@Test
@@ -123,7 +156,7 @@ class StravaDescriptionTest {
 
 		confirm(false).andExpect(status().isOk());
 
-		verify(client, timeout(5000)).updateDescription("acc", ACTIVITY, "Schöne Runde");
+		verify(client, timeout(5000)).updateActivity("acc", ACTIVITY, "Schöne Runde", null);
 	}
 
 	@Test
