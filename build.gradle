@@ -58,3 +58,15 @@ tasks.register('planSimulation', JavaExec) {
 	mainClass = 'io.github.jakobfa.webtechproject.service.PlanSimulation'
 	args = [layout.buildDirectory.file('plan-simulation.md').get().asFile.path]
 }
+
+// Persönliche Simulation aus einem Daten-Export; nur lokal, Ergebnis nicht einchecken
+tasks.register('exportSimulation', JavaExec) {
+	description = 'Simuliert einen echten Nutzer aus seinem Export: -PexportFile=... -Pctl=96 -Patl=55 [-Pfrom=2026-11-03]'
+	classpath = sourceSets.test.runtimeClasspath
+	mainClass = 'io.github.jakobfa.webtechproject.service.ExportSimulation'
+	doFirst {
+		args = [project.findProperty('exportFile'), project.findProperty('ctl') ?: '40', project.findProperty('atl') ?: '40',
+				project.findProperty('from') ?: java.time.LocalDate.now().toString(),
+				layout.buildDirectory.file('export-simulation.md').get().asFile.path]
+	}
+}

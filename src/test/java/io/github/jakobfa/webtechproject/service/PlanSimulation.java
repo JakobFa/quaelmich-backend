@@ -44,7 +44,7 @@ public final class PlanSimulation {
 			double ctl, double ctlRamp, double minTsb) {
 	}
 
-	record Result(PlanReport.Profile profile, List<Week> weeks, List<String> hard, List<String> warnings, int missed,
+	record Result(String name, List<Week> weeks, List<String> hard, List<String> warnings, int missed,
 			int adapted, double eventDayTsb) {
 	}
 
@@ -62,7 +62,7 @@ public final class PlanSimulation {
 		for (Result result : results) {
 			double maxRamp = result.weeks().stream().skip(2).mapToDouble(Week::ctlRamp).max().orElse(0);
 			double minTsb = result.weeks().stream().mapToDouble(Week::minTsb).min().orElse(0);
-			out.append("| %s | %d | %.1f | %.0f | %s | %d | %d |\n".formatted(result.profile().name(),
+			out.append("| %s | %d | %.1f | %.0f | %s | %d | %d |\n".formatted(result.name(),
 					result.weeks().size(), maxRamp, minTsb,
 					Double.isNaN(result.eventDayTsb()) ? "–" : "%.0f".formatted(result.eventDayTsb()), result.missed(),
 					result.adapted()));
@@ -71,13 +71,13 @@ public final class PlanSimulation {
 			if (result.hard().isEmpty() && result.warnings().isEmpty()) {
 				continue;
 			}
-			out.append("\n## ").append(result.profile().name()).append("\n\n");
+			out.append("\n## ").append(result.name()).append("\n\n");
 			result.hard().forEach(line -> out.append("- **HART** ").append(line).append('\n'));
 			result.warnings().forEach(line -> out.append("- Warnung: ").append(line).append('\n'));
 		}
 		out.append("\n## Wochenverlauf je Fahrer\n");
 		for (Result result : results) {
-			out.append("\n### ").append(result.profile().name()).append("\n\n");
+			out.append("\n### ").append(result.name()).append("\n\n");
 			out.append("| Woche | Phase | geplant h | gefahren h | geplant TSS | gefahren TSS | CTL | Anstieg | tiefster TSB |\n");
 			out.append("|---|---|---|---|---|---|---|---|---|\n");
 			for (Week week : result.weeks()) {
@@ -96,11 +96,35 @@ public final class PlanSimulation {
 		}
 	}
 
+	/** Fitness, mit der ein erfundener Fahrer startet (frisch, TSB 0): je höher das Level, desto mehr */
+	static double startFitness(io.github.jakobfa.webtechproject.model.Level level) {
+		return switch (level) {
+			case BEGINNER -> 15;
+			case HOBBY -> 25;
+			case AMBITIOUS -> 40;
+			case PERFORMANCE -> 70;
+		};
+	}
+
 	static Result simulate(PlanReport.Profile profile) {
 		Athlete athlete = PlanReport.athleteOf(profile);
-		List<PlannedWorkout> plan = new ArrayList<>(PlanReport.planOf(athlete));
+		double ctl = startFitness(profile.level());
+		return simulate(profile.name(), athlete, PlanReport.planOf(athlete), ctl, ctl);
+	}
+
+	/** Ein Fahrer mit seinem Plan und seiner Startform (CTL/ATL am Tag vor dem ersten Plantag) */
+	static Result simulate(String name, Athlete athlete, List<PlannedWorkout> planWorkouts, double ctl0, double atl0) {
+		return simulate(name, athlete, planWorkouts, ctl0, atl0, Map.of());
+	}
+
+	/** Wie oben, mit abweichender Zeit in einzelnen Wochen (Montag → Verfügbarkeit dieser Woche) */
+	static Result simulate(String name, Athlete athlete, List<PlannedWorkout> planWorkouts, double ctl0, double atl0,
+			Map<LocalDate, io.github.jakobfa.webtechproject.model.WeeklyAvailability> weekAvailability) {
+		List<PlannedWorkout> plan = new ArrayList<>(planWorkouts);
 		plan.sort(java.util.Comparator.comparing(PlannedWorkout::getDate));
-		Random random = new Random(profile.name().hashCode());
+		// derselbe Fahrer erlebt dieselben Abweichungen, egal welchen Plan er fährt: so sind Pläne vergleichbar
+		Random random = new Random(java.util.Objects.hash(athlete.getLevel(), athlete.getAvailability().totalHours(),
+				athlete.getFtp(), athlete.getEvent() == null ? 0 : athlete.getEvent().getName()));
 
 		List<String> hard = new ArrayList<>();
 		List<String> warnings = new ArrayList<>();
@@ -110,14 +134,8 @@ public final class PlanSimulation {
 		Map<LocalDate, double[]> weeklyAcc = new TreeMap<>(); // planMin, actMin, planTss, actTss, minTsb
 		Map<LocalDate, String> phases = new TreeMap<>();
 		Map<LocalDate, Double> ctlAtWeekEnd = new TreeMap<>();
-		// Fitness, mit der der Fahrer startet (frisch, TSB 0): je höher das Level, desto mehr
-		double ctl = switch (profile.level()) {
-			case BEGINNER -> 15;
-			case HOBBY -> 25;
-			case AMBITIOUS -> 40;
-			case PERFORMANCE -> 70;
-		};
-		double atl = ctl;
+		double ctl = ctl0;
+		double atl = atl0;
 		int missed = 0;
 		int adapted = 0;
 		int illnessLeft = 0;
@@ -141,7 +159,8 @@ public final class PlanSimulation {
 				Workout workout = LIBRARY.resolve(planned.getWorkoutId(), planned.getDurationMinutes()).orElseThrow();
 				acc[0] += workout.getDurationInMinutes();
 				acc[2] += workout.getTss();
-				int availableMinutes = (int) (athlete.getAvailability().hoursOn(day.getDayOfWeek()) * 60);
+				int availableMinutes = (int) (weekAvailability.getOrDefault(monday, athlete.getAvailability())
+						.hoursOn(day.getDayOfWeek()) * 60);
 				if (workout.getDurationInMinutes() > availableMinutes) {
 					hard.add("%s: %d min geplant, aber nur %d min Zeit%s".formatted(day, workout.getDurationInMinutes(),
 							availableMinutes, planned.getAdjustmentNote() != null ? " (nach Anpassung: " + workout.getTitle() + ")" : " (" + workout.getTitle() + ")"));
@@ -189,7 +208,7 @@ public final class PlanSimulation {
 		}
 
 		List<Week> weeks = new ArrayList<>();
-		double previousCtl = 0;
+		double previousCtl = ctl0;
 		boolean firstWeek = true;
 		for (var entry : weeklyAcc.entrySet()) {
 			LocalDate monday = entry.getKey();
@@ -212,6 +231,6 @@ public final class PlanSimulation {
 			previousCtl = weekCtl;
 			firstWeek = false;
 		}
-		return new Result(profile, weeks, hard, warnings, missed, adapted, eventDayTsb);
+		return new Result(name, weeks, hard, warnings, missed, adapted, eventDayTsb);
 	}
 }
