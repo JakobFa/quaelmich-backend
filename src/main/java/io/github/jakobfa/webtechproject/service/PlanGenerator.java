@@ -53,6 +53,18 @@ public class PlanGenerator {
 	/** Umfang in Woche 1 und Steigerung pro Belastungswoche */
 	static final double START_VOLUME = 0.7;
 	static final double VOLUME_STEP = 0.05;
+	/** Wer nur wenig Zeit hat (bis zu dieser Wochenzeit), nutzt sie von Anfang an besser aus */
+	static final double SCARCE_HOURS = 8;
+	static final double SCARCE_TIME_BONUS = 0.1;
+
+	/** Die lange Ausfahrt und ihr Partner am Back-to-back-Wochenende (Anteil der langen Ausfahrt) */
+	static final double BACK_TO_BACK_PARTNER_SHARE = 0.8;
+	/** Alle anderen lockeren Tage sind kürzer als die lange Ausfahrt – es gibt höchstens zwei lange Tage */
+	static final double OTHER_DAYS_SHARE = 0.6;
+	/** Beide Tage eines Back-to-back müssen mindestens so lang sein können, sonst lohnt es sich nicht */
+	static final int MIN_BACK_TO_BACK_MINUTES = 180;
+	/** Back-to-back erst bei Events ab dieser Dauer (Minuten) */
+	static final int BACK_TO_BACK_EVENT_MINUTES = 480;
 
 	/** Eine Belastungswoche darf höchstens so viel mehr Zeit haben wie die davor (mindestens aber 30 min mehr) */
 	static final double MAX_WEEKLY_GROWTH = 1.10;
@@ -269,13 +281,14 @@ public class PlanGenerator {
 			weeksInPhase.merge(phase, 1, Integer::sum);
 
 			WeekPlan week = new WeekPlan(phase, weekIndex, step,
-					volumeFactor(phase, loadWeek),
+					volumeFactor(phase, loadWeek, startVolume(athlete.getLevel(), weeklyHours)),
 					longRideMinutes(profile, phase, loadWeek, loadWeeksTotal),
 					useTempoLongRide(profile, phase, loadWeek),
 					hardWorkoutsFor(athlete.getLevel(), profile.focus(), phase, weekIndex, weeksUntilEvent,
 							weeklyHours, ftpTest,
 							profile.goal()),
-					weekCap(phase, reference));
+					weekCap(phase, reference),
+					backToBack(athlete.getLevel(), profile, phase, loadWeek));
 			List<PlannedWorkout> planned = planWeek(availability, trainingDays, week);
 			plan.addAll(planned);
 			if (isLoadPhase(phase) && !startDate.isAfter(monday)) {
@@ -296,7 +309,7 @@ public class PlanGenerator {
 
 	/** Was in einer normalen Woche geplant wird */
 	record WeekPlan(Phase phase, int weekIndex, int step, double volume, int longRideMinutes,
-			boolean tempoLongRide, List<WorkoutType> hardWorkouts, Integer maxMinutes) {
+			boolean tempoLongRide, List<WorkoutType> hardWorkouts, Integer maxMinutes, boolean backToBack) {
 	}
 
 	/** Deckel für die Woche in dieser Phase; null = keiner (noch kein Bezug, Tapering) */
@@ -428,7 +441,26 @@ public class PlanGenerator {
 
 	/** Anteil der verfügbaren Zeit, der für lockere Fahrten genutzt wird */
 	static double volumeFactor(Phase phase, int loadWeek) {
-		double ramp = Math.min(1.0, START_VOLUME + VOLUME_STEP * loadWeek);
+		return volumeFactor(phase, loadWeek, START_VOLUME);
+	}
+
+	/**
+	 * Mit welchem Anteil der verfügbaren Zeit die erste Belastungswoche startet: je höher das Level, desto mehr.
+	 * Die Zeit ist immer die Obergrenze; wer wenig davon hat, nutzt sie von Anfang an besser aus – dort ist die
+	 * Zeit der Engpass, nicht die Belastbarkeit.
+	 */
+	static double startVolume(Level level, double weeklyHours) {
+		double byLevel = switch (level) {
+			case BEGINNER -> 0.5;
+			case HOBBY -> 0.6;
+			case AMBITIOUS -> 0.7;
+			case PERFORMANCE -> 0.8;
+		};
+		return Math.min(1.0, weeklyHours <= SCARCE_HOURS ? byLevel + SCARCE_TIME_BONUS : byLevel);
+	}
+
+	static double volumeFactor(Phase phase, int loadWeek, double startVolume) {
+		double ramp = Math.min(1.0, startVolume + VOLUME_STEP * loadWeek);
 		return switch (phase) {
 			case RECOVERY -> 0.6 * ramp; // Erholung: deutlich weniger als die Wochen davor
 			case TAPER -> 0.6;
@@ -480,6 +512,18 @@ public class PlanGenerator {
 			case COMPETE -> buildOrPeak && (isLongEvent(profile) || profile.focus() == Focus.ULTRA);
 			case GOOD_TIME -> isLongEvent(profile) && buildOrPeak && loadWeek % 2 == 0;
 		};
+	}
+
+	/**
+	 * Zwei lange Tage hintereinander (Ermüdung tragen, Verpflegung üben) trainieren Mehrtages-Events, sind aber
+	 * ein starker Reiz: nur ab Ambitioniert, bei langen Events, im Aufbau (nicht in Erholung und Tapering) und
+	 * nur in jeder zweiten Belastungswoche.
+	 */
+	static boolean backToBack(Level level, EventProfile profile, Phase phase, int loadWeek) {
+		boolean strongEnough = level == Level.AMBITIOUS || level == Level.PERFORMANCE;
+		boolean longEvent = profile.focus() == Focus.ULTRA || profile.estimatedMinutes() >= BACK_TO_BACK_EVENT_MINUTES;
+		boolean loadPhase = phase == Phase.BASE || phase == Phase.BUILD || phase == Phase.PEAK;
+		return strongEnough && longEvent && loadPhase && loadWeek % 2 == 1;
 	}
 
 	private static boolean isLongEvent(EventProfile profile) {
@@ -611,11 +655,25 @@ public class PlanGenerator {
 						.thenComparing(Comparator.naturalOrder()))
 				.orElseThrow();
 
-		// Harte Einheiten nicht am Tag der langen Ausfahrt und nicht direkt davor oder danach. Sie sind kurz und
-		// kommen deshalb auf den Tag mit der knappsten Zeit, auf den sie noch passen – die Tage mit viel Zeit
-		// bleiben für Umfang (Grundlage, lange Ausfahrt). Bei gleicher Zeit gilt der frühere Tag.
+		// Back-to-back: der Tag davor wird die lange Ausfahrt, der mit der meisten Zeit ihr kürzerer Partner
+		LocalDate partnerDay = null;
+		if (plan.backToBack()) {
+			LocalDate before = longDay.minusDays(1);
+			if (days.contains(before) && availableMinutes(availability, before) >= MIN_BACK_TO_BACK_MINUTES
+					&& availableMinutes(availability, longDay) >= MIN_BACK_TO_BACK_MINUTES) {
+				partnerDay = longDay;
+				longDay = before;
+			}
+		}
+		LocalDate firstLong = longDay;
+		LocalDate lastLong = partnerDay != null ? partnerDay : longDay;
+		LocalDate partner = partnerDay;
+
+		// Harte Einheiten nicht am Tag der langen Ausfahrt (bzw. des Back-to-back) und nicht direkt davor oder
+		// danach. Sie sind kurz und kommen deshalb auf den Tag mit der knappsten Zeit, auf den sie noch passen –
+		// die Tage mit viel Zeit bleiben für Umfang (Grundlage, lange Ausfahrt). Bei gleicher Zeit gilt der frühere.
 		List<LocalDate> candidates = days.stream()
-				.filter(day -> Math.abs(ChronoUnit.DAYS.between(longDay, day)) > 1)
+				.filter(day -> day.isBefore(firstLong.minusDays(1)) || day.isAfter(lastLong.plusDays(1)))
 				.sorted(Comparator.comparingInt((LocalDate day) -> availableMinutes(availability, day)))
 				.toList();
 
@@ -642,7 +700,8 @@ public class PlanGenerator {
 				// nicht ideal frisch, aber besser als gar kein Test
 				List<LocalDate> possibleDays = workout.getType() == WorkoutType.FTP_TEST
 						? java.util.stream.Stream.concat(candidates.stream(),
-								days.stream().filter(day -> !day.equals(longDay) && !candidates.contains(day)))
+								days.stream().filter(day -> !day.equals(firstLong) && !day.equals(partner)
+										&& !candidates.contains(day)))
 								.toList()
 						: candidates;
 				var day = possibleDays.stream()
@@ -678,9 +737,14 @@ public class PlanGenerator {
 					default -> 1.0;
 				});
 				flexible.put(day, Math.min(plan.longRideMinutes(), possible));
+			} else if (day.equals(partner)) {
+				// zweiter langer Tag: kürzer als der erste, damit die Ermüdung tragbar bleibt
+				flexible.put(day, floorToQuarterHour(Math.min(available * plan.volume(),
+						flexible.get(firstLong) * BACK_TO_BACK_PARTNER_SHARE)));
 			} else {
-				// lockere Tage nie länger als die lange Ausfahrt
-				flexible.put(day, floorToQuarterHour(Math.min(available * plan.volume(), plan.longRideMinutes())));
+				// alle anderen lockeren Tage deutlich kürzer als die lange Ausfahrt: höchstens zwei lange Tage
+				flexible.put(day, floorToQuarterHour(Math.min(available * plan.volume(),
+						Math.max(MIN_CAPPED_RIDE, plan.longRideMinutes() * OTHER_DAYS_SHARE))));
 			}
 		}
 		if (plan.maxMinutes() != null) {
