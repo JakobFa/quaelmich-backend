@@ -84,6 +84,8 @@ public final class PlanReport {
 						10, 1, 1.5, 2, 1.5, 0, 3, 3),
 				event("Leistung, 15 h, Ultra auf Zeit", Level.PERFORMANCE, EventType.ULTRA, EventGoal.COMPETE, 1000,
 						10000, 26, 1, 2, 1.5, 2, 0, 5, 3.5),
+				event("Leistung, 19 h, Ultra 900 km", Level.PERFORMANCE, EventType.ULTRA, EventGoal.COMPETE, 900, 8500,
+						27, 2, 2, 1, 2, 2, 5, 5),
 				event("Leistung, 9 h, Gravel vorne, kurzfristig", Level.PERFORMANCE, EventType.GRAVEL,
 						EventGoal.COMPETE, 120, 1800, 5, 0, 1.5, 1.5, 1.5, 0, 3, 1.5),
 				open("Hobby, 5 h, FTP steigern", Level.HOBBY, TrainingGoal.FTP, 0, 1, 0, 1, 0, 2, 1),

@@ -48,6 +48,27 @@ class PlanAdaptationServiceTest {
 	}
 
 	@Test
+	void theEasierSessionIsNeverLongerThanTheTimeOfTheDay() {
+		for (var original : library.findAll()) {
+			for (int minutes = 45; minutes <= 90; minutes += 5) {
+				var fitted = library.resolve(original.getId(), minutes).orElseThrow();
+				if (fitted.getDurationInMinutes() > minutes) {
+					continue; // diese Einheit würde der Generator an so einem Tag nicht einplanen
+				}
+				PlannedWorkout ridden = riddenEndurance(1.3);
+				PlannedWorkout next = new PlannedWorkout(MONDAY.plusDays(1), original, minutes, Phase.BUILD);
+
+				adaptation.adaptAfter(ridden, List.of(ridden, next));
+
+				assertThat(library.resolve(next.getWorkoutId(), next.getDurationMinutes()).orElseThrow()
+						.getDurationInMinutes())
+						.as("%s auf %d min, danach %d", original.getTitle(), minutes, next.getWorkoutId())
+						.isLessThanOrEqualTo(minutes);
+			}
+		}
+	}
+
+	@Test
 	void muchHarderRideTurnsTheNextHardSessionIntoRecovery() {
 		PlannedWorkout ridden = riddenEndurance(1.6);
 		PlannedWorkout vo2 = planned(MONDAY.plusDays(2), 8L);
