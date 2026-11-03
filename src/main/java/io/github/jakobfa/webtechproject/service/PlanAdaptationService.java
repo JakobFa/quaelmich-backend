@@ -116,13 +116,23 @@ public class PlanAdaptationService {
 			next.setOriginalWorkoutId(next.getWorkoutId());
 			next.setOriginalDurationMinutes(next.getDurationMinutes());
 		}
+		// die Ersatz-Einheit darf nicht länger sein als die geplante: Der Tag hat genau so viel Zeit
+		Integer fittedMinutes = null;
+		if (replacement != null && replacement.getDurationInMinutes() > original.getDurationInMinutes()) {
+			Workout fitted = library.resolve(replacement.getId(), original.getDurationInMinutes()).orElse(replacement);
+			if (fitted.getDurationInMinutes() > original.getDurationInMinutes()) {
+				replacement = null;
+			} else {
+				fittedMinutes = original.getDurationInMinutes();
+			}
+		}
 		if (replacement == null) {
 			int minutes = Math.min(original.getDurationInMinutes(), MAX_RECOVERY_MINUTES);
 			next.setWorkoutId(WorkoutLibrary.recovery(minutes).getId());
 			next.setDurationMinutes(minutes);
 		} else {
 			next.setWorkoutId(replacement.getId());
-			next.setDurationMinutes(null);
+			next.setDurationMinutes(fittedMinutes);
 		}
 		next.setAdjustmentNote(note);
 	}

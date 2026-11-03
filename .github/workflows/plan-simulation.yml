@@ -1,0 +1,76 @@
+# Simuliert jede Nacht erfundene Fahrer über ihren ganzen Trainingsplan (mit realistischen Abweichungen: ausgefallene
+# Tage, zu harte oder zu kurze Fahrten, Krankheit) und prüft den Belastungsverlauf gegen sportliche Grenzen.
+# Der Bericht liegt danach auf dem Branch "plan-reports" in latest.md; die wöchentliche Plan-Prüfung (Routine) liest ihn.
+# Läuft hier statt in der Cloud-Sitzung der Routine, weil dort Gradle kein Netzwerk hat.
+name: Plan-Simulation
+
+on:
+  schedule:
+    - cron: '30 4 * * *' # täglich 04:30 UTC, nach dem Release um 02:00
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  simulate:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Code auschecken (main = live)
+        uses: actions/checkout@v4
+        with:
+          ref: main
+
+      - name: Java 25 einrichten
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 25
+
+      - name: Gradle einrichten (mit Cache)
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Simulation ausführen
+        id: simulation
+        run: ./gradlew planSimulation
+        continue-on-error: true
+
+      - name: Bericht und Planbericht erzeugen
+        run: ./gradlew planReport
+
+      - name: Berichte auf den Branch plan-reports schreiben
+        run: |
+          set -e
+          DATE=$(date -u +%F)
+          mkdir -p /tmp/reports
+          cp build/plan-simulation.md /tmp/reports/latest.md
+          cp build/plan-report.md /tmp/reports/plan-latest.md
+          echo "Stand: $DATE (Commit $GITHUB_SHA von main)" > /tmp/reports/STAND.txt
+          git config user.name "plan-simulation"
+          git config user.email "actions@users.noreply.github.com"
+          git fetch origin plan-reports || true
+          if git rev-parse --verify -q origin/plan-reports >/dev/null; then
+            git checkout -q -B plan-reports origin/plan-reports
+          else
+            git checkout -q --orphan plan-reports
+            git rm -rfq . || true
+          fi
+          cp /tmp/reports/* .
+          git add latest.md plan-latest.md STAND.txt
+          git commit -q -m "Plan-Simulation $DATE" || echo "keine Änderung"
+          git push origin plan-reports
+
+      - name: Bericht hochladen
+        uses: actions/upload-artifact@v4
+        with:
+          name: plan-simulation
+          path: |
+            build/plan-simulation.md
+            build/plan-report.md
+
+      - name: Bei harten Verstößen rot werden
+        if: steps.simulation.outcome == 'failure'
+        run: |
+          echo "Die Simulation hat harte Verstöße gefunden – siehe latest.md auf dem Branch plan-reports."
+          exit 1
