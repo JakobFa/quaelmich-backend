@@ -51,3 +51,10 @@ tasks.register('planReport', JavaExec) {
 	mainClass = 'io.github.jakobfa.webtechproject.service.PlanReport'
 	args = [layout.buildDirectory.file('plan-report.md').get().asFile.path]
 }
+
+tasks.register('planSimulation', JavaExec) {
+	description = 'Simuliert erfundene Fahrer mit realistischen Abweichungen über ihren ganzen Plan: build/plan-simulation.md'
+	classpath = sourceSets.test.runtimeClasspath
+	mainClass = 'io.github.jakobfa.webtechproject.service.PlanSimulation'
+	args = [layout.buildDirectory.file('plan-simulation.md').get().asFile.path]
+}
