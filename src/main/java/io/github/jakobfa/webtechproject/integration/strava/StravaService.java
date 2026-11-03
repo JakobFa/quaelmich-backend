@@ -273,6 +273,16 @@ public class StravaService {
 	@Transactional
 	public void editDescription(Long userId, long stravaActivityId,
 			java.util.function.BiFunction<String, Boolean, String> edit) {
+		editActivity(userId, stravaActivityId, edit, null);
+	}
+
+	/**
+	 * Wie {@link #editDescription}, setzt zusätzlich den Titel – aber nur, wenn die Fahrt noch den Standardnamen
+	 * von Strava trägt ("Radfahrt am Abend"). Selbst vergebene Titel bleiben immer stehen. title null = nicht ändern.
+	 */
+	@Transactional
+	public void editActivity(Long userId, long stravaActivityId,
+			java.util.function.BiFunction<String, Boolean, String> edit, String title) {
 		if (!writesDescriptions(userId)) {
 			return;
 		}
@@ -288,8 +298,11 @@ public class StravaService {
 			}
 			String current = activity.description() == null ? "" : activity.description();
 			String updated = edit.apply(current, activity.isCommute());
-			if (updated != null && !updated.equals(current)) {
-				client.updateDescription(accessToken, stravaActivityId, updated);
+			String newDescription = updated != null && !updated.equals(current) ? updated : null;
+			String newTitle = title != null && !title.equals(activity.name())
+					&& StravaActivityNames.isDefault(activity.name()) && updated != null ? title : null;
+			if (newDescription != null || newTitle != null) {
+				client.updateActivity(accessToken, stravaActivityId, newDescription, newTitle);
 			}
 		} catch (RestClientException e) {
 			log.warn("Strava-Beschreibung für Nutzer {} nicht geändert: {}", userId, e.getMessage());
