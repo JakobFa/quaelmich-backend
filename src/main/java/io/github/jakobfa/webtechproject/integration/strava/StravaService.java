@@ -73,10 +73,12 @@ public class StravaService {
 	private final PlannedWorkoutRepository plannedWorkoutRepository;
 	private final ExtraRideRepository extraRideRepository;
 	private final Clock clock;
+	private final org.springframework.transaction.support.TransactionTemplate transactions;
 
 	public StravaService(StravaConnectionRepository repository, AppUserRepository userRepository,
 			StravaClient client, StravaProperties properties, SecretCipher cipher, AthleteService athleteService,
-			PlannedWorkoutRepository plannedWorkoutRepository, ExtraRideRepository extraRideRepository, Clock clock) {
+			PlannedWorkoutRepository plannedWorkoutRepository, ExtraRideRepository extraRideRepository, Clock clock,
+			org.springframework.transaction.support.TransactionTemplate transactions) {
 		this.repository = repository;
 		this.userRepository = userRepository;
 		this.client = client;
@@ -86,6 +88,7 @@ public class StravaService {
 		this.plannedWorkoutRepository = plannedWorkoutRepository;
 		this.extraRideRepository = extraRideRepository;
 		this.clock = clock;
+		this.transactions = transactions;
 	}
 
 	public boolean isConfigured() {
@@ -208,17 +211,10 @@ public class StravaService {
 	 * @throws NotConnectedException wenn Strava nicht verbunden ist
 	 * @throws MissingScopeException wenn die Erlaubnis activity:write fehlt (neu verbinden)
 	 */
-	@Transactional
 	public RideUpload uploadRide(Long userId, byte[] fit, String title, String externalId) {
-		StravaConnection connection = repository.findByOwnerId(userId).filter(c -> isConfigured())
-				.orElseThrow(NotConnectedException::new);
-		if (!connection.canWriteActivities()) {
-			throw new MissingScopeException();
-		}
-		String accessToken = validAccessToken(userId, connection);
-		if (accessToken == null) {
-			throw new NotConnectedException();
-		}
+		// nur das Holen des Tokens läuft in einer Transaktion; das Warten auf Strava (bis ca. 5 s) hält keine
+		// Datenbankverbindung fest
+		String accessToken = transactions.execute(status -> accessTokenForUpload(userId));
 		try {
 			StravaClient.UploadStatus status = client.upload(accessToken, fit, title, externalId);
 			for (int check = 0; check < UPLOAD_CHECKS && !isFinished(status); check++) {
@@ -230,6 +226,19 @@ public class StravaService {
 			log.warn("Strava hat die Fahrt von Nutzer {} abgelehnt: {}", userId, e.getStatusCode());
 			return new RideUpload(UploadOutcome.FAILED, null, "Strava hat die Fahrt abgelehnt.");
 		}
+	}
+
+	private String accessTokenForUpload(Long userId) {
+		StravaConnection connection = repository.findByOwnerId(userId).filter(c -> isConfigured())
+				.orElseThrow(NotConnectedException::new);
+		if (!connection.canWriteActivities()) {
+			throw new MissingScopeException();
+		}
+		String accessToken = validAccessToken(userId, connection);
+		if (accessToken == null) {
+			throw new NotConnectedException();
+		}
+		return accessToken;
 	}
 
 	private static boolean isFinished(StravaClient.UploadStatus status) {

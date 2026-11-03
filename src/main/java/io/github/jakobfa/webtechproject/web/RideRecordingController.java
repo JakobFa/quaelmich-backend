@@ -14,6 +14,7 @@ import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.client.RestClientException;
 
 import io.github.jakobfa.webtechproject.auth.CurrentUser;
+import io.github.jakobfa.webtechproject.auth.RateLimiter;
 import io.github.jakobfa.webtechproject.integration.strava.StravaService;
 import io.github.jakobfa.webtechproject.service.FitActivityExporter;
 import io.github.jakobfa.webtechproject.web.dto.RideRecordingRequest;
@@ -30,21 +31,31 @@ public class RideRecordingController {
 	public record StravaUploadResponse(String outcome, Long activityId, String message) {
 	}
 
+	/** Ein Upload hält bis zu ca. 5 s eine Verbindung zu Strava offen: höchstens so viele pro Stunde und Nutzer */
+	static final RateLimiter.Limit UPLOAD_LIMIT = new RateLimiter.Limit(10, java.time.Duration.ofHours(1));
+
 	private final FitActivityExporter exporter;
 	private final StravaService stravaService;
+	private final RateLimiter rateLimiter;
 
-	public RideRecordingController(FitActivityExporter exporter, StravaService stravaService) {
+	public RideRecordingController(FitActivityExporter exporter, StravaService stravaService,
+			RateLimiter rateLimiter) {
 		this.exporter = exporter;
 		this.stravaService = stravaService;
+		this.rateLimiter = rateLimiter;
 	}
 
 	/**
 	 * Lädt die aufgezeichnete Fahrt direkt als Indoor-Aktivität zu Strava hoch.
-	 * 404 ohne Strava-Verbindung, 409 ohne Erlaubnis activity:write, 502 wenn Strava nicht erreichbar ist.
+	 * 404 ohne Strava-Verbindung, 409 ohne Erlaubnis activity:write, 429 bei zu vielen Uploads,
+	 * 502 wenn Strava nicht erreichbar ist.
 	 */
 	@PostMapping(path = "/me/recordings/strava")
 	public ResponseEntity<StravaUploadResponse> uploadToStrava(@AuthenticationPrincipal Jwt jwt,
 			@Valid @RequestBody RideRecordingRequest recording) {
+		if (!rateLimiter.tryAcquire("strava-upload:" + CurrentUser.id(jwt), UPLOAD_LIMIT)) {
+			return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS).build();
+		}
 		byte[] fit;
 		try {
 			fit = exporter.export(recording.startedAt(), recording.samples().stream()
