@@ -109,6 +109,41 @@ public class TrainingPlanController {
 		}
 	}
 
+	public record SicknessRequest(@NotNull LocalDate from, LocalDate until) {
+	}
+
+	/**
+	 * Krank melden. Ohne "until" bleibt der Plan stehen, bis "wieder gesund" kommt; "from" darf in der Vergangenheit
+	 * liegen (App erst später geöffnet). Mit "until" ein abgeschlossener Zeitraum, auch rückwirkend.
+	 * 409 bei zu weit zurück/voraus oder wenn schon eine offene Krankheit läuft.
+	 */
+	@PutMapping(path = "/me/plan/sickness")
+	public ResponseEntity<TrainingPlanResponse> startSickness(@AuthenticationPrincipal Jwt jwt,
+			@Valid @RequestBody SicknessRequest request) {
+		Long userId = CurrentUser.id(jwt);
+		try {
+			return absence.startSickness(userId, request.from(), request.until())
+					.map(plan -> syncedResponse(userId, plan))
+					.orElse(ResponseEntity.notFound().build());
+		} catch (AbsenceService.NotPossibleException e) {
+			return ResponseEntity.status(HttpStatus.CONFLICT).build();
+		}
+	}
+
+	/** Wieder gesund (optional "since": schon seit diesem Tag). 409, wenn niemand krank gemeldet ist. */
+	@DeleteMapping(path = "/me/plan/sickness")
+	public ResponseEntity<TrainingPlanResponse> endSickness(@AuthenticationPrincipal Jwt jwt,
+			@org.springframework.web.bind.annotation.RequestParam(required = false) LocalDate since) {
+		Long userId = CurrentUser.id(jwt);
+		try {
+			return absence.endSickness(userId, since)
+					.map(plan -> syncedResponse(userId, plan))
+					.orElse(ResponseEntity.notFound().build());
+		} catch (AbsenceService.NotPossibleException e) {
+			return ResponseEntity.status(HttpStatus.CONFLICT).build();
+		}
+	}
+
 	/** Pause beenden – ab heute gilt der Plan wieder */
 	@DeleteMapping(path = "/me/plan/pause")
 	public ResponseEntity<TrainingPlanResponse> resume(@AuthenticationPrincipal Jwt jwt) {

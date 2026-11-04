@@ -7,6 +7,7 @@ import java.util.List;
 import java.util.Map;
 
 import jakarta.persistence.CascadeType;
+import jakarta.persistence.Column;
 import jakarta.persistence.CollectionTable;
 import jakarta.persistence.ElementCollection;
 import jakarta.persistence.MapKeyColumn;
@@ -38,6 +39,25 @@ public class TrainingPlan {
 	private Athlete athlete;
 
 	private LocalDate startDate;
+
+	/** Geheimer Teil des Kalender-Abo-Links (iCal); null = kein Abo eingerichtet */
+	@Column(unique = true)
+	private String calendarToken;
+
+	/**
+	 * Krank (oder verletzt) seit diesem Tag, noch nicht wieder gesund gemeldet: Der Plan steht still, alle offenen
+	 * Einheiten ab hier sind ausgesetzt, bis der Nutzer "wieder gesund" sagt. Null = nicht krank.
+	 */
+	private LocalDate sickSince;
+
+	/** Nach längerer Krankheit: Montag der Woche, ab der der lockere Wiedereinstieg gilt (sonst null) */
+	private LocalDate reentryMonday;
+
+	/** So viele Wochen ab {@link #reentryMonday} sind lockerer Wiedereinstieg */
+	private int reentryWeeks;
+
+	/** Montag der Woche, für die der Plan zuletzt an die gefahrenen Werte angepasst wurde */
+	private LocalDate lastAdaptedMonday;
 
 	/** Abweichende Zeit für einzelne Wochen (Schlüssel: Montag der Woche) – sonst gilt die normale Verfügbarkeit */
 	@ElementCollection(fetch = FetchType.EAGER) // klein, wird bei jeder Plan-Antwort gebraucht
