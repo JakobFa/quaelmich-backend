@@ -412,9 +412,11 @@ public class PlanGenerator {
 	 * <li>Wiedereinstieg: die Woche wird zur Erholungswoche, ohne harte Einheiten.</li>
 	 * <li>Auf eine Belastungswoche, die zu weniger als 70 % gefahren wurde, folgt keine Erholungswoche: Man hat sich
 	 * nicht überlastet, sondern zu wenig getan (oder war krank) – die Woche davor wird wiederholt.</li>
-	 * <li>Ebenso, wenn die letzten 3 Wochen deutlich weniger waren als der Schnitt der 4 Wochen davor (siehe
+	 * <li>Ebenso, wenn die letzten 3 Wochen deutlich weniger waren als die 3 Wochen davor (siehe
 	 * {@link #builtUp}): z. B. nach einem Rennen oder Urlaub, auf den ruhige Wochen folgten. Dann hat sich keine
 	 * Ermüdung angesammelt, die eine Erholungswoche abbauen müsste.</li>
+	 * <li>Umgekehrt kommt die Erholungswoche eine Woche früher, wenn die letzten 2 Wochen deutlich mehr waren als die
+	 * Wochen davor (siehe {@link #spiked}).</li>
 	 * </ul>
 	 * Das Tapering und die Event-Woche bleiben, wie sie sind.
 	 */
@@ -437,44 +439,98 @@ public class PlanGenerator {
 			boolean nearNow = !monday.isAfter(history.thisMonday().plusWeeks(1));
 			boolean rested = nearNow && loadWeeksBefore(phases, weekIndex) < MAX_LOAD_WEEKS_WITHOUT_RECOVERY
 					&& !builtUp(daily, recoveryDays, dataStart, monday);
+			// zwei Erholungswochen hintereinander nie (z. B. wenn die vorige vorgezogen wurde)
+			boolean afterRecovery = phases.get(weekIndex - 1) == Phase.RECOVERY;
 			// direkt nach einem Wiedereinstieg nicht gleich noch eine Erholungswoche
-			if (weak || rested || history.isReentryWeek(monday.minusWeeks(1))) {
+			if (weak || rested || afterRecovery || history.isReentryWeek(monday.minusWeeks(1))) {
 				phases.set(weekIndex, scheduled.get(weekIndex - 1));
 			}
+		}
+		// Umgekehrt: deutlich mehr gefahren als in den Wochen davor – die Erholungswoche kommt eine Woche früher.
+		// Für die laufende und die nächste Woche (es zählen nur die Tage vor ihrem Montag, so bleibt die Entscheidung
+		// stehen, wenn die Woche beginnt), nicht kurz vor dem Event.
+		boolean soon = !monday.isAfter(history.thisMonday().plusWeeks(1));
+		if (soon && (phases.get(weekIndex) == Phase.BASE || phases.get(weekIndex) == Phase.BUILD)
+				&& weeksUntilEvent > MIN_WEEKS_BEFORE_EVENT_FOR_EARLY_RECOVERY
+				&& loadWeeksBefore(phases, weekIndex) >= MIN_LOAD_WEEKS_BEFORE_EARLY_RECOVERY
+				&& !history.isReentryWeek(monday.minusWeeks(1))
+				&& spiked(daily, recoveryDays, dataStart, monday)) {
+			phases.set(weekIndex, Phase.RECOVERY);
 		}
 		return false;
 	}
 
+	/**
+	 * So weit reichen die gefahrenen Werte zurück: Fahrten aus Strava hält quaelmich nur für dieses Fenster vor
+	 * (ActivityImportService.DAYS_BACK). Vergleiche über gefahrene Wochen bleiben darin, sonst zählten die Tage davor als
+	 * 0 und verzerrten den Schnitt.
+	 */
+	static final int LOAD_HISTORY_DAYS = 42;
 	/** So viele Tage vor einer Erholungswoche zählen als der Block, dessen Ermüdung sie abbauen soll */
 	static final int LOAD_BLOCK_DAYS = 21;
 	/** Unter so viel vom Schnitt davor gelten die letzten 3 Wochen als ruhig (kein Aufbau von Ermüdung) */
 	static final double RESTED_BLOCK_RATIO = 0.9;
 	/** Spätestens nach so vielen Belastungswochen am Stück kommt die Erholungswoche, auch ohne Anstieg */
 	static final int MAX_LOAD_WEEKS_WITHOUT_RECOVERY = 6;
+	/** Akute Spitze: die letzten 14 Tage gegen den Schnitt der 4 Wochen davor */
+	static final int SPIKE_DAYS = 14;
+	/** Ab so viel mehr als vorher (und mindestens SPIKE_MIN_EXTRA_MINUTES pro Woche) ist es eine Spitze */
+	static final double SPIKE_RATIO = 1.35;
+	static final int SPIKE_MIN_EXTRA_MINUTES = 90;
+	/** Frühere Erholungswoche erst nach so vielen Belastungswochen und nicht in den letzten Wochen vor dem Event */
+	static final int MIN_LOAD_WEEKS_BEFORE_EARLY_RECOVERY = 2;
+	static final int MIN_WEEKS_BEFORE_EVENT_FOR_EARLY_RECOVERY = 4;
 
 	/**
-	 * Hat sich vor monday Belastung aufgebaut? Nein nur, wenn die letzten 3 Wochen im Schnitt unter 90 % der 4 Wochen
-	 * davor lagen (je Tag höchstens BASELINE_MAX_DAY_MINUTES, wie beim Wochendeckel). Ohne genug Daten für den Vergleich:
-	 * ja – dann bleibt die Erholungswoche, wie sie geplant ist.
+	 * Minuten pro Woche im Schnitt der Tage fromBack bis toBack vor monday (je Tag höchstens BASELINE_MAX_DAY_MINUTES,
+	 * ohne Tage vor dataStart und ohne die Tage in skip); null, wenn weniger als minDays gezählt wurden.
 	 */
-	static boolean builtUp(Map<LocalDate, Integer> daily, java.util.Set<LocalDate> recoveryDays, LocalDate dataStart,
-			LocalDate monday) {
-		Double before = windowAverage(daily, recoveryDays, dataStart, monday.minusDays(LOAD_BLOCK_DAYS),
-				MEMORY_MIN_DAYS);
-		if (before == null || before <= 0) {
-			return true;
-		}
+	static Double weeklyAverage(Map<LocalDate, Integer> daily, java.util.Set<LocalDate> skip, LocalDate dataStart,
+			LocalDate monday, int fromBack, int toBack, int minDays) {
 		int sum = 0;
 		int counted = 0;
-		for (int back = 1; back <= LOAD_BLOCK_DAYS; back++) {
+		for (int back = fromBack; back <= toBack; back++) {
 			LocalDate day = monday.minusDays(back);
-			if (day.isBefore(dataStart)) {
+			if (day.isBefore(dataStart) || skip.contains(day)) {
 				continue;
 			}
 			sum += Math.min(daily.getOrDefault(day, 0), BASELINE_MAX_DAY_MINUTES);
 			counted++;
 		}
-		return counted < LOAD_BLOCK_DAYS || sum * 7.0 / counted >= before * RESTED_BLOCK_RATIO;
+		return counted < minDays || counted == 0 ? null : sum * 7.0 / counted;
+	}
+
+	/**
+	 * Hat sich vor monday Belastung aufgebaut? Nein nur, wenn die letzten 3 Wochen im Schnitt unter 90 % der 3 Wochen
+	 * davor lagen (Erholungstage zählen dort nicht, sonst bremsen sie den Vergleich). Ohne genug Daten für den Vergleich:
+	 * ja – dann bleibt die Erholungswoche, wie sie geplant ist.
+	 */
+	static boolean builtUp(Map<LocalDate, Integer> daily, java.util.Set<LocalDate> recoveryDays, LocalDate dataStart,
+			LocalDate monday) {
+		Double recent = weeklyAverage(daily, java.util.Set.of(), dataStart, monday, 1, LOAD_BLOCK_DAYS,
+				LOAD_BLOCK_DAYS);
+		Double before = weeklyAverage(daily, recoveryDays, dataStart, monday, LOAD_BLOCK_DAYS + 1, LOAD_HISTORY_DAYS,
+				LOAD_BLOCK_DAYS * 2 / 3);
+		if (recent == null || before == null || before <= 0) {
+			return true;
+		}
+		return recent >= before * RESTED_BLOCK_RATIO;
+	}
+
+	/**
+	 * Eine akute Spitze vor monday: die letzten 14 Tage deutlich über dem Schnitt der 4 Wochen davor (um mindestens
+	 * 35 % und 90 min pro Woche) – z. B. ein Rennen, ein Trainingslager oder viel mehr gefahren als geplant. Ohne genug
+	 * Daten: nein.
+	 */
+	static boolean spiked(Map<LocalDate, Integer> daily, java.util.Set<LocalDate> recoveryDays, LocalDate dataStart,
+			LocalDate monday) {
+		Double recent = weeklyAverage(daily, java.util.Set.of(), dataStart, monday, 1, SPIKE_DAYS, SPIKE_DAYS);
+		Double before = weeklyAverage(daily, recoveryDays, dataStart, monday, SPIKE_DAYS + 1, LOAD_HISTORY_DAYS,
+				MEMORY_MIN_DAYS);
+		if (recent == null || before == null || before <= 0) {
+			return false;
+		}
+		return recent >= before * SPIKE_RATIO && recent - before >= SPIKE_MIN_EXTRA_MINUTES;
 	}
 
 	/** Belastungswochen direkt vor weekIndex (bis zur letzten Erholungswoche) */
