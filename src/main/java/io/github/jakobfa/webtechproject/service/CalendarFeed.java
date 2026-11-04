@@ -45,7 +45,7 @@ public final class CalendarFeed {
 			}
 			Workout workout = workoutOf.apply(planned);
 			LocalDate day = planned.getDate();
-			String title = (planned.isCompleted() ? "✓ " : "🚴 ") + workout.getTitle() + " · "
+			String title = (planned.isCompleted() ? "Erledigt: " : "") + workout.getTitle() + " · "
 					+ formatMinutes(workout.getDurationInMinutes());
 			StringBuilder description = new StringBuilder(workout.getDescription() == null ? "" : workout.getDescription());
 			description.append("\n\nDauer ").append(formatMinutes(workout.getDurationInMinutes()))
