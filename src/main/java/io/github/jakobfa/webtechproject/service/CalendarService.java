@@ -61,6 +61,12 @@ public class CalendarService {
 		}).orElse(false);
 	}
 
+	/** Gibt es ein Abo mit diesem Token? (billige Prüfung, bevor der Feed gebaut wird) */
+	@Transactional(readOnly = true)
+	public boolean isActive(String token) {
+		return plans.existsByCalendarToken(token);
+	}
+
 	/** Die iCal-Datei zum Token, leer bei unbekanntem oder zurückgezogenem Token */
 	@Transactional(readOnly = true)
 	public Optional<String> feed(String token) {

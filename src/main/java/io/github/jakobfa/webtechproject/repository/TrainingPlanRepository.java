@@ -12,4 +12,6 @@ public interface TrainingPlanRepository extends JpaRepository<TrainingPlan, Long
 
 	Optional<TrainingPlan> findByCalendarToken(String calendarToken);
 
+	boolean existsByCalendarToken(String calendarToken);
+
 }
