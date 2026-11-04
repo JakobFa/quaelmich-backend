@@ -53,10 +53,14 @@ tasks.register('planReport', JavaExec) {
 }
 
 tasks.register('planSimulation', JavaExec) {
-	description = 'Simuliert erfundene Fahrer mit realistischen Abweichungen über ihren ganzen Plan: build/plan-simulation.md'
+	description = 'Simuliert erfundene Fahrer (Profile × Fahrer-Typen) im Wochen-Kreislauf über ihren ganzen Plan: build/plan-simulation.md'
 	classpath = sourceSets.test.runtimeClasspath
-	mainClass = 'io.github.jakobfa.webtechproject.service.PlanSimulation'
-	args = [layout.buildDirectory.file('plan-simulation.md').get().asFile.path]
+	mainClass = 'io.github.jakobfa.webtechproject.service.SimulationReport'
+	// optional: -Pprevious=Pfad/latest.tsv (Bericht der Vornacht) für den Abschnitt "Änderungen"
+	doFirst {
+		args = [layout.buildDirectory.file('plan-simulation.md').get().asFile.path] +
+				(project.findProperty('previous') ? [project.findProperty('previous')] : [])
+	}
 }
 
 // Persönliche Simulation aus einem Daten-Export; nur lokal, Ergebnis nicht einchecken

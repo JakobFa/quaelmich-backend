@@ -1,5 +1,6 @@
-# Simuliert jede Nacht erfundene Fahrer über ihren ganzen Trainingsplan (mit realistischen Abweichungen: ausgefallene
-# Tage, zu harte oder zu kurze Fahrten, Krankheit) und prüft den Belastungsverlauf gegen sportliche Grenzen.
+# Simuliert jede Nacht erfundene Fahrer (Profile × Fahrer-Typen wie Pendler, Wochenend-Fahrer, Urlaub, Rennen,
+# Krankheit) im Wochen-Kreislauf über ihren ganzen Trainingsplan – jeden Montag rechnet der Plan neu aus dem Gefahrenen,
+# wie in der App – und prüft den Belastungsverlauf gegen sportliche Grenzen. Vergleicht mit der Vornacht.
 # Der Bericht liegt danach auf dem Branch "plan-reports" in latest.md; die wöchentliche Plan-Prüfung (Routine) liest ihn.
 # Läuft hier statt in der Cloud-Sitzung der Routine, weil dort Gradle kein Netzwerk hat.
 name: Plan-Simulation
@@ -31,9 +32,16 @@ jobs:
       - name: Gradle einrichten (mit Cache)
         uses: gradle/actions/setup-gradle@v4
 
+      - name: Zahlen der Vornacht holen (für "Änderungen gegenüber der Vornacht")
+        run: |
+          git fetch -q origin plan-reports || true
+          git show origin/plan-reports:latest.tsv > /tmp/previous.tsv 2>/dev/null || rm -f /tmp/previous.tsv
+
       - name: Simulation ausführen
         id: simulation
-        run: ./gradlew planSimulation
+        run: |
+          if [ -f /tmp/previous.tsv ]; then ./gradlew planSimulation -Pprevious=/tmp/previous.tsv
+          else ./gradlew planSimulation; fi
         continue-on-error: true
 
       - name: Bericht und Planbericht erzeugen
@@ -45,6 +53,7 @@ jobs:
           DATE=$(date -u +%F)
           mkdir -p /tmp/reports
           cp build/plan-simulation.md /tmp/reports/latest.md
+          cp build/plan-simulation.tsv /tmp/reports/latest.tsv
           cp build/plan-report.md /tmp/reports/plan-latest.md
           echo "Stand: $DATE (Commit $GITHUB_SHA von main)" > /tmp/reports/STAND.txt
           git config user.name "plan-simulation"
@@ -57,7 +66,7 @@ jobs:
             git rm -rfq . || true
           fi
           cp /tmp/reports/* .
-          git add latest.md plan-latest.md STAND.txt
+          git add latest.md latest.tsv plan-latest.md STAND.txt
           git commit -q -m "Plan-Simulation $DATE" || echo "keine Änderung"
           git push origin plan-reports
 
@@ -67,6 +76,7 @@ jobs:
           name: plan-simulation
           path: |
             build/plan-simulation.md
+            build/plan-simulation.tsv
             build/plan-report.md
 
       - name: Bei harten Verstößen rot werden

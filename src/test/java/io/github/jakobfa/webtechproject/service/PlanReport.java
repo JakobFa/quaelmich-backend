@@ -36,7 +36,7 @@ import io.github.jakobfa.webtechproject.model.WorkoutType;
  */
 public final class PlanReport {
 
-	private static final LocalDate START = LocalDate.of(2026, 11, 2); // ein Montag
+	static final LocalDate START = LocalDate.of(2026, 11, 2); // ein Montag
 	private static final Set<WorkoutType> EASY = Set.of(WorkoutType.RECOVERY, WorkoutType.ENDURANCE,
 			WorkoutType.LONG_RIDE);
 

@@ -749,4 +749,40 @@ class PlanGeneratorTest {
 					.isEqualTo(phaseOfWeek(decided, recovery.plusWeeks(w)));
 		}
 	}
+
+	@Test
+	void aRecoveryWeekOnlyCountsWhenItWasRiddenEasy() {
+		LocalDate monday = LocalDate.of(2026, 11, 9);
+		LocalDate start = monday.minusDays(49);
+		// Woche ab monday-7: ruhig (300) nach 3 Wochen à 600
+		assertThat(PlanGenerator.riddenAsRecovery(weeksBefore(monday, 300, 600, 600, 600, 600, 600), start,
+				monday.minusWeeks(1))).isTrue();
+		// dieselbe Woche im Urlaub mit 1500 min gefahren: zählt nicht als Erholung
+		assertThat(PlanGenerator.riddenAsRecovery(weeksBefore(monday, 1500, 600, 600, 600, 600, 600), start,
+				monday.minusWeeks(1))).isFalse();
+		assertThat(PlanGenerator.riddenAsRecovery(Map.of(), monday, monday.minusWeeks(1))).as("ohne Daten").isTrue();
+	}
+
+	@Test
+	void ridingLessThanPlannedPostponesTheRecoveryOnlyOnce() {
+		Athlete athlete = ultraRider();
+		List<PlannedWorkout> plain = generator.generate(athlete, MONDAY);
+		LocalDate recovery = plain.stream().filter(p -> p.getPhase() == Phase.RECOVERY)
+				.map(p -> p.getDate().with(DayOfWeek.MONDAY)).min(LocalDate::compareTo).orElseThrow();
+		// jede Woche nur 60 % des Geplanten (z. B. unter der Woche nie): Woche für Woche neu geplant
+		for (LocalDate monday = recovery; monday.isBefore(recovery.plusWeeks(3)); monday = monday.plusWeeks(1)) {
+			Map<LocalDate, PlanHistory.Week> weeks = new java.util.HashMap<>();
+			for (LocalDate past = MONDAY; past.isBefore(monday); past = past.plusWeeks(1)) {
+				weeks.put(past, new PlanHistory.Week(600, 360, 0));
+			}
+			var history = new PlanHistory(monday, weeks, null, 0, monday, new PlanHistory.Week(0, 0, 0),
+					weeksBefore(monday, 360, 360, 360, 360, 360, 360), monday.minusDays(42));
+			var plan = generator.generateSeason(athlete, MONDAY, Map.of(), List.of(), null, history);
+			if (phaseOfWeek(plan, monday) == Phase.RECOVERY) {
+				assertThat(monday).as("Erholung höchstens eine Woche später").isBeforeOrEqualTo(recovery.plusWeeks(1));
+				return;
+			}
+		}
+		throw new AssertionError("keine Erholungswoche, obwohl dauerhaft weniger gefahren wurde");
+	}
 }
