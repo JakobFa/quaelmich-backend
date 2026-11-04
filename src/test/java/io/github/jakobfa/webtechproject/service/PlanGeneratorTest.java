@@ -213,6 +213,8 @@ class PlanGeneratorTest {
 		List<PlannedWorkout> plan = generator.generate(athlete(Level.AMBITIOUS, MONDAY.plusWeeks(30)), MONDAY);
 
 		List<Integer> sweetSpotTss = plan.stream()
+				// Erholungswochen haben bewusst die kleinste Stufe
+				.filter(planned -> planned.getPhase() != Phase.RECOVERY)
 				.map(this::workoutOf)
 				.filter(w -> w.getType() == WorkoutType.SWEET_SPOT)
 				.map(Workout::getTss)
