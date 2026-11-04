@@ -85,6 +85,26 @@ class AccountTest {
 	}
 
 	@Test
+	void theExportContainsTheInternalValuesOfThePlanForDiagnosis() throws Exception {
+		String body = mockMvc.perform(get("/me/account/export").header("Authorization", token))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.diagnose.stand.heute").isNotEmpty())
+				.andExpect(jsonPath("$.diagnose.stand.montagDieserWoche").isNotEmpty())
+				.andExpect(jsonPath("$.diagnose.belastung.minutenProTag").exists())
+				.andExpect(jsonPath("$.diagnose.belastung.erholungstage").isArray())
+				.andExpect(jsonPath("$.diagnose.vergangeneWochen").exists())
+				.andExpect(jsonPath("$.diagnose.laufendeWoche.geplantMinuten").isNumber())
+				.andExpect(jsonPath("$.diagnose.laufendeWoche.erfuellung").isNumber())
+				.andExpect(jsonPath("$.diagnose.vergangeneEinheiten").isArray())
+				.andExpect(jsonPath("$.diagnose.zusatzfahrten").isArray())
+				.andReturn().getResponse().getContentAsString();
+
+		// nur Zahlen und Daten: keine Strava-Links in der Diagnose
+		String diagnose = body.substring(body.indexOf("\"diagnose\""));
+		assertThat(diagnose).doesNotContain("strava.com");
+	}
+
+	@Test
 	void wrongPasswordDeletesNothing() throws Exception {
 		delete("falsch").andExpect(status().isForbidden());
 		assertThat(users.findByEmail(email)).isPresent();
