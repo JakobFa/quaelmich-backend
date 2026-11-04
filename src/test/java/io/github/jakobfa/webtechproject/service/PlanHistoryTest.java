@@ -138,6 +138,19 @@ class PlanHistoryTest {
 	}
 
 	@Test
+	void aScheduledRecoveryWeekRightAfterTheReentryWeekIsDropped() {
+		var plain = byWeek(GENERATOR.generate(athlete(), START, Map.of()));
+		LocalDate recovery = plain.entrySet().stream().filter(entry -> phaseOf(entry.getValue()) == Phase.RECOVERY)
+				.map(Map.Entry::getKey).findFirst().orElseThrow();
+		LocalDate back = recovery.minusWeeks(1);
+
+		var adapted = byWeek(GENERATOR.generate(athlete(), START, Map.of(), history(back, Map.of(), back, 1)));
+
+		assertThat(phaseOf(adapted.get(back))).isEqualTo(Phase.RECOVERY); // der Wiedereinstieg
+		assertThat(phaseOf(adapted.get(recovery))).isNotEqualTo(Phase.RECOVERY); // nicht noch eine Schonwoche
+	}
+
+	@Test
 	void afterIllnessTheVolumeBuildsOnWhatWasActuallyRidden() {
 		LocalDate thisMonday = START.plusWeeks(6);
 		var plain = byWeek(GENERATOR.generate(athlete(), START, Map.of()));

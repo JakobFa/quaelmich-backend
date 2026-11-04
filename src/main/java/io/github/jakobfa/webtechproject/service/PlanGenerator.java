@@ -276,6 +276,8 @@ public class PlanGenerator {
 		int allWeeks = eventDate == null ? Integer.MAX_VALUE : phases.size();
 		List<PlannedWorkout> plan = new ArrayList<>();
 		Map<Phase, Integer> weeksInPhase = new EnumMap<>(Phase.class);
+		// wie die Wochen ohne Anpassung an die Wirklichkeit geplant waren
+		List<Phase> scheduled = new ArrayList<>(phases);
 		int loadWeek = 0;
 		// Umfang der letzten Belastungswoche (Minuten); 0 = noch keiner bekannt
 		double reference = 0;
@@ -287,7 +289,7 @@ public class PlanGenerator {
 			WeeklyAvailability availability = weekAvailability.getOrDefault(monday, athlete.getAvailability());
 			double weeklyHours = availability.totalHours();
 			int weeksUntilEvent = eventDate == null ? Integer.MAX_VALUE : allWeeks - 1 - weekIndex;
-			boolean returning = adaptPhase(phases, weekIndex, monday, history, weeksUntilEvent);
+			boolean returning = adaptPhase(phases, scheduled, weekIndex, monday, history, weeksUntilEvent);
 			Phase phase = phases.get(weekIndex);
 
 			List<LocalDate> trainingDays = monday.datesUntil(monday.plusWeeks(1))
@@ -353,8 +355,8 @@ public class PlanGenerator {
 	 * </ul>
 	 * Das Tapering und die Event-Woche bleiben, wie sie sind.
 	 */
-	private static boolean adaptPhase(List<Phase> phases, int weekIndex, LocalDate monday, PlanHistory history,
-			int weeksUntilEvent) {
+	private static boolean adaptPhase(List<Phase> phases, List<Phase> scheduled, int weekIndex, LocalDate monday,
+			PlanHistory history, int weeksUntilEvent) {
 		if (!history.applies(monday) || phases.get(weekIndex) == Phase.TAPER || weeksUntilEvent <= 1) {
 			return false;
 		}
@@ -362,10 +364,12 @@ public class PlanGenerator {
 			phases.set(weekIndex, Phase.RECOVERY);
 			return true;
 		}
-		if (weekIndex > 0 && phases.get(weekIndex) == Phase.RECOVERY && isLoadPhase(phases.get(weekIndex - 1))) {
+		if (weekIndex > 0 && phases.get(weekIndex) == Phase.RECOVERY && isLoadPhase(scheduled.get(weekIndex - 1))) {
 			var previous = history.before(monday);
-			if (previous != null && previous.fulfilment() < PlanHistory.MIN_FULFILMENT) {
-				phases.set(weekIndex, phases.get(weekIndex - 1));
+			boolean weak = previous != null && previous.fulfilment() < PlanHistory.MIN_FULFILMENT;
+			// direkt nach einem Wiedereinstieg nicht gleich noch eine Erholungswoche
+			if (weak || history.isReentryWeek(monday.minusWeeks(1))) {
+				phases.set(weekIndex, scheduled.get(weekIndex - 1));
 			}
 		}
 		return false;
