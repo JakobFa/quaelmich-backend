@@ -391,6 +391,11 @@ public class PlanGenerator {
 					.filter(day -> !day.isBefore(startDate) && (eventDate == null || day.isBefore(eventDate)))
 					.filter(day -> availableMinutes(availability, day) > 0)
 					.toList();
+			// Laufende Woche: nur noch die Tage ab heute planen – was davor war, ist gefahren oder ausgefallen
+			boolean currentWeek = history.isCurrentWeek(monday);
+			if (currentWeek) {
+				trainingDays = trainingDays.stream().filter(day -> !day.isBefore(history.today())).toList();
+			}
 			trainingDays = withRestDay(trainingDays, availability);
 
 			if (weeksUntilEvent == 0) {
@@ -408,24 +413,59 @@ public class PlanGenerator {
 					profile.goal());
 			weeksInPhase.merge(phase, 1, Integer::sum);
 
+			List<WorkoutType> hardWorkouts = returning ? List.of() // Wiedereinstieg nach Krankheit: nichts Hartes
+					: hardWorkoutsFor(athlete.getLevel(), profile.focus(), phase, weekIndex, weeksUntilEvent,
+							weeklyHours, ftpTest, profile.goal());
+			Integer cap = weekCap(phase, reference);
+			// Vorwoche deutlich härter als geplant: Umfang nicht weiter steigern, eine harte Einheit weniger (s. u.)
+			boolean overreached = false;
+			if (history.applies(monday) && isLoadPhase(phase)) {
+				var previous = history.before(monday);
+				if (previous != null && previous.overreached()) {
+					overreached = !ftpTest;
+					cap = reference > 0 ? (Integer) (int) reference : cap;
+				}
+			}
+			if (currentWeek) {
+				var done = history.currentWeek();
+				// Schon so viel gefahren wie die ganze Woche vorsieht: der Rest der Woche bleibt locker
+				if (done.plannedTss() >= PlanHistory.MIN_PLANNED_TSS_FOR_RATIO && done.actualTss() >= done.plannedTss()
+						&& !ftpTest) {
+					hardWorkouts = List.of();
+				}
+				// Was diese Woche schon gefahren wurde, zählt auf den Wochenumfang
+				if (cap != null) {
+					cap = Math.max(0, cap - done.actualMinutes());
+				}
+			}
+
 			WeekPlan week = new WeekPlan(phase, weekIndex, step,
 					volumeFactor(phase, loadWeek, startVolume(athlete.getLevel(), weeklyHours)),
 					longRideMinutes(profile, phase, loadWeek, loadWeeksTotal),
 					useTempoLongRide(profile, phase, loadWeek),
-					// Wiedereinstieg nach Krankheit: keine harten Einheiten
-					returning ? List.of()
-							: hardWorkoutsFor(athlete.getLevel(), profile.focus(), phase, weekIndex, weeksUntilEvent,
-									weeklyHours, ftpTest, profile.goal()),
-					weekCap(phase, reference),
+					hardWorkouts, cap,
 					backToBack(athlete.getLevel(), profile, phase, loadWeek));
 			List<PlannedWorkout> planned = planWeek(availability, trainingDays, week);
+			if (overreached) {
+				// nicht alles Gewünschte passt in die Tage: eine weniger als tatsächlich eingeplant wurde
+				long placed = planned.stream().filter(this::isHardWorkout).count();
+				if (placed > 1) {
+					week = new WeekPlan(week.phase(), week.weekIndex(), week.step(), week.volume(),
+							week.longRideMinutes(), week.tempoLongRide(),
+							hardWorkouts.subList(0, (int) placed - 1), week.maxMinutes(), week.backToBack());
+					planned = planWeek(availability, trainingDays, week);
+				}
+			}
 			plan.addAll(planned);
 			if (isLoadPhase(phase) && !startDate.isAfter(monday)) {
 				// angefangene Startwoche zählt nicht als Bezug, sie ist nur kurz
 				// vergangene Wochen zählen mit dem, was wirklich gefahren wurde – nicht mit dem Plan
 				var pastWeek = history.isEmpty() || !monday.isBefore(history.thisMonday()) ? null
 						: history.weeks().get(monday);
-				int weekMinutes = pastWeek != null ? pastWeek.actualMinutes() : minutesOf(planned);
+				int weekMinutes = pastWeek != null ? pastWeek.actualMinutes()
+						// laufende Woche: schon Gefahrenes plus der Rest, den wir jetzt planen
+						: currentWeek ? history.currentWeek().actualMinutes() + minutesOf(planned)
+						: minutesOf(planned);
 				reference = Math.max(weekMinutes, reference * REFERENCE_DECAY);
 			}
 			boolean testMissed = ftpTest
@@ -489,6 +529,11 @@ public class PlanGenerator {
 	/** So viele Minuten darf die nächste Belastungswoche höchstens haben, wenn die davor reference hatte */
 	static int weeklyCap(double reference) {
 		return (int) Math.max(reference * MAX_WEEKLY_GROWTH, reference + MIN_WEEKLY_GROWTH_MINUTES);
+	}
+
+	private boolean isHardWorkout(PlannedWorkout planned) {
+		return !Set.of(WorkoutType.RECOVERY, WorkoutType.ENDURANCE, WorkoutType.LONG_RIDE)
+				.contains(library.resolve(planned.getWorkoutId(), planned.getDurationMinutes()).orElseThrow().getType());
 	}
 
 	private int minutesOf(List<PlannedWorkout> week) {

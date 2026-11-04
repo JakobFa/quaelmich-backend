@@ -22,11 +22,13 @@ public class RideAssignmentService {
 	private final PlannedWorkoutService plannedWorkoutService;
 	private final PlannedWorkoutRepository plannedWorkoutRepository;
 	private final ExtraRideRepository extraRideRepository;
+	private final TrainingPlanService planService;
 	private final IntervalAccuracyService intervalAccuracy;
 
 	public RideAssignmentService(PlannedWorkoutService plannedWorkoutService,
 			PlannedWorkoutRepository plannedWorkoutRepository, ExtraRideRepository extraRideRepository,
-			IntervalAccuracyService intervalAccuracy) {
+			IntervalAccuracyService intervalAccuracy, TrainingPlanService planService) {
+		this.planService = planService;
 		this.intervalAccuracy = intervalAccuracy;
 		this.plannedWorkoutService = plannedWorkoutService;
 		this.plannedWorkoutRepository = plannedWorkoutRepository;
@@ -68,7 +70,9 @@ public class RideAssignmentService {
 										.ifPresent(result -> FtpSuggestions.fromRampTest(planned.getPlan().getAthlete(),
 												result, planned.getDate()));
 							}
-							return plannedWorkoutRepository.save(planned);
+							PlannedWorkout saved = plannedWorkoutRepository.save(planned);
+							planService.adaptToActuals(planned.getPlan().getAthlete().getId());
+							return saved;
 						}));
 	}
 
@@ -87,7 +91,9 @@ public class RideAssignmentService {
 					planned.clearActivity();
 					planned.setCompleted(false);
 					planned.setRating(null);
-					return plannedWorkoutRepository.save(planned);
+					PlannedWorkout saved = plannedWorkoutRepository.save(planned);
+					planService.adaptToActuals(planned.getPlan().getAthlete().getId());
+					return saved;
 				});
 	}
 

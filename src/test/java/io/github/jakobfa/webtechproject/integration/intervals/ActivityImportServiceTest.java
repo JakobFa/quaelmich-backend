@@ -54,7 +54,7 @@ class ActivityImportServiceTest {
 	private final IntervalAccuracyService intervalAccuracy = mock(IntervalAccuracyService.class);
 	private final ActivityImportService service = new ActivityImportService(connectionService, client,
 			strava, athleteService, repository, extraRides, new PlanAdaptationService(library), library,
-			intervalAccuracy, CLOCK);
+			intervalAccuracy, mock(io.github.jakobfa.webtechproject.service.TrainingPlanService.class), CLOCK);
 
 	@BeforeEach
 	void connectedUserWithProfile() {

@@ -33,6 +33,7 @@ import io.github.jakobfa.webtechproject.service.IntervalAccuracyService;
 import io.github.jakobfa.webtechproject.model.Workout;
 import io.github.jakobfa.webtechproject.model.WorkoutType;
 import io.github.jakobfa.webtechproject.service.PlanAdaptationService;
+import io.github.jakobfa.webtechproject.service.TrainingPlanService;
 import io.github.jakobfa.webtechproject.service.WorkoutLibrary;
 
 /**
@@ -64,13 +65,15 @@ public class ActivityImportService {
 	private final PlanAdaptationService adaptation;
 	private final WorkoutLibrary library;
 	private final IntervalAccuracyService intervalAccuracy;
+	private final TrainingPlanService planService;
 	private final Clock clock;
 
 	public ActivityImportService(IntervalsConnectionService connectionService, IntervalsIcuClient client,
 			StravaService stravaService, AthleteService athleteService,
 			PlannedWorkoutRepository plannedWorkoutRepository, ExtraRideRepository extraRideRepository,
 			PlanAdaptationService adaptation, WorkoutLibrary library, IntervalAccuracyService intervalAccuracy,
-			Clock clock) {
+			TrainingPlanService planService, Clock clock) {
+		this.planService = planService;
 		this.intervalAccuracy = intervalAccuracy;
 		this.connectionService = connectionService;
 		this.client = client;
@@ -255,6 +258,8 @@ public class ActivityImportService {
 						: intervalsAnswered)
 				.toList());
 
+		// neue Fahrten verändern, was gefahren wurde: der Rest des Plans richtet sich danach
+		planService.adaptToActuals(athleteId);
 		return Optional.of(new ImportResult(rides.size(), matched, extra, adjusted));
 	}
 

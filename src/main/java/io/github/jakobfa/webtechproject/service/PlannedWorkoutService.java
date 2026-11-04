@@ -12,9 +12,11 @@ import io.github.jakobfa.webtechproject.repository.PlannedWorkoutRepository;
 public class PlannedWorkoutService {
 
 	private final PlannedWorkoutRepository repository;
+	private final TrainingPlanService planService;
 
-	public PlannedWorkoutService(PlannedWorkoutRepository repository) {
+	public PlannedWorkoutService(PlannedWorkoutRepository repository, TrainingPlanService planService) {
 		this.repository = repository;
+		this.planService = planService;
 	}
 
 	/** Nur Workouts aus dem eigenen Plan – fremde gelten als "nicht gefunden". */
@@ -32,7 +34,9 @@ public class PlannedWorkoutService {
 			}
 			// Ohne Häkchen gibt es auch keine Bewertung
 			planned.setRating(completed ? rating : null);
-			return repository.save(planned);
+			PlannedWorkout saved = repository.save(planned);
+			adaptToActuals(saved);
+			return saved;
 		});
 	}
 
@@ -49,8 +53,15 @@ public class PlannedWorkoutService {
 			if (!matchesPlan) {
 				planned.setRating(null);
 			}
-			return repository.save(planned);
+			PlannedWorkout saved = repository.save(planned);
+			adaptToActuals(saved);
+			return saved;
 		});
+	}
+
+	/** Was gefahren wurde, hat sich geändert: der Rest des Plans richtet sich danach (siehe TrainingPlanService) */
+	private void adaptToActuals(PlannedWorkout planned) {
+		planService.adaptToActuals(planned.getPlan().getAthlete().getId());
 	}
 
 	private static boolean isOwnedBy(PlannedWorkout planned, Long userId) {
