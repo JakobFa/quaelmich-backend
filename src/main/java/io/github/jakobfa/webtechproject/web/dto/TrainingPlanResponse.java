@@ -17,5 +17,5 @@ import io.github.jakobfa.webtechproject.service.EventProfile;
 public record TrainingPlanResponse(Long id, LocalDate startDate, String eventName, LocalDate eventDate,
 		List<PlannedWorkoutResponse> workouts, List<ExtraRideResponse> extraRides, EventProfile eventProfile,
 		Map<LocalDate, WeeklyAvailability> weekAvailability, List<RaceEvent> moreEvents,
-		TrainingGoal trainingGoal) {
+		TrainingGoal trainingGoal, LocalDate sickSince) {
 }
