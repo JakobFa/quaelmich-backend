@@ -141,7 +141,8 @@ class McpTest {
 		rpc(access, "{ \"jsonrpc\": \"2.0\", \"id\": 2, \"method\": \"tools/list\" }")
 				.andExpect(status().isOk())
 				.andExpect(jsonPath("$.result.tools[?(@.name=='get_plan')]").exists())
-				.andExpect(jsonPath("$.result.tools[?(@.name=='get_diagnosis')]").exists())
+				.andExpect(jsonPath("$.result.tools[?(@.name=='get_diagnosis')]").doesNotExist())
+				.andExpect(jsonPath("$.result.tools[?(@.name=='get_rides')]").doesNotExist())
 				.andExpect(jsonPath("$.result.tools[?(@.name=='list_workouts')]").exists());
 	}
 
@@ -157,8 +158,8 @@ class McpTest {
 		String upcoming = call(access, "get_plan", "{}");
 		assertThat(upcoming).contains("\"einheit\"").contains("\"minuten\"").contains("\"tss\"");
 
-		assertThat(call(access, "get_diagnosis", "{}")).contains("\"belastung\"").contains("\"stand\"");
-		assertThat(call(access, "get_rides", "{}")).contains("\"zusatzfahrten\"");
+		// keine Strava-abgeleiteten Daten: weder gefahrene Werte im Plan noch Diagnose/Fahrten-Werkzeuge
+		assertThat(upcoming).doesNotContain("gefahren").doesNotContain("erledigt");
 		assertThat(call(access, "list_workouts", "{ \"type\": \"threshold\" }")).contains("Schwelle 2 × 15");
 	}
 
@@ -272,8 +273,7 @@ class McpTest {
 		String list = rpc(access, "{ \"jsonrpc\": \"2.0\", \"id\": 2, \"method\": \"tools/list\" }")
 				.andReturn().getResponse().getContentAsString();
 		List<String> names = JsonPath.read(list, "$.result.tools[*].name");
-		assertThat(names).containsExactlyInAnyOrder("get_overview", "get_plan", "get_diagnosis", "get_rides",
-				"list_workouts");
+		assertThat(names).containsExactlyInAnyOrder("get_overview", "get_plan", "list_workouts");
 		assertThat(Map.of("scope", "plan:read")).isNotEmpty();
 	}
 }
