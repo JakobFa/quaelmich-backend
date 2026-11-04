@@ -37,4 +37,13 @@ class PlanOptimizerTest {
 		assertThat(ParameterEvaluation.evaluate(result.best(), PlanOptimizer.TRAIN_SEED, 20, true).objective())
 				.isEqualTo(result.trainBest().objective());
 	}
+
+	@Test
+	void theSearchContinuesFromABetterStartAndIgnoresAWorseOne() {
+		PlanParameters worse = ParameterEvaluation.parse("taperWeeks=1");
+		var fromWorse = PlanOptimizer.search(3, 20, 7, worse);
+		assertThat(fromWorse.trainBest().objective()).isGreaterThanOrEqualTo(fromWorse.trainDefault().objective());
+		assertThat(PlanOptimizer.text(ParameterEvaluation.parse(PlanOptimizer.text(worse)))).isEqualTo(
+				PlanOptimizer.text(worse));
+	}
 }

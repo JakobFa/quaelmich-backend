@@ -55,6 +55,11 @@ public final class PlanOptimizer {
 
 	/** Die Suche selbst (ohne Prüf-Satz und Bericht) */
 	static Result search(long budgetSeconds, int trainRiders, long randomSeed) {
+		return search(budgetSeconds, trainRiders, randomSeed, PlanParameters.DEFAULT);
+	}
+
+	/** Wie oben, aber weiter ab from (z. B. dem besten Satz des Vortags); verglichen wird trotzdem mit den App-Werten */
+	static Result search(long budgetSeconds, int trainRiders, long randomSeed, PlanParameters from) {
 		long deadline = System.nanoTime() + budgetSeconds * 1_000_000_000L;
 		Random random = new Random(randomSeed);
 		Map<PlanParameters, ParameterEvaluation.Evaluation> cache = new HashMap<>();
@@ -63,9 +68,13 @@ public final class PlanOptimizer {
 		List<String> log = new ArrayList<>();
 
 		ParameterEvaluation.Evaluation start = eval.apply(PlanParameters.DEFAULT);
-		ParameterEvaluation.Evaluation best = start;
-		PlanParameters current = PlanParameters.DEFAULT;
-		double currentValue = start.objective();
+		ParameterEvaluation.Evaluation fromEvaluation = eval.apply(from);
+		ParameterEvaluation.Evaluation best = fromEvaluation.objective() > start.objective() ? fromEvaluation : start;
+		PlanParameters current = best.parameters();
+		double currentValue = best.objective();
+		if (best != start) {
+			log.add("Start beim besten Satz bisher: %.2f – %s".formatted(best.objective(), changes(best.parameters())));
+		}
 		int sinceImprovement = 0;
 		while (System.nanoTime() < deadline) {
 			// meist kleine Schritte um den aktuellen Punkt, ab und zu ein Neustart vom besten oder ganz woanders
@@ -125,13 +134,26 @@ public final class PlanOptimizer {
 	}
 
 	static PlanParameters build(Map<String, Double> values) {
+		PlanParameters defaults = PlanParameters.DEFAULT;
+		StringBuilder text = new StringBuilder();
+		for (RecordComponent c : PlanParameters.class.getRecordComponents()) {
+			double v = values.containsKey(c.getName()) ? values.get(c.getName()) : values(defaults).get(c.getName());
+			text.append(text.isEmpty() ? "" : ",").append(c.getName()).append('=')
+					.append(c.getType() == int.class ? String.valueOf((int) Math.round(v)) : String.valueOf(v));
+		}
+		return ParameterEvaluation.parse(text.toString());
+	}
+
+	/** Als Text "name=wert,…", wie ParameterEvaluation.parse ihn liest */
+	static String text(PlanParameters p) {
+		Map<String, Double> values = values(p);
 		StringBuilder text = new StringBuilder();
 		for (RecordComponent c : PlanParameters.class.getRecordComponents()) {
 			double v = values.get(c.getName());
 			text.append(text.isEmpty() ? "" : ",").append(c.getName()).append('=')
 					.append(c.getType() == int.class ? String.valueOf((int) Math.round(v)) : String.valueOf(v));
 		}
-		return ParameterEvaluation.parse(text.toString());
+		return text.toString();
 	}
 
 	/** Was gegenüber den App-Werten anders ist, z. B. "recoveryVolume 0.6 → 0.55" */
@@ -156,9 +178,19 @@ public final class PlanOptimizer {
 		long budget = args.length > 1 && !args[1].isBlank() ? Long.parseLong(args[1]) : 600;
 		int trainRiders = args.length > 2 && !args[2].isBlank() ? Integer.parseInt(args[2]) : 500;
 		int holdoutRiders = args.length > 3 && !args[3].isBlank() ? Integer.parseInt(args[3]) : 1000;
+		// weiter ab dem besten Satz bisher (Datei des Vortags), wenn es eine gibt
+		Path previous = args.length > 4 && !args[4].isBlank() ? Path.of(args[4]) : null;
+		PlanParameters from = PlanParameters.DEFAULT;
+		if (previous != null && Files.exists(previous)) {
+			try {
+				from = ParameterEvaluation.parse(Files.readString(previous).trim());
+			} catch (RuntimeException e) {
+				System.out.println("Bester Satz bisher nicht lesbar, Start bei den App-Werten: " + e.getMessage());
+			}
+		}
 		long started = System.nanoTime();
 
-		Result result = search(budget, trainRiders, LocalDate.now().toEpochDay());
+		Result result = search(budget, trainRiders, LocalDate.now().toEpochDay(), from);
 		PlanParameters best = result.best();
 		var holdoutApp = ParameterEvaluation.evaluate(PlanParameters.DEFAULT, HOLDOUT_SEED, holdoutRiders, true);
 		var holdoutBest = ParameterEvaluation.evaluate(best, HOLDOUT_SEED, holdoutRiders, true);
@@ -204,6 +236,9 @@ public final class PlanOptimizer {
 		result.log().forEach(line -> out.append("- ").append(line).append('\n'));
 		Files.createDirectories(target.toAbsolutePath().getParent());
 		Files.writeString(target, out);
+		// der beste Satz für den nächsten Lauf: nur, wenn er auch auf dem Prüf-Satz besser ist – sonst der bisherige
+		Files.writeString(target.resolveSibling("plan-optimization-best.txt"),
+				(better ? text(best) : text(from)) + "\n");
 		System.out.println(out);
 	}
 
