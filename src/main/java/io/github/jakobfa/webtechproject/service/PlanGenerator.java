@@ -38,10 +38,13 @@ import io.github.jakobfa.webtechproject.service.EventProfile.Focus;
  * - Der Umfang einer Belastungswoche steigt höchstens um 10 % gegenüber der Belastungswoche davor – auch wenn die
  *   eingetragene Zeit viel mehr hergäbe. Erholung und Tapering sind davon ausgenommen.
  * - Die lange Ausfahrt wächst aufs Ziel hin (bei langen Events von ca. 40 % auf 75 % der Event-Dauer, max. 6 h),
- *   bei langen Events im Aufbau mit Tempo-Blöcken im Renntempo.
+ *   bei langen Events und Ultras im Aufbau mit Tempo-Blöcken im Renntempo.
  * - Die harten Workouts richten sich nach dem Schwerpunkt des Events (siehe {@link EventProfile})
  *   und nach der Wochenzeit: wenig Zeit → Sweet-Spot-betont, viel Zeit → polarisiert.
- * - Harte Einheiten nie an zwei Tagen hintereinander und nie direkt vor oder nach der langen Ausfahrt.
+ * - Harte Einheiten nie an zwei Tagen hintereinander und nie direkt vor oder nach der langen Ausfahrt; den Tag
+ *   nach einem großen Umfangstag (meist Montag) nur, wenn sonst nichts passt. Übrige Zeit an harten Tagen wird
+ *   lockere Grundlage nach den Intervallen.
+ * - Die harten Workouts werden über den ganzen Plan schwerer, ab Stufe 4 durch längere Blöcke statt mehr Watt.
  * - FTP-Test am Anfang und zu Beginn des Aufbaus.
  * - Event-Woche: eine kurze, knackige Einheit, zwei Tage vorher Ruhe, am Vortag ein kurzer Opener.
  */
@@ -405,7 +408,8 @@ public class PlanGenerator {
 		int maxStep = switch (level) {
 			case BEGINNER -> 1;
 			case HOBBY -> 2;
-			default -> 3;
+			case AMBITIOUS -> 4;
+			case PERFORMANCE -> HARDEST_STEP;
 		};
 		int top = phase == Phase.PEAK ? Math.min(HARDEST_STEP, maxStep + 1) : maxStep;
 		int step = switch (phase) {
@@ -421,8 +425,12 @@ public class PlanGenerator {
 		};
 	}
 
-	/** Höchste Stufe in der Bibliothek (z. B. VO2max 5 × 5, Schwelle 3 × 15) */
-	static final int HARDEST_STEP = 3;
+	/**
+	 * Höchste Stufe in der Bibliothek (z. B. Tempo 2 × 45, Schwelle 2 × 30). Die Stufen über 3 machen die
+	 * Blöcke länger statt härter, damit die Steigerung auch über lange Pläne trägt; Arten mit weniger Stufen
+	 * (VO2max, Over-Unders) bleiben auf ihrer schwersten.
+	 */
+	static final int HARDEST_STEP = 5;
 
 	// ---------- Umfang ----------
 
@@ -470,7 +478,7 @@ public class PlanGenerator {
 		};
 	}
 
-	/** Lange Events: im Aufbau und in der Spitze jede zweite lange Ausfahrt mit Tempo-Blöcken */
+	/** Lange Events und Ultras: im Aufbau und in der Spitze jede zweite lange Ausfahrt mit Tempo-Blöcken */
 	static boolean useTempoLongRide(EventProfile profile, Phase phase, int loadWeek) {
 		boolean buildOrPeak = phase == Phase.BUILD || phase == Phase.PEAK;
 		return switch (profile.goal()) {
@@ -478,7 +486,9 @@ public class PlanGenerator {
 			case FINISH -> false;
 			// vorne mitfahren: Renntempo üben – auch bei Ultras, und bei langen Events jede Woche
 			case COMPETE -> buildOrPeak && (isLongEvent(profile) || profile.focus() == Focus.ULTRA);
-			case GOOD_TIME -> isLongEvent(profile) && buildOrPeak && loadWeek % 2 == 0;
+			// Ultras: über Stunden 65–80 % FTP halten ist genau der Reiz, den die lange Ausfahrt hier setzen soll
+			case GOOD_TIME -> (isLongEvent(profile) || profile.focus() == Focus.ULTRA) && buildOrPeak
+					&& loadWeek % 2 == 0;
 		};
 	}
 
@@ -614,9 +624,12 @@ public class PlanGenerator {
 		// Harte Einheiten nicht am Tag der langen Ausfahrt und nicht direkt davor oder danach. Sie sind kurz und
 		// kommen deshalb auf den Tag mit der knappsten Zeit, auf den sie noch passen – die Tage mit viel Zeit
 		// bleiben für Umfang (Grundlage, lange Ausfahrt). Bei gleicher Zeit gilt der frühere Tag.
+		// Der Tag nach einem großen Umfangstag (meist der Montag nach dem Wochenende) kommt nur zum Zug, wenn
+		// sonst nichts passt – mit müden Beinen leidet die Qualität der Intervalle.
 		List<LocalDate> candidates = days.stream()
 				.filter(day -> Math.abs(ChronoUnit.DAYS.between(longDay, day)) > 1)
-				.sorted(Comparator.comparingInt((LocalDate day) -> availableMinutes(availability, day)))
+				.sorted(Comparator.comparing((LocalDate day) -> isAfterBigDay(availability, day))
+						.thenComparingInt(day -> availableMinutes(availability, day)))
 				.toList();
 
 		List<PlannedWorkout> week = new ArrayList<>();
@@ -686,6 +699,7 @@ public class PlanGenerator {
 		if (plan.maxMinutes() != null) {
 			shrinkToCap(flexible, minutesOf(week), plan.maxMinutes());
 		}
+		fillHardDays(week, availability, plan, flexible);
 
 		// ein lockerer Tag pro Woche bekommt Einlagen (Antritte oder Tempo), damit nicht jeder Tag gleich aussieht
 		boolean spiceWeek = plan.phase() == Phase.BASE || plan.phase() == Phase.BUILD || plan.phase() == Phase.PEAK;
@@ -698,7 +712,8 @@ public class PlanGenerator {
 			} else {
 				int available = availableMinutes(availability, day);
 				PlannedWorkout easy = easyWorkout(day, minutes, available, plan.phase());
-				if (spiceWeek && !spiced && easy.getWorkoutId() == WorkoutLibrary.endurance(60).getId()) {
+				if (spiceWeek && !spiced && easy.getWorkoutId() == WorkoutLibrary.endurance(60).getId()
+						&& !isAfterBigDay(availability, day)) {
 					int length = easy.getDurationMinutes();
 					Workout spice = plan.weekIndex() % 2 == 0 ? WorkoutLibrary.enduranceWithSprints(length)
 							: WorkoutLibrary.enduranceWithTempo(length);
@@ -711,6 +726,57 @@ public class PlanGenerator {
 
 		week.sort(Comparator.comparing(PlannedWorkout::getDate));
 		return week;
+	}
+
+	/**
+	 * Übrige Zeit am Tag der harten Einheit wird lockere Grundlage nach dem Hauptteil (siehe WorkoutFitter) –
+	 * aerober Umfang, der kaum zusätzlich ermüdet. Im gleichen Verhältnis wie die lockeren Tage (Umfangsfaktor),
+	 * nicht in Erholung und Tapering. null = Workout bleibt, wie es ist.
+	 */
+	static Integer filledLength(Workout workout, int available, WeekPlan plan) {
+		if (!isLoadPhase(plan.phase()) || !WorkoutLibrary.isLengthAdjustable(workout)) {
+			return null;
+		}
+		int target = Math.min(available, floorToQuarterHour(available * plan.volume()));
+		return target >= workout.getDurationInMinutes() + FILL_MIN_EXTRA ? target : null;
+	}
+
+	/**
+	 * Füllt die harten Tage auf (siehe filledLength) – erst nachdem die lockeren Tage feststehen und nur im Rahmen
+	 * dessen, was der Wochendeckel noch übrig lässt. Eine harte Einheit wird dabei nie länger als die längste
+	 * lockere Fahrt der Woche.
+	 */
+	private void fillHardDays(List<PlannedWorkout> week, WeeklyAvailability availability, WeekPlan plan,
+			java.util.Map<LocalDate, Integer> flexible) {
+		int longest = flexible.values().stream().mapToInt(Integer::intValue).max().orElse(0);
+		int budget = plan.maxMinutes() == null ? Integer.MAX_VALUE
+				: plan.maxMinutes() - minutesOf(week) - flexible.values().stream().mapToInt(Integer::intValue).sum();
+		for (int i = 0; i < week.size() && budget > 0; i++) {
+			PlannedWorkout hard = week.get(i);
+			Workout workout = library.findById(hard.getWorkoutId()).orElseThrow();
+			int current = library.resolve(hard.getWorkoutId(), hard.getDurationMinutes()).orElseThrow()
+					.getDurationInMinutes();
+			Integer target = filledLength(workout, availableMinutes(availability, hard.getDate()), plan);
+			if (target == null) {
+				continue;
+			}
+			int length = floorToQuarterHour(Math.min(Math.min(target, longest), (long) current + budget));
+			if (length >= current + FILL_MIN_EXTRA) {
+				week.set(i, new PlannedWorkout(hard.getDate(), workout, length, plan.phase()));
+				budget -= length - current;
+			}
+		}
+	}
+
+	/** Erst ab so viel Zusatzzeit lohnt sich das Auffüllen */
+	static final int FILL_MIN_EXTRA = 15;
+
+	/** Ab so viel verfügbarer Zeit gilt ein Tag als großer Umfangstag (lange Ausfahrt, lange Grundlage) */
+	static final int BIG_DAY_MINUTES = 180;
+
+	/** Ist der Vortag (laut Wochenzeit) ein großer Umfangstag? Gilt auch über die Wochengrenze (So → Mo). */
+	static boolean isAfterBigDay(WeeklyAvailability availability, LocalDate day) {
+		return availableMinutes(availability, day.minusDays(1)) >= BIG_DAY_MINUTES;
 	}
 
 	/**
@@ -780,7 +846,14 @@ public class PlanGenerator {
 				0);
 		Workout opener = library.findById(28L).orElseThrow();
 
-		boolean sharpenerPlaced = false;
+		// die knackige Einheit mit Abstand zum Event (spätestens 3 Tage vorher), möglichst nicht am Tag nach
+		// einem großen Umfangstag
+		LocalDate sharpenerDay = days.stream()
+				.filter(day -> day.isBefore(eventDate.minusDays(2))
+						&& availableMinutes(availability, day) >= sharpener.getDurationInMinutes())
+				.min(Comparator.comparing((LocalDate day) -> isAfterBigDay(availability, day))
+						.thenComparing(Comparator.naturalOrder()))
+				.orElse(null);
 		for (LocalDate day : days) {
 			int available = availableMinutes(availability, day);
 			if (day.equals(restDay)) {
@@ -792,11 +865,8 @@ public class PlanGenerator {
 				}
 				continue;
 			}
-			// die knackige Einheit mit Abstand zum Event (spätestens 3 Tage vorher)
-			if (!sharpenerPlaced && day.isBefore(eventDate.minusDays(2))
-					&& available >= sharpener.getDurationInMinutes()) {
+			if (day.equals(sharpenerDay)) {
 				week.add(new PlannedWorkout(day, sharpener, null, Phase.TAPER));
-				sharpenerPlaced = true;
 				continue;
 			}
 			week.add(easyWorkout(day, Math.min(60, floorToQuarterHour(available * 0.4)), available, Phase.TAPER));
