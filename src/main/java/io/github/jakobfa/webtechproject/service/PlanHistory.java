@@ -13,12 +13,13 @@ import java.util.Map;
  * @param today          heute; die laufende Woche wird nur noch ab hier geplant (null = keine Angabe)
  * @param currentWeek    was in der laufenden Woche schon gefahren wurde (actual*) und was die Woche insgesamt
  *                       vorsieht (planned*); null = keine Angabe
+ * @param plannedRestMinutes so viele Minuten waren für den Rest der laufenden Woche (ab heute) schon geplant
  */
 public record PlanHistory(LocalDate thisMonday, Map<LocalDate, Week> weeks, LocalDate reentryMonday,
-		int reentryWeeks, LocalDate today, Week currentWeek) {
+		int reentryWeeks, LocalDate today, Week currentWeek, int plannedRestMinutes) {
 
 	/** Ohne Wissen über vergangene Wochen: der Plan richtet sich allein nach dem Kalender */
-	public static final PlanHistory NONE = new PlanHistory(null, Map.of(), null, 0, null, null);
+	public static final PlanHistory NONE = new PlanHistory(null, Map.of(), null, 0, null, null, 0);
 
 	/** Wurde die Belastungswoche davor zu weniger als diesem Anteil gefahren, entfällt die Erholungswoche */
 	static final double MIN_FULFILMENT = 0.7;
@@ -28,6 +29,10 @@ public record PlanHistory(LocalDate thisMonday, Map<LocalDate, Week> weeks, Loca
 	 * und es gibt eine harte Einheit weniger – auch wenn die Minuten gepasst haben (zu hart gefahren).
 	 */
 	static final double OVERREACH_TSS_RATIO = 1.25;
+	/** Über so viele zurückliegende Wochen wird die Erfüllung gemittelt ... */
+	static final int RECENT_WEEKS = 3;
+	/** ... und liegt der Schnitt darunter, entfällt die Erholungswoche ebenfalls (man hat nicht voll trainiert) */
+	static final double MIN_RECENT_FULFILMENT = 0.85;
 	/** Unter dieser geplanten Belastung sind Abweichungen Rauschen (z. B. fast leere Woche) */
 	static final int MIN_PLANNED_TSS_FOR_RATIO = 100;
 
@@ -58,7 +63,12 @@ public record PlanHistory(LocalDate thisMonday, Map<LocalDate, Week> weeks, Loca
 	}
 
 	public PlanHistory(LocalDate thisMonday, Map<LocalDate, Week> weeks, LocalDate reentryMonday, int reentryWeeks) {
-		this(thisMonday, weeks, reentryMonday, reentryWeeks, null, null);
+		this(thisMonday, weeks, reentryMonday, reentryWeeks, null, null, 0);
+	}
+
+	public PlanHistory(LocalDate thisMonday, Map<LocalDate, Week> weeks, LocalDate reentryMonday, int reentryWeeks,
+			LocalDate today, Week currentWeek) {
+		this(thisMonday, weeks, reentryMonday, reentryWeeks, today, currentWeek, 0);
 	}
 
 	public boolean isEmpty() {
@@ -79,6 +89,19 @@ public record PlanHistory(LocalDate thisMonday, Map<LocalDate, Week> weeks, Loca
 	/** Die vergangene Woche vor diesem Montag, falls bekannt */
 	Week before(LocalDate monday) {
 		return weeks.get(monday.minusWeeks(1));
+	}
+
+	/**
+	 * Durchschnittliche Erfüllung der letzten Wochen vor diesem Montag (nur Wochen mit Plan), null ohne Angaben. Die
+	 * Startwoche eines Plans zählt nur teilweise mit und wird deshalb nicht mitgerechnet, wenn sie die einzige ist.
+	 */
+	Double averageFulfilment(LocalDate monday, int weeksBack) {
+		var fulfilments = java.util.stream.IntStream.rangeClosed(1, weeksBack)
+				.mapToObj(back -> weeks.get(monday.minusWeeks(back)))
+				.filter(week -> week != null && week.plannedMinutes() > 0)
+				.map(Week::fulfilment).toList();
+		return fulfilments.size() < 2 ? null
+				: fulfilments.stream().mapToDouble(Double::doubleValue).average().orElse(1.0);
 	}
 
 	/** Ist das die laufende Woche, für die Ist-Werte bis heute vorliegen? */
