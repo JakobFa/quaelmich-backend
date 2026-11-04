@@ -46,6 +46,7 @@ public class AccountService {
 	private final IntervalsConnectionService intervals;
 	private final PlanResponseMapper planMapper;
 	private final io.github.jakobfa.webtechproject.service.TrainingPlanService planService;
+	private final io.github.jakobfa.webtechproject.mcp.OAuthService aiConnections;
 	private final io.github.jakobfa.webtechproject.repository.RaceEventRepository raceEvents;
 
 	public AccountService(AppUserRepository users, PasswordEncoder passwordEncoder, AthleteRepository athletes,
@@ -53,7 +54,9 @@ public class AccountService {
 			FeedbackRepository feedback, InvitationRepository invitations, PasswordResetTokenRepository resetTokens,
 			StravaService strava, IntervalsConnectionService intervals, PlanResponseMapper planMapper,
 			io.github.jakobfa.webtechproject.repository.RaceEventRepository raceEvents,
-			io.github.jakobfa.webtechproject.service.TrainingPlanService planService) {
+			io.github.jakobfa.webtechproject.service.TrainingPlanService planService,
+			io.github.jakobfa.webtechproject.mcp.OAuthService aiConnections) {
+		this.aiConnections = aiConnections;
 		this.planService = planService;
 		this.raceEvents = raceEvents;
 		this.users = users;
@@ -82,6 +85,7 @@ public class AccountService {
 		}
 		strava.disconnect(userId);
 		intervals.disconnect(userId);
+		aiConnections.deleteAllOf(userId); // Zugänge von KI-Apps enden mit dem Konto
 		athletes.findByOwnerId(userId).ifPresent(athlete -> {
 			plans.findByAthleteId(athlete.getId()).ifPresent(plans::delete);
 			raceEvents.deleteAll(raceEvents.findByAthleteIdOrderByDate(athlete.getId()));
