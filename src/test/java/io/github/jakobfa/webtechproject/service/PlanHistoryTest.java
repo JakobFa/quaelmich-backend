@@ -343,6 +343,18 @@ class PlanHistoryTest {
 	}
 
 	@Test
+	void aSingleUltraDayDoesNotLiftTheLimitForTheFollowingWeeks() {
+		Map<LocalDate, Integer> daily = new java.util.HashMap<>(dailyMinutesBefore(START, 28, 60));
+		daily.put(START.minusDays(10), 722); // z. B. ein 12-Stunden-Rennen
+		LocalDate dataStart = START.minusDays(28);
+
+		// der Tag zählt höchstens als 6 Stunden: (27 * 60 + 360) * 7 / 28 = 495 statt 585 Minuten pro Woche
+		assertThat(PlanGenerator.baselineWeeklyMinutes(daily, java.util.Set.of(), dataStart, START)).isEqualTo(495.0);
+		var cap = PlanGenerator.rollingCap(daily, java.util.Set.of(), dataStart, START, Phase.BASE, false);
+		assertThat(cap.weeklyCapMinutes()).isEqualTo(584); // 495 * 1,18, nicht 585 * 1,18 = 690
+	}
+
+	@Test
 	void aShortStartWeekIsExtrapolatedNotTreatedAsAWeakWeek() {
 		Map<LocalDate, Integer> daily = Map.of(START.minusDays(1), 60, START.minusDays(2), 60, START.minusDays(3), 60);
 		var cap = PlanGenerator.rollingCap(daily, java.util.Set.of(), START.minusDays(3), START, Phase.BASE, false);
