@@ -113,6 +113,9 @@ public class ActivityImportService {
 				? stravaService.recentRides(userId, from, today, athlete.get().getFtp(),
 						athlete.get().getEffectiveThresholdHeartRate())
 				: Optional.empty();
+		if (stravaRides.isPresent()) {
+			stravaService.markSynced(userId); // die Strava-Werte sind ab jetzt wieder frisch (höchstens 7 Tage alt)
+		}
 		// schon bekannte Fahrten (zugeordnet, abgelehnt, Zusatzfahrt) behalten ihre Quelle – sonst würden sie
 		// als "neue" Fahrt gelten und den Plan ein zweites Mal anpassen
 		Set<String> knownIds = new java.util.HashSet<>();

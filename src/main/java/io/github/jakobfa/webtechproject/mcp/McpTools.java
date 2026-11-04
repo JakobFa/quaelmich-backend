@@ -12,20 +12,19 @@ import org.springframework.stereotype.Component;
 import org.springframework.transaction.support.TransactionTemplate;
 
 import io.github.jakobfa.webtechproject.model.Athlete;
-import io.github.jakobfa.webtechproject.model.ExtraRide;
 import io.github.jakobfa.webtechproject.model.PlannedWorkout;
 import io.github.jakobfa.webtechproject.model.TrainingPlan;
 import io.github.jakobfa.webtechproject.model.Workout;
 import io.github.jakobfa.webtechproject.model.WorkoutType;
-import io.github.jakobfa.webtechproject.repository.ExtraRideRepository;
 import io.github.jakobfa.webtechproject.service.AthleteService;
 import io.github.jakobfa.webtechproject.service.TrainingPlanService;
 import io.github.jakobfa.webtechproject.service.WorkoutLibrary;
 
 /**
- * Die Werkzeuge, die eine KI-App über MCP sieht. Nur Zahlen, Daten und Titel aus der Bibliothek – keine Freitexte der
- * Nutzer (Rückmeldungen, Notizen) und keine Strava-Links, damit nichts darin wie eine Anweisung wirken kann und
- * keine Strava-Rohdaten weitergegeben werden.
+ * Die Werkzeuge, die eine KI-App über MCP sieht: nur der Plan, das Profil und die Workout-Bibliothek. Bewusst keine
+ * gefahrenen Fahrten, keine Diagnose und keine Werte aus Strava: Die API-Policy von Strava (Stand 1. Juni 2026, §5.3
+ * und §5.10) verbietet, Strava-Daten und daraus Abgeleitetes in eine KI zu laden. Dazu keine Freitexte der Nutzer
+ * (Rückmeldungen, Notizen), damit nichts darin wie eine Anweisung wirken kann.
  */
 @Component
 public class McpTools {
@@ -45,16 +44,14 @@ public class McpTools {
 
 	private final AthleteService athletes;
 	private final TrainingPlanService plans;
-	private final ExtraRideRepository extraRides;
 	private final WorkoutLibrary library;
 	private final TransactionTemplate tx;
 	private final Clock clock;
 
-	public McpTools(AthleteService athletes, TrainingPlanService plans, ExtraRideRepository extraRides,
+	public McpTools(AthleteService athletes, TrainingPlanService plans,
 			WorkoutLibrary library, TransactionTemplate tx, Clock clock) {
 		this.athletes = athletes;
 		this.plans = plans;
-		this.extraRides = extraRides;
 		this.library = library;
 		this.tx = tx;
 		this.clock = clock;
@@ -82,14 +79,6 @@ public class McpTools {
 						+ "92 Tage): je Tag die Einheit mit Art, Dauer, Belastung (TSS), Phase, Status und Anpassung.",
 						schema(Map.of("from", text("Erster Tag, JJJJ-MM-TT"), "to", text("Letzter Tag, JJJJ-MM-TT"))),
 						OAuthService.SCOPE_READ),
-				new Tool("get_diagnosis", "Die internen Werte, nach denen sich der Plan richtet: Belastung je Tag, Schnitt "
-						+ "der letzten 28 Tage, Grenzen für 7 Tage, vergangene Wochen mit Erfüllung und Härte, vergangene "
-						+ "Einheiten geplant gegen gefahren. Damit lässt sich erklären, warum der Plan so aussieht.",
-						schema(Map.of()), OAuthService.SCOPE_READ),
-				new Tool("get_rides", "Gefahrene Einheiten und Zusatzfahrten im Zeitraum (Standard: die letzten 28 Tage): "
-						+ "Dauer, Distanz, Belastung, Sportart, Zuordnung zum Plan. Keine Strava-Daten im Detail.",
-						schema(Map.of("from", text("Erster Tag, JJJJ-MM-TT"), "to", text("Letzter Tag, JJJJ-MM-TT"))),
-						OAuthService.SCOPE_READ),
 				new Tool("list_workouts", "Die Workout-Bibliothek: Titel, Art, Dauer, Belastung und Beschreibung. Optional "
 						+ "nach Art gefiltert (z. B. SWEET_SPOT, THRESHOLD, VO2MAX, ENDURANCE, LONG_RIDE).",
 						schema(Map.of("type", text("Trainingsart, z. B. THRESHOLD"))), OAuthService.SCOPE_READ));
@@ -100,9 +89,6 @@ public class McpTools {
 		return switch (name) {
 			case "get_overview" -> overview(userId);
 			case "get_plan" -> plan(userId, date(arguments, "from", today()), date(arguments, "to", today().plusDays(14)));
-			case "get_diagnosis" -> diagnosis(userId);
-			case "get_rides" -> rides(userId, date(arguments, "from", today().minusDays(28)),
-					date(arguments, "to", today()));
 			case "list_workouts" -> workouts(arguments == null ? null : (String) arguments.get("type"));
 			default -> throw new ToolException("Unbekanntes Werkzeug: " + name);
 		};
@@ -172,57 +158,6 @@ public class McpTools {
 		});
 	}
 
-	private Object diagnosis(Long userId) {
-		Athlete athlete = athleteOf(userId);
-		return tx.execute(status -> {
-			TrainingPlan plan = plans.findByAthlete(athlete.getId())
-					.orElseThrow(() -> new ToolException("Es gibt noch keinen Plan."));
-			return plans.diagnosis(plan);
-		});
-	}
-
-	private Object rides(Long userId, LocalDate from, LocalDate to) {
-		checkRange(from, to);
-		Athlete athlete = athleteOf(userId);
-		return tx.execute(status -> {
-			List<Map<String, Object>> planned = new ArrayList<>();
-			plans.findByAthlete(athlete.getId()).ifPresent(plan -> plan.getWorkouts().stream()
-					.filter(workout -> !workout.getDate().isBefore(from) && !workout.getDate().isAfter(to))
-					.filter(workout -> workout.getActivityId() != null || workout.isCompleted())
-					.forEach(workout -> {
-						Map<String, Object> row = new LinkedHashMap<>();
-						Workout resolved = library.resolve(workout.getWorkoutId(), workout.getDurationMinutes())
-								.orElseThrow();
-						row.put("tag", workout.getDate().toString());
-						row.put("einheit", resolved.getTitle());
-						row.put("geplantMinuten", resolved.getDurationInMinutes());
-						row.put("geplantTss", resolved.getTss());
-						row.put("gefahrenMinuten", workout.getActualDurationMinutes());
-						row.put("gefahrenTss", workout.getActualTss());
-						row.put("distanzKm", workout.getActualDistanceKm());
-						row.put("bewertung", workout.getRating());
-						planned.add(row);
-					}));
-			List<Map<String, Object>> extra = new ArrayList<>();
-			for (ExtraRide ride : extraRides.findByAthleteIdAndDateBetween(athlete.getId(), from, to)) {
-				Map<String, Object> row = new LinkedHashMap<>();
-				row.put("tag", String.valueOf(ride.getDate()));
-				row.put("sportart", String.valueOf(ride.getSport()));
-				row.put("minuten", ride.getDurationMinutes());
-				row.put("distanzKm", ride.getDistanceKm());
-				row.put("tss", ride.getTss());
-				row.put("tssAusPuls", ride.isTssFromHeartRate());
-				extra.add(row);
-			}
-			Map<String, Object> out = new LinkedHashMap<>();
-			out.put("von", from.toString());
-			out.put("bis", to.toString());
-			out.put("geplanteEinheiten", planned);
-			out.put("zusatzfahrten", extra);
-			return out;
-		});
-	}
-
 	private Object workouts(String type) {
 		List<Workout> all = library.findAll();
 		WorkoutType filter = null;
@@ -268,14 +203,13 @@ public class McpTools {
 		row.put("art", workout.getType().name());
 		row.put("minuten", workout.getDurationInMinutes());
 		row.put("tss", workout.getTss());
-		row.put("status", planned.getSkipReason() != null ? "ausgefallen (" + planned.getSkipReason() + ")"
-				: planned.isCompleted() ? "erledigt" : "offen");
-		if (planned.getAdjustmentNote() != null) {
-			row.put("anpassung", planned.getAdjustmentNote());
+		if (planned.getSkipReason() != null) {
+			row.put("status", "ausgefallen (" + planned.getSkipReason() + ")");
 		}
-		if (planned.getActualDurationMinutes() != null || planned.getActualTss() != null) {
-			row.put("gefahrenMinuten", planned.getActualDurationMinutes());
-			row.put("gefahrenTss", planned.getActualTss());
+		if (planned.getAdjustmentNote() != null) {
+			// Die Texte der automatischen Anpassung nennen gefahrene Werte (aus Strava) – die geben wir nicht weiter
+			row.put("anpassung", planned.getAdjustmentNote().startsWith("Von dir") ? planned.getAdjustmentNote()
+					: "automatisch angepasst");
 		}
 		return row;
 	}
