@@ -16,6 +16,7 @@ permissions:
 jobs:
   simulate:
     runs-on: ubuntu-latest
+    timeout-minutes: 60
 
     steps:
       - name: Code auschecken (main = live)
@@ -44,6 +45,12 @@ jobs:
           else ./gradlew planSimulation; fi
         continue-on-error: true
 
+      # Zufallssuche: so viele zufällige erfundene Fahrer wie in 25 Minuten passen (jede Nacht andere); Befunde sind
+      # Hinweise, kein Fehler im Lauf
+      - name: Zufallssuche
+        run: ./gradlew fuzzSimulation -PbudgetSeconds=1500
+        continue-on-error: true
+
       - name: Bericht und Planbericht erzeugen
         run: ./gradlew planReport
 
@@ -54,6 +61,13 @@ jobs:
           mkdir -p /tmp/reports
           cp build/plan-simulation.md /tmp/reports/latest.md
           cp build/plan-simulation.tsv /tmp/reports/latest.tsv
+          if [ -f build/fuzz-simulation.md ]; then
+            cp build/fuzz-simulation.md /tmp/reports/fuzz-latest.md
+            # Kurzfassung in latest.md, damit die Plan-Prüfung sie mitliest
+            { echo; echo "## Zufallssuche (Kurzfassung – ganze Liste in fuzz-latest.md)"; echo;
+              sed -n 3p build/fuzz-simulation.md; echo;
+              grep '^|' build/fuzz-simulation.md | head -22; } >> /tmp/reports/latest.md
+          fi
           cp build/plan-report.md /tmp/reports/plan-latest.md
           echo "Stand: $DATE (Commit $GITHUB_SHA von main)" > /tmp/reports/STAND.txt
           git config user.name "plan-simulation"
@@ -66,7 +80,10 @@ jobs:
             git rm -rfq . || true
           fi
           cp /tmp/reports/* .
+          # Verlauf der Zufallssuche: eine Zeile je Nacht (Datum, Fahrer, mit harten Befunden, mit Warnungen, Arten)
+          [ -f build/fuzz-simulation.tsv ] && cat build/fuzz-simulation.tsv >> fuzz-history.tsv || true
           git add latest.md latest.tsv plan-latest.md STAND.txt
+          git add fuzz-latest.md fuzz-history.tsv 2>/dev/null || true
           git commit -q -m "Plan-Simulation $DATE" || echo "keine Änderung"
           git push origin plan-reports
 
@@ -77,6 +94,7 @@ jobs:
           path: |
             build/plan-simulation.md
             build/plan-simulation.tsv
+            build/fuzz-simulation.md
             build/plan-report.md
 
       - name: Bei harten Verstößen rot werden

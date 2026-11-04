@@ -450,6 +450,16 @@ public class PlanGenerator {
 			boolean afterRecovery = phases.get(weekIndex - 1) == Phase.RECOVERY
 					&& riddenAsRecovery(daily, dataStart, monday.minusWeeks(1));
 			// direkt nach einem Wiedereinstieg nicht gleich noch eine Erholungswoche
+			// kurz vor dem Tapering: entfällt sie, ist bis dahin kein Platz mehr für eine – dann bleibt sie, wenn es sonst
+			// zu viele Belastungswochen am Stück würden
+			int taper = labels.indexOf(Phase.TAPER);
+			// (die Woche direkt vor dem Tapering darf keine Erholung sein, daher ein Block plus eine Woche)
+			boolean lastChance = taper > weekIndex && taper - weekIndex <= LOAD_WEEKS_PER_BLOCK + 1
+					&& loadWeeksBefore(phases, weekIndex) + taper - weekIndex > MAX_LOAD_WEEKS_WITHOUT_RECOVERY;
+			if ((weak || rested) && lastChance && !afterRecovery) {
+				weak = false;
+				rested = false;
+			}
 			if (weak || rested || afterRecovery || history.isReentryWeek(monday.minusWeeks(1))) {
 				phases.set(weekIndex, labels.get(weekIndex));
 				// der Rhythmus zählt neu: direkt nach einer Erholung ist das Woche 1, sonst ab der letzten Woche, die so
@@ -470,6 +480,15 @@ public class PlanGenerator {
 				&& spiked(daily, recoveryDays, dataStart, monday)) {
 			phases.set(weekIndex, Phase.RECOVERY);
 			restartBlocks(phases, labels, weekIndex, 0);
+		}
+		// Sicherung, gleich welche Regel sie gesetzt hat: nach einer ruhig gefahrenen Erholungswoche nie gleich die
+		// nächste, und nie mehr als zwei hintereinander
+		boolean afterTwo = weekIndex > 1 && phases.get(weekIndex - 1) == Phase.RECOVERY
+				&& phases.get(weekIndex - 2) == Phase.RECOVERY;
+		if (weekIndex > 0 && phases.get(weekIndex) == Phase.RECOVERY && phases.get(weekIndex - 1) == Phase.RECOVERY
+				&& (afterTwo || riddenAsRecovery(daily, dataStart, monday.minusWeeks(1)))) {
+			phases.set(weekIndex, labels.get(weekIndex));
+			restartBlocks(phases, labels, weekIndex, 1);
 		}
 		return false;
 	}
