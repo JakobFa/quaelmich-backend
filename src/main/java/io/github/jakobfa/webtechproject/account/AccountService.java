@@ -48,6 +48,7 @@ public class AccountService {
 	private final io.github.jakobfa.webtechproject.service.TrainingPlanService planService;
 	private final io.github.jakobfa.webtechproject.mcp.OAuthService aiConnections;
 	private final io.github.jakobfa.webtechproject.repository.RaceEventRepository raceEvents;
+	private final io.github.jakobfa.webtechproject.mail.DeletionNotice deletionNotice;
 
 	public AccountService(AppUserRepository users, PasswordEncoder passwordEncoder, AthleteRepository athletes,
 			TrainingPlanRepository plans, ExtraRideRepository extraRides, CustomWorkoutRepository customWorkouts,
@@ -55,7 +56,9 @@ public class AccountService {
 			StravaService strava, IntervalsConnectionService intervals, PlanResponseMapper planMapper,
 			io.github.jakobfa.webtechproject.repository.RaceEventRepository raceEvents,
 			io.github.jakobfa.webtechproject.service.TrainingPlanService planService,
-			io.github.jakobfa.webtechproject.mcp.OAuthService aiConnections) {
+			io.github.jakobfa.webtechproject.mcp.OAuthService aiConnections,
+			io.github.jakobfa.webtechproject.mail.DeletionNotice deletionNotice) {
+		this.deletionNotice = deletionNotice;
 		this.aiConnections = aiConnections;
 		this.planService = planService;
 		this.raceEvents = raceEvents;
@@ -83,7 +86,8 @@ public class AccountService {
 		if (password == null || !passwordEncoder.matches(password, user.getPasswordHash())) {
 			throw new WrongPasswordException();
 		}
-		strava.disconnect(userId);
+		String email = user.getEmail();
+		strava.disconnect(userId, false);
 		intervals.disconnect(userId);
 		aiConnections.deleteAllOf(userId); // Zugänge von KI-Apps enden mit dem Konto
 		athletes.findByOwnerId(userId).ifPresent(athlete -> {
@@ -97,6 +101,7 @@ public class AccountService {
 		invitations.findByUsedById(userId).forEach(invitation -> invitation.setUsedBy(null));
 		resetTokens.deleteAll(resetTokens.findByUserId(userId));
 		users.delete(user);
+		deletionNotice.accountDeleted(email); // schriftliche Bestätigung (Strava API Policy §2.5)
 		log.info("Konto {} gelöscht", userId);
 	}
 
