@@ -19,15 +19,19 @@ import java.util.Map;
  * @param dataStart      ab diesem Tag gibt es Daten (Plan- oder erste Fahrt); davor ist nichts bekannt
  * @param fixedMinutes   Minuten der schon feststehenden Einheiten ab heute (selbst getauscht oder angepasst, abgehakt,
  *                       ausgefallen): Sie bleiben, wie sie sind, und zählen mit ihren echten Minuten in die Fenster
+ * @param doneHard       harte Einheiten, die in der laufenden Woche vor heute schon gefahren wurden: Sie zählen
+ *                       zu den harten Einheiten der Woche, und der Tag danach bleibt locker
  * @param recoveryDays   vergangene Tage in Erholungswochen: sie zählen nicht für den Schnitt, sonst bremst jede
  *                       Erholungswoche den Aufbau danach aus
  */
 public record PlanHistory(LocalDate thisMonday, Map<LocalDate, Week> weeks, LocalDate reentryMonday,
 		int reentryWeeks, LocalDate today, Week currentWeek, Map<LocalDate, Integer> dailyMinutes,
-		LocalDate dataStart, java.util.Set<LocalDate> recoveryDays, Map<LocalDate, Integer> fixedMinutes) {
+		LocalDate dataStart, java.util.Set<LocalDate> recoveryDays, Map<LocalDate, Integer> fixedMinutes,
+		DoneHard doneHard) {
 
 	/** Ohne Wissen über vergangene Wochen: der Plan richtet sich allein nach dem Kalender */
-	public static final PlanHistory NONE = new PlanHistory(null, Map.of(), null, 0, null, null, Map.of(), null, java.util.Set.of(), Map.of());
+	public static final PlanHistory NONE = new PlanHistory(null, Map.of(), null, 0, null, null, Map.of(), null, java.util.Set.of(), Map.of(),
+			DoneHard.NONE);
 
 	/** Wurde die Belastungswoche davor zu weniger als diesem Anteil gefahren, entfällt die Erholungswoche */
 	static final double MIN_FULFILMENT = 0.7;
@@ -71,19 +75,33 @@ public record PlanHistory(LocalDate thisMonday, Map<LocalDate, Week> weeks, Loca
 	}
 
 	public PlanHistory(LocalDate thisMonday, Map<LocalDate, Week> weeks, LocalDate reentryMonday, int reentryWeeks) {
-		this(thisMonday, weeks, reentryMonday, reentryWeeks, null, null, Map.of(), null, java.util.Set.of(), Map.of());
+		this(thisMonday, weeks, reentryMonday, reentryWeeks, null, null, Map.of(), null, java.util.Set.of(), Map.of(),
+				DoneHard.NONE);
 	}
 
 	public PlanHistory(LocalDate thisMonday, Map<LocalDate, Week> weeks, LocalDate reentryMonday, int reentryWeeks,
 			LocalDate today, Week currentWeek) {
 		this(thisMonday, weeks, reentryMonday, reentryWeeks, today, currentWeek, Map.of(), null, java.util.Set.of(),
-				Map.of());
+				Map.of(), DoneHard.NONE);
 	}
 
 	public PlanHistory(LocalDate thisMonday, Map<LocalDate, Week> weeks, LocalDate reentryMonday, int reentryWeeks,
 			LocalDate today, Week currentWeek, Map<LocalDate, Integer> dailyMinutes, LocalDate dataStart) {
 		this(thisMonday, weeks, reentryMonday, reentryWeeks, today, currentWeek, dailyMinutes, dataStart,
-				java.util.Set.of(), Map.of());
+				java.util.Set.of(), Map.of(), DoneHard.NONE);
+	}
+
+	public PlanHistory(LocalDate thisMonday, Map<LocalDate, Week> weeks, LocalDate reentryMonday, int reentryWeeks,
+			LocalDate today, Week currentWeek, Map<LocalDate, Integer> dailyMinutes, LocalDate dataStart,
+			java.util.Set<LocalDate> recoveryDays, Map<LocalDate, Integer> fixedMinutes) {
+		this(thisMonday, weeks, reentryMonday, reentryWeeks, today, currentWeek, dailyMinutes, dataStart, recoveryDays,
+				fixedMinutes, DoneHard.NONE);
+	}
+
+	/** Die harten Einheiten dieser Woche vor heute: Tage und Arten */
+	public record DoneHard(java.util.Set<LocalDate> days,
+			java.util.List<io.github.jakobfa.webtechproject.model.WorkoutType> types) {
+		public static final DoneHard NONE = new DoneHard(java.util.Set.of(), java.util.List.of());
 	}
 
 	public boolean isEmpty() {
