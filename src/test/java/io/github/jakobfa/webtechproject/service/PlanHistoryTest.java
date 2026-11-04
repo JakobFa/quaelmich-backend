@@ -423,5 +423,26 @@ class PlanHistoryTest {
 		assertThat(PlanGenerator.withoutDoneHard(list, List.of(WorkoutType.THRESHOLD))).hasSize(1);
 		assertThat(PlanGenerator.withoutDoneHard(list, List.of())).isEqualTo(list);
 	}
+
+	@Test
+	void aRunningWeekWithOnlyTrainingDaysSoFarGetsARestDayAmongTheRest() {
+		LocalDate thisMonday = START.plusWeeks(5);
+		LocalDate today = thisMonday.plusDays(2); // Mittwoch; Montag und Dienstag wurden gefahren
+		Map<LocalDate, Integer> daily = new TreeMap<>(dailyMinutesBefore(thisMonday, 35, 60));
+		daily.put(thisMonday, 200);
+		daily.put(thisMonday.plusDays(1), 70);
+		var history = new PlanHistory(thisMonday, Map.of(), null, 0, today, new PlanHistory.Week(0, 0, 0, 0, 0), daily,
+				START);
+		WeeklyAvailability everyDay = new WeeklyAvailability();
+		everyDay.setMonday(2.0); everyDay.setTuesday(2.0); everyDay.setWednesday(2.0); everyDay.setThursday(2.0);
+		everyDay.setFriday(2.0); everyDay.setSaturday(4.0); everyDay.setSunday(4.0);
+		Athlete athlete = athlete();
+		athlete.setAvailability(everyDay);
+
+		var week = byWeek(GENERATOR.generate(athlete, START, Map.of(), history)).get(thisMonday);
+
+		// Mo und Di waren Trainingstage; von Mi bis So darf nicht jeder Tag belegt sein
+		assertThat(week.stream().map(PlannedWorkout::getDate).distinct().count()).isLessThan(5);
+	}
 }
 

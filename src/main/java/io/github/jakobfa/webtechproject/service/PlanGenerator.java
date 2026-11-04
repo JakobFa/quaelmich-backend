@@ -395,7 +395,20 @@ public class PlanGenerator {
 			if (currentWeek) {
 				trainingDays = trainingDays.stream().filter(day -> !day.isBefore(history.today())).toList();
 			}
-			trainingDays = withRestDay(trainingDays, availability);
+			// Laufende Woche: Waren die Tage davor alle Trainingstage, muss unter den restlichen ein Ruhetag sein –
+			// sonst gäbe es in dieser Woche gar keinen
+			int trainedBefore = 0;
+			java.util.Set<LocalDate> fixedDays = java.util.Set.of();
+			if (currentWeek) {
+				for (LocalDate day = monday; day.isBefore(history.today()); day = day.plusDays(1)) {
+					if (history.dailyMinutes().getOrDefault(day, 0) > 0) {
+						trainedBefore++;
+					}
+				}
+				fixedDays = history.fixedMinutes().entrySet().stream().filter(entry -> entry.getValue() > 0)
+						.map(Map.Entry::getKey).collect(java.util.stream.Collectors.toSet());
+			}
+			trainingDays = withRestDay(trainingDays, availability, trainedBefore, fixedDays);
 
 			if (weeksUntilEvent == 0) {
 				plan.addAll(planEventWeek(availability, trainingDays, eventDate, profile));
@@ -643,10 +656,23 @@ public class PlanGenerator {
 	 * der, der der Wochenmitte am nächsten liegt (so grenzt er nicht an die lange Ausfahrt am Wochenende).
 	 */
 	static List<LocalDate> withRestDay(List<LocalDate> days, WeeklyAvailability availability) {
-		if (days.size() < 7) {
+		return withRestDay(days, availability, 0, java.util.Set.of());
+	}
+
+	/**
+	 * Wie oben; trainedBefore = so viele Tage der Woche (vor den hier geplanten) waren schon Trainingstage, avoid =
+	 * Tage mit feststehender Einheit (selbst gewählt, abgehakt): Sie werden nicht zum Ruhetag.
+	 */
+	static List<LocalDate> withRestDay(List<LocalDate> days, WeeklyAvailability availability, int trainedBefore,
+			java.util.Set<LocalDate> avoid) {
+		if (days.size() + trainedBefore < 7) {
 			return days;
 		}
-		LocalDate rest = days.stream()
+		List<LocalDate> candidates = days.stream().filter(day -> !avoid.contains(day)).toList();
+		if (candidates.isEmpty()) {
+			return days;
+		}
+		LocalDate rest = candidates.stream()
 				.min(Comparator.comparingInt((LocalDate day) -> availableMinutes(availability, day))
 						.thenComparingInt(day -> Math.abs(day.getDayOfWeek().getValue() - DayOfWeek.WEDNESDAY.getValue())))
 				.orElseThrow();
