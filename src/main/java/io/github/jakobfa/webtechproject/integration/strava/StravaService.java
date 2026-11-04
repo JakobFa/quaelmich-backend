@@ -103,6 +103,12 @@ public class StravaService {
 		return repository.findByOwnerId(userId);
 	}
 
+	/** Merkt sich, dass Strava gerade abgefragt wurde: Alle übernommenen Strava-Werte sind damit frisch. */
+	@Transactional
+	public void markSynced(Long userId) {
+		repository.findByOwnerId(userId).ifPresent(connection -> connection.setLastSyncAt(Instant.now(clock)));
+	}
+
 	public boolean isConnected(Long userId) {
 		return isConfigured() && repository.findByOwnerId(userId).isPresent();
 	}

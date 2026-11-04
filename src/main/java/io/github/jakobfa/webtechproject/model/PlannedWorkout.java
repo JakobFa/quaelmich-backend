@@ -113,6 +113,17 @@ public class PlannedWorkout {
 
 
 	/**
+	 * Löscht die von Strava übernommenen Werte der Fahrt, behält aber die Zuordnung, die Bestätigung und alles, was der
+	 * Nutzer selbst eingetragen hat. Die Werte kommen beim nächsten Abruf von Strava wieder.
+	 */
+	public void clearStravaValues() {
+		actualDurationMinutes = null;
+		actualDistanceKm = null;
+		actualTss = null;
+		actualTssFromHeartRate = false;
+	}
+
+	/**
 	 * Entfernt die verknüpfte Fahrt (z. B. nach dem Trennen von Strava).
 	 * Selbst bestätigte Workouts bleiben erledigt, automatisch abgehakte werden wieder offen.
 	 */

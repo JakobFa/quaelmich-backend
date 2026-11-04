@@ -53,6 +53,12 @@ public class StravaConnection {
 	/** Von Strava erteilte Erlaubnisse, z. B. "read,activity:read_all,profile:read_all" */
 	private String scope;
 
+	/**
+	 * Wann Strava zuletzt erfolgreich abgefragt wurde. Daraus folgt, wie alt die übernommenen Fahrten höchstens sind:
+	 * Strava erlaubt, Daten höchstens 7 Tage zwischenzuspeichern (API Policy §6.2).
+	 */
+	private Instant lastSyncAt;
+
 	/** Training von quaelmich in die Beschreibung bestätigter Strava-Fahrten schreiben (nur auf Wunsch) */
 	@ColumnDefault("false")
 	private boolean writeDescriptions;

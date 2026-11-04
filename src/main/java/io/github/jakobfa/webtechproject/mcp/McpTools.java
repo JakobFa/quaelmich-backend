@@ -207,7 +207,9 @@ public class McpTools {
 			row.put("status", "ausgefallen (" + planned.getSkipReason() + ")");
 		}
 		if (planned.getAdjustmentNote() != null) {
-			row.put("anpassung", planned.getAdjustmentNote());
+			// Die Texte der automatischen Anpassung nennen gefahrene Werte (aus Strava) – die geben wir nicht weiter
+			row.put("anpassung", planned.getAdjustmentNote().startsWith("Von dir") ? planned.getAdjustmentNote()
+					: "automatisch angepasst");
 		}
 		return row;
 	}
