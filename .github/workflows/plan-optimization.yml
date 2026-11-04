@@ -1,0 +1,67 @@
+# Sucht einmal pro Woche bessere Stellschrauben (PlanParameters) für den Trainingsplan: erfundene, planfolgende
+# Zufallsfahrer, Fitness-Ermüdungs-Modell, Bergsteigen mit Neustarts (gut 4 Stunden). Der Bericht ist ein Vorschlag,
+# keine Änderung – übernommen wird nur nach sportlicher Prüfung per PR. Ablage: optimization-latest.md auf plan-reports.
+name: Plan-Optimierung
+
+on:
+  schedule:
+    - cron: '0 22 * * 6' # Samstag 22:00 UTC, fertig vor der Plan-Simulation am Sonntagmorgen
+  workflow_dispatch:
+    inputs:
+      budgetSeconds:
+        description: 'Suchzeit in Sekunden'
+        default: '15000'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: plan-reports
+  cancel-in-progress: false
+
+jobs:
+  optimize:
+    runs-on: ubuntu-latest
+    timeout-minutes: 340
+    steps:
+      - name: Code auschecken (main = live)
+        uses: actions/checkout@v4
+        with:
+          ref: main
+
+      - name: Java 25 einrichten
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 25
+
+      - name: Gradle einrichten (mit Cache)
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Stellschrauben suchen
+        run: ./gradlew optimizePlan -PbudgetSeconds=${{ inputs.budgetSeconds || '15000' }} -PtrainRiders=600 -PholdoutRiders=2000
+
+      - name: Bericht auf den Branch plan-reports schreiben
+        run: |
+          set -e
+          DATE=$(date -u +%F)
+          cp build/plan-optimization.md /tmp/optimization-latest.md
+          LINE="$DATE	$(grep -m1 '^Änderungen:' build/plan-optimization.md | sed 's/^Änderungen: //')	$(grep -m1 '^\*\*Ergebnis' build/plan-optimization.md | sed 's/\*//g')"
+          git config user.name "plan-optimization"
+          git config user.email "actions@users.noreply.github.com"
+          for attempt in 1 2 3; do
+            git fetch origin plan-reports
+            git checkout -q -B plan-reports origin/plan-reports
+            cp /tmp/optimization-latest.md optimization-latest.md
+            echo "$LINE" >> optimization-history.tsv
+            git add optimization-latest.md optimization-history.tsv
+            git commit -q -m "Plan-Optimierung $DATE" || { echo "keine Änderung"; break; }
+            git push origin plan-reports && break
+            git reset -q --hard origin/plan-reports
+          done
+
+      - name: Bericht hochladen
+        uses: actions/upload-artifact@v4
+        with:
+          name: plan-optimization
+          path: build/plan-optimization.md

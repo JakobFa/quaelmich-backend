@@ -77,12 +77,25 @@ tasks.register('fuzzSimulation', JavaExec) {
 
 // Bewertet einen Satz Stellschrauben (PlanParameters) mit dem Leistungsmodell an festen Zufallsfahrern
 tasks.register('evaluatePlan', JavaExec) {
-	description = 'Bewertet Stellschrauben: [-Pparams="loadWeeksPerBlock=4,recoveryVolume=0.5"] [-Priders=1000] [-PfirstSeed=1]'
+	description = 'Bewertet Stellschrauben: [-Pparams="loadWeeksPerBlock=4,recoveryVolume=0.5"] [-Priders=1000] [-PfirstSeed=1] [-Pfollowers=true]'
 	classpath = sourceSets.test.runtimeClasspath
 	mainClass = 'io.github.jakobfa.webtechproject.service.ParameterEvaluation'
 	doFirst {
 		args = [project.findProperty('params') ?: '', project.findProperty('riders') ?: '',
-				project.findProperty('firstSeed') ?: '', layout.buildDirectory.file('plan-evaluation.md').get().asFile.path]
+				project.findProperty('firstSeed') ?: '', layout.buildDirectory.file('plan-evaluation.md').get().asFile.path,
+				project.findProperty('followers') ?: 'false']
+	}
+}
+
+// Sucht bessere Stellschrauben mit dem Leistungsmodell (Vorschlag, keine Änderung an der App)
+tasks.register('optimizePlan', JavaExec) {
+	description = 'Sucht Stellschrauben: [-PbudgetSeconds=600] [-PtrainRiders=500] [-PholdoutRiders=1000] → build/plan-optimization.md'
+	classpath = sourceSets.test.runtimeClasspath
+	mainClass = 'io.github.jakobfa.webtechproject.service.PlanOptimizer'
+	doFirst {
+		args = [layout.buildDirectory.file('plan-optimization.md').get().asFile.path,
+				project.findProperty('budgetSeconds') ?: '', project.findProperty('trainRiders') ?: '',
+				project.findProperty('holdoutRiders') ?: '']
 	}
 }
 

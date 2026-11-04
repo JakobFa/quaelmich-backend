@@ -34,8 +34,13 @@ public final class ParameterEvaluation {
 	}
 
 	static Evaluation evaluate(PlanParameters parameters, long firstSeed, int riders) {
+		return evaluate(parameters, firstSeed, riders, false);
+	}
+
+	/** followers = true: Fahrer, die sich an den Plan halten (für die Optimierung), sonst alle Zufallsfahrer */
+	static Evaluation evaluate(PlanParameters parameters, long firstSeed, int riders, boolean followers) {
 		List<double[]> rows = LongStream.range(firstSeed, firstSeed + riders).parallel().mapToObj(seed -> {
-			RandomRider rider = RandomRider.of(seed);
+			RandomRider rider = followers ? RandomRider.follower(seed) : RandomRider.of(seed);
 			try {
 				LoopSimulation.Result result = parameters.apply(() -> LoopSimulation.run(rider.profile(), rider.type()));
 				PerformanceModel.Outcome outcome = PerformanceModel.of(seed).evaluate(result.tssByDay(),
@@ -106,8 +111,9 @@ public final class ParameterEvaluation {
 		PlanParameters parameters = parse(args.length > 0 ? args[0] : "");
 		int riders = args.length > 1 && !args[1].isBlank() ? Integer.parseInt(args[1]) : 1000;
 		long firstSeed = args.length > 2 && !args[2].isBlank() ? Long.parseLong(args[2]) : 1;
+		boolean followers = args.length > 4 && Boolean.parseBoolean(args[4]);
 		long started = System.nanoTime();
-		Evaluation evaluation = evaluate(parameters, firstSeed, riders);
+		Evaluation evaluation = evaluate(parameters, firstSeed, riders, followers);
 		String text = format(evaluation) + "Dauer: %.0f s%n".formatted((System.nanoTime() - started) / 1e9);
 		Path target = Path.of(args.length > 3 ? args[3] : "build/plan-evaluation.md");
 		Files.createDirectories(target.toAbsolutePath().getParent());

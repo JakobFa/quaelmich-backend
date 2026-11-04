@@ -17,6 +17,19 @@ record RandomRider(long seed, PlanReport.Profile profile, RiderType type, String
 	static final int MAX_EVENT_WEEKS = 45;
 
 	static RandomRider of(long seed) {
+		return of(seed, false);
+	}
+
+	/**
+	 * Ein Fahrer, der sich im Großen und Ganzen an den Plan hält (90–105 % der Dauer, wenig Ausfälle, kein Pendeln,
+	 * kein Urlaub oder Rennen; Krankheit, Reisewoche und Schichtdienst kommen vor). Für die Optimierung: Bei ihm
+	 * entscheidet der Plan über das Ergebnis, nicht das eigene Verhalten.
+	 */
+	static RandomRider follower(long seed) {
+		return of(seed, true);
+	}
+
+	private static RandomRider of(long seed, boolean follower) {
 		Random r = new Random(seed);
 		Level level = pick(r, Level.values());
 		double[] hours = hours(r, level);
@@ -46,7 +59,7 @@ record RandomRider(long seed, PlanReport.Profile profile, RiderType type, String
 			goalText = goal.name();
 		}
 		int weeks = profile.goal() == TrainingGoal.EVENT ? profile.weeks() + 1 : LoopSimulation.OPEN_WEEKS;
-		RiderType type = behaviour(r, seed, weeks);
+		RiderType type = follower ? followerBehaviour(r, seed, weeks) : behaviour(r, seed, weeks);
 		String description = "%s, %s, Zeit Mo–So %s (%.1f h), %s".formatted(level, goalText,
 				java.util.Arrays.toString(hours), sum(hours), type.name());
 		return new RandomRider(seed, profile, type, description);
@@ -126,6 +139,22 @@ record RandomRider(long seed, PlanReport.Profile profile, RiderType type, String
 		name.append(" [#").append(seed).append(']');
 		return new RiderType(name.toString(), miss, weekdayMiss, compliance, commute, pre, vacation, vacationWeeks,
 				race, illness, illnessDays, travel, shift);
+	}
+
+	private static RiderType followerBehaviour(Random r, long seed, int weeks) {
+		double miss = r.nextDouble() * 0.1;
+		double compliance = 0.9 + r.nextDouble() * 0.15;
+		double[] pre = r.nextDouble() < 0.7 ? new double[] { 1, 1, 1, 1, 1, 1 }
+				: new double[] { 1.1, 1.1, 1, 0.35, 0.3, 0.3 };
+		int illness = weeks > 3 && r.nextDouble() < 0.15 ? r.nextInt(weeks - 1) : -1;
+		int illnessDays = illness >= 0 ? 3 + r.nextInt(8) : 0;
+		int travel = weeks > 3 && r.nextDouble() < 0.1 ? r.nextInt(weeks - 1) : -1;
+		boolean shift = r.nextDouble() < 0.1;
+		String name = "planfolgend, Ausfälle %.0f %%, fährt %.0f %% der Dauer%s%s%s%s [#%d]".formatted(miss * 100,
+				compliance * 100, pre[5] < 0.5 ? ", nach Off-Season" : "",
+				illness >= 0 ? ", krank Woche %d (%d Tage)".formatted(illness + 1, illnessDays) : "",
+				travel >= 0 ? ", Reisewoche %d".formatted(travel + 1) : "", shift ? ", Schichtdienst" : "", seed);
+		return new RiderType(name, miss, 0, compliance, 0, pre, -1, 0, -1, illness, illnessDays, travel, shift);
 	}
 
 	private static <T> T pick(Random r, T[] values) {
