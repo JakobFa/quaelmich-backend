@@ -227,8 +227,24 @@ public class TrainingPlanService {
 								.getDurationInMinutes(), Integer::sum);
 			}
 		}
+		// harte Einheiten dieser Woche, die schon gefahren wurden
+		java.util.Set<LocalDate> hardDays = new java.util.TreeSet<>();
+		java.util.List<io.github.jakobfa.webtechproject.model.WorkoutType> hardTypes = new java.util.ArrayList<>();
+		for (PlannedWorkout workout : plan.getWorkouts()) {
+			boolean thisWeekBeforeToday = !workout.getDate().isBefore(thisMonday) && workout.getDate().isBefore(today);
+			if (thisWeekBeforeToday && workout.getSkipReason() == null
+					&& (workout.isCompleted() || workout.getActivityId() != null)) {
+				var type = library.resolve(workout.getWorkoutId(), workout.getDurationMinutes()).orElseThrow().getType();
+				if (!java.util.Set.of(io.github.jakobfa.webtechproject.model.WorkoutType.RECOVERY,
+						io.github.jakobfa.webtechproject.model.WorkoutType.ENDURANCE,
+						io.github.jakobfa.webtechproject.model.WorkoutType.LONG_RIDE).contains(type)) {
+					hardDays.add(workout.getDate());
+					hardTypes.add(type);
+				}
+			}
+		}
 		return new PlanHistory(thisMonday, weeks, reentry, reentry == null ? 0 : plan.getReentryWeeks(), today,
-				currentWeek, daily, dataStart, recoveryDays, fixed);
+				currentWeek, daily, dataStart, recoveryDays, fixed, new PlanHistory.DoneHard(hardDays, hardTypes));
 	}
 
 	/**
@@ -346,7 +362,9 @@ public class TrainingPlanService {
 				return;
 			}
 			plan.setActualsFingerprint(fingerprint);
-			replan(plan, LocalDate.now(clock).plusDays(1), LocalDate.MAX);
+			// ab heute: ist die heutige Einheit noch offen, darf sie sich ändern (eine schon gefahrene oder selbst
+			// gewählte bleibt)
+			replan(plan, LocalDate.now(clock), LocalDate.MAX);
 			planRepository.save(plan);
 		});
 	}
