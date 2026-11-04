@@ -531,14 +531,19 @@ public class PlanGenerator {
 		if (weekIndex > 0 && phases.get(weekIndex) == Phase.RECOVERY) {
 			var previous = history.before(monday);
 			Double recent = history.averageFulfilment(monday, PlanHistory.RECENT_WEEKS);
-			boolean weak = (previous != null && previous.fulfilment() < PlanHistory.MIN_FULFILMENT)
-					|| (recent != null && recent < PlanHistory.MIN_RECENT_FULFILMENT);
+			// zu wenig gefahren: die Erholung höchstens einmal aufschieben – wer dauerhaft weniger fährt (z. B. unter der
+			// Woche nie), bekäme sonst nie eine Erholungswoche
+			boolean weak = loadWeeksBefore(phases, weekIndex) < MAX_LOAD_WEEKS_AFTER_WEAK
+					&& ((previous != null && previous.fulfilment() < PlanHistory.MIN_FULFILMENT)
+							|| (recent != null && recent < PlanHistory.MIN_RECENT_FULFILMENT));
 			// nur, wo der Block schon größtenteils gefahren ist (laufende und nächste Woche); weiter vorn zählt der Plan
 			boolean nearNow = !monday.isAfter(history.thisMonday().plusWeeks(1));
 			boolean rested = nearNow && loadWeeksBefore(phases, weekIndex) < MAX_LOAD_WEEKS_WITHOUT_RECOVERY
 					&& !builtUp(daily, recoveryDays, dataStart, monday);
-			// zwei Erholungswochen hintereinander nie (z. B. wenn die vorige vorgezogen wurde)
-			boolean afterRecovery = phases.get(weekIndex - 1) == Phase.RECOVERY;
+			// zwei Erholungswochen hintereinander nie (z. B. wenn die vorige vorgezogen wurde) – außer die vorige wurde
+			// gar nicht ruhig gefahren (z. B. lag sie im Urlaub mit viel Fahren)
+			boolean afterRecovery = phases.get(weekIndex - 1) == Phase.RECOVERY
+					&& riddenAsRecovery(daily, dataStart, monday.minusWeeks(1));
 			// direkt nach einem Wiedereinstieg nicht gleich noch eine Erholungswoche
 			if (weak || rested || afterRecovery || history.isReentryWeek(monday.minusWeeks(1))) {
 				phases.set(weekIndex, labels.get(weekIndex));
@@ -546,7 +551,7 @@ public class PlanGenerator {
 				// ruhig war wie eine Erholungswoche – gab es keine, kommt die Erholung nur eine Woche später
 				int loaded = afterRecovery || history.isReentryWeek(monday.minusWeeks(1)) ? 1
 						: weeksSinceRecoveryLikeWeek(daily, recoveryDays, dataStart, monday);
-				restartBlocks(phases, labels, weekIndex, loaded);
+				restartAfterSkip(phases, labels, weekIndex, loaded);
 			}
 		}
 		// Umgekehrt: deutlich mehr gefahren als in den Wochen davor – die Erholungswoche kommt eine Woche früher.
@@ -555,7 +560,7 @@ public class PlanGenerator {
 		boolean soon = !monday.isAfter(history.thisMonday().plusWeeks(1));
 		if (soon && (phases.get(weekIndex) == Phase.BASE || phases.get(weekIndex) == Phase.BUILD)
 				&& weeksUntilEvent > MIN_WEEKS_BEFORE_EVENT_FOR_EARLY_RECOVERY
-				&& loadWeeksBefore(phases, weekIndex) >= MIN_LOAD_WEEKS_BEFORE_EARLY_RECOVERY
+				&& riddenLoadWeeksBefore(phases, weekIndex, daily, dataStart, monday) >= MIN_LOAD_WEEKS_BEFORE_EARLY_RECOVERY
 				&& !history.isReentryWeek(monday.minusWeeks(1))
 				&& spiked(daily, recoveryDays, dataStart, monday)) {
 			phases.set(weekIndex, Phase.RECOVERY);
@@ -574,6 +579,8 @@ public class PlanGenerator {
 	static final int LOAD_BLOCK_DAYS = 21;
 	/** Unter so viel vom Schnitt davor gelten die letzten 3 Wochen als ruhig (kein Aufbau von Ermüdung) */
 	static final double RESTED_BLOCK_RATIO = 0.9;
+	/** Wegen zu wenig Gefahrenem wird die Erholung nur bis zu so vielen Belastungswochen am Stück aufgeschoben */
+	static final int MAX_LOAD_WEEKS_AFTER_WEAK = 4;
 	/** Spätestens nach so vielen Belastungswochen am Stück kommt die Erholungswoche, auch ohne Anstieg */
 	static final int MAX_LOAD_WEEKS_WITHOUT_RECOVERY = 6;
 	/** Akute Spitze: die letzten 14 Tage gegen den Schnitt der 4 Wochen davor */
@@ -664,6 +671,15 @@ public class PlanGenerator {
 		return history.dataStart() != null ? history.dataStart() : LocalDate.MIN;
 	}
 
+	/**
+	 * Nach einer entfallenen Erholungswoche neu zählen (loaded wie bei restartBlocks), aber nie über
+	 * MAX_LOAD_WEEKS_WITHOUT_RECOVERY Belastungswochen am Stück – auch nicht mit dem neuen Block.
+	 */
+	private static void restartAfterSkip(List<Phase> phases, List<Phase> labels, int weekIndex, int loaded) {
+		int atLeast = loadWeeksBefore(phases, weekIndex) + 1 + LOAD_WEEKS_PER_BLOCK - MAX_LOAD_WEEKS_WITHOUT_RECOVERY;
+		restartBlocks(phases, labels, weekIndex, Math.min(LOAD_WEEKS_PER_BLOCK, Math.max(loaded, atLeast)));
+	}
+
 	/** So viele Belastungswochen, dann eine Erholungswoche (wie in phasesFor und OPEN_CYCLE) */
 	static final int LOAD_WEEKS_PER_BLOCK = 3;
 
@@ -709,13 +725,42 @@ public class PlanGenerator {
 		if (planned == Phase.RECOVERY && !wasRecovery && weekIndex > 0) {
 			phases.set(weekIndex, labels.get(weekIndex));
 			boolean afterRecovery = phases.get(weekIndex - 1) == Phase.RECOVERY;
-			restartBlocks(phases, labels, weekIndex, afterRecovery ? 1
+			restartAfterSkip(phases, labels, weekIndex, afterRecovery ? 1
 					: weeksSinceRecoveryLikeWeek(history.dailyMinutes(), history.recoveryDays(), dataStartOf(history),
 							monday));
 		} else if (isLoadPhase(planned) && wasRecovery) {
 			phases.set(weekIndex, Phase.RECOVERY);
 			restartBlocks(phases, labels, weekIndex, 0);
 		}
+	}
+
+	/** Höchstens so viel der 3 Wochen davor: dann wurde eine Erholungswoche auch ruhig gefahren */
+	static final double RIDDEN_RECOVERY_RATIO = 0.85;
+
+	/**
+	 * Wurde die Woche ab monday ruhig gefahren (höchstens 85 % der 3 Wochen davor)? Ohne Daten: ja – dann zählt die
+	 * Erholungswoche, wie sie geplant war.
+	 */
+	static boolean riddenAsRecovery(Map<LocalDate, Integer> daily, LocalDate dataStart, LocalDate monday) {
+		Double week = weeklyAverage(daily, java.util.Set.of(), dataStart, monday.plusWeeks(1), 1, 7, 7);
+		Double before = weeklyAverage(daily, java.util.Set.of(), dataStart, monday, 1, LOAD_BLOCK_DAYS,
+				LOAD_BLOCK_DAYS * 2 / 3);
+		return week == null || before == null || week <= before * RIDDEN_RECOVERY_RATIO;
+	}
+
+	/** Wie loadWeeksBefore, aber eine Erholungswoche, die nicht ruhig gefahren wurde, zählt als Belastung */
+	private static int riddenLoadWeeksBefore(List<Phase> phases, int weekIndex, Map<LocalDate, Integer> daily,
+			LocalDate dataStart, LocalDate monday) {
+		int count = 0;
+		for (int i = weekIndex - 1; i >= 0; i--) {
+			boolean load = isLoadPhase(phases.get(i)) || phases.get(i) == Phase.RECOVERY
+					&& !riddenAsRecovery(daily, dataStart, monday.minusWeeks(weekIndex - i));
+			if (!load) {
+				break;
+			}
+			count++;
+		}
+		return count;
 	}
 
 	/** Belastungswochen direkt vor weekIndex (bis zur letzten Erholungswoche) */
