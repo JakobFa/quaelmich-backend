@@ -204,8 +204,15 @@ public class TrainingPlanService {
 		LocalDate reentry = plan.getReentryWeeks() > 0 && plan.getReentryMonday() != null
 				&& plan.getReentryMonday().plusWeeks(plan.getReentryWeeks()).isAfter(thisMonday)
 						? plan.getReentryMonday() : null;
+		// so viel war für den Rest der laufenden Woche (ab heute) schon geplant
+		int plannedRest = plan.getWorkouts().stream()
+				.filter(planned -> !planned.getDate().isBefore(today) && !planned.getDate().isAfter(thisMonday.plusDays(6)))
+				.filter(planned -> planned.getSkipReason() == null)
+				.mapToInt(planned -> library.resolve(planned.getWorkoutId(), planned.getDurationMinutes()).orElseThrow()
+						.getDurationInMinutes())
+				.sum();
 		return new PlanHistory(thisMonday, weeks, reentry, reentry == null ? 0 : plan.getReentryWeeks(), today,
-				currentWeek);
+				currentWeek, plannedRest);
 	}
 
 	/**

@@ -433,9 +433,13 @@ public class PlanGenerator {
 						&& !ftpTest) {
 					hardWorkouts = List.of();
 				}
-				// Was diese Woche schon gefahren wurde, zählt auf den Wochenumfang
+				// Was diese Woche schon gefahren wurde, zählt auf den Wochenumfang. Der Rest der Woche wird aber nicht
+				// kleiner als geplant: Wer mehr gefahren hat als vorgesehen (z. B. die Montagsrunde verlängert), hat
+				// vom Plan abgewichen – die Grenze von +10 % gilt nur streng, wenn man sich an den Plan hält. Eine
+				// schon veröffentlichte Woche wird auch nicht mittendrin kleiner, weil sich die Rechnung geändert hat.
 				if (cap != null) {
-					cap = Math.max(0, cap - done.actualMinutes());
+					int plannedRest = Math.max(history.plannedRestMinutes(), done.plannedMinutes() - done.actualMinutes());
+					cap = Math.max(Math.max(0, cap - done.actualMinutes()), plannedRest);
 				}
 			}
 
@@ -459,10 +463,14 @@ public class PlanGenerator {
 			plan.addAll(planned);
 			if (isLoadPhase(phase) && !startDate.isAfter(monday)) {
 				// angefangene Startwoche zählt nicht als Bezug, sie ist nur kurz
-				// vergangene Wochen zählen mit dem, was wirklich gefahren wurde – nicht mit dem Plan
+				// Vergangene Wochen zählen mit dem, was wirklich gefahren wurde. Die +10 % gelten aber nur streng, wenn
+				// man sich an den Plan gehalten hat: Wurde weniger gefahren (ohne Krankheit), baut die Woche danach
+				// auf dem Plan auf – sonst würde eine schwache Woche den Plan dauerhaft nach unten ziehen.
 				var pastWeek = history.isEmpty() || !monday.isBefore(history.thisMonday()) ? null
 						: history.weeks().get(monday);
-				int weekMinutes = pastWeek != null ? pastWeek.actualMinutes()
+				int weekMinutes = pastWeek != null
+						? (pastWeek.sickDays() > 0 ? pastWeek.actualMinutes()
+								: Math.max(pastWeek.actualMinutes(), pastWeek.plannedMinutes()))
 						// laufende Woche: schon Gefahrenes plus der Rest, den wir jetzt planen
 						: currentWeek ? history.currentWeek().actualMinutes() + minutesOf(planned)
 						: minutesOf(planned);
@@ -501,7 +509,9 @@ public class PlanGenerator {
 		}
 		if (weekIndex > 0 && phases.get(weekIndex) == Phase.RECOVERY && isLoadPhase(scheduled.get(weekIndex - 1))) {
 			var previous = history.before(monday);
-			boolean weak = previous != null && previous.fulfilment() < PlanHistory.MIN_FULFILMENT;
+			Double recent = history.averageFulfilment(monday, PlanHistory.RECENT_WEEKS);
+			boolean weak = (previous != null && previous.fulfilment() < PlanHistory.MIN_FULFILMENT)
+					|| (recent != null && recent < PlanHistory.MIN_RECENT_FULFILMENT);
 			// direkt nach einem Wiedereinstieg nicht gleich noch eine Erholungswoche
 			if (weak || history.isReentryWeek(monday.minusWeeks(1))) {
 				phases.set(weekIndex, scheduled.get(weekIndex - 1));
@@ -963,7 +973,7 @@ public class PlanGenerator {
 			}
 		}
 		if (plan.maxMinutes() != null) {
-			shrinkToCap(flexible, minutesOf(week), plan.maxMinutes());
+			shrinkToCap(flexible, longDay, minutesOf(week), plan.maxMinutes());
 		}
 
 		// ein lockerer Tag pro Woche bekommt Einlagen (Antritte oder Tempo), damit nicht jeder Tag gleich aussieht
@@ -1001,14 +1011,28 @@ public class PlanGenerator {
 	 * werden im gleichen Verhältnis kürzer (so bleibt die lange Ausfahrt die längste). Eine Fahrt wird nicht
 	 * kürzer als {@link #MIN_CAPPED_RIDE}.
 	 */
-	private static void shrinkToCap(java.util.Map<LocalDate, Integer> flexible, int fixedMinutes, int cap) {
+	private static void shrinkToCap(java.util.Map<LocalDate, Integer> flexible, LocalDate longDay, int fixedMinutes,
+			int cap) {
 		int flexibleMinutes = flexible.values().stream().mapToInt(Integer::intValue).sum();
 		if (flexibleMinutes == 0 || fixedMinutes + flexibleMinutes <= cap) {
 			return;
 		}
-		double scale = Math.max(0, cap - fixedMinutes) / (double) flexibleMinutes;
-		flexible.replaceAll((day, minutes) -> Math.min(minutes,
-				Math.max(MIN_CAPPED_RIDE, floorToQuarterHour(minutes * scale))));
+		int excess = fixedMinutes + flexibleMinutes - Math.max(cap, fixedMinutes);
+		// Zuerst die lockeren Nebentage kürzen (nicht unter MIN_CAPPED_RIDE), die lange Ausfahrt ist die wichtigste
+		// Einheit der Woche und bleibt, solange es geht. Erst danach wird sie selbst kürzer.
+		List<LocalDate> sideDays = flexible.keySet().stream().filter(day -> !day.equals(longDay))
+				.sorted(Comparator.comparing((LocalDate day) -> flexible.get(day)).reversed()).toList();
+		for (LocalDate day : sideDays) {
+			int cut = Math.min(excess, Math.max(0, flexible.get(day) - MIN_CAPPED_RIDE));
+			flexible.put(day, flexible.get(day) - cut);
+			excess -= cut;
+		}
+		if (excess > 0 && flexible.containsKey(longDay)) {
+			int cut = Math.min(excess, Math.max(0, flexible.get(longDay) - MIN_CAPPED_RIDE));
+			flexible.put(longDay, flexible.get(longDay) - cut);
+		}
+		flexible.replaceAll((day, minutes) -> floorToQuarterHour(minutes) < MIN_CAPPED_RIDE
+				? Math.min(minutes, MIN_CAPPED_RIDE) : floorToQuarterHour(minutes));
 	}
 
 	/** Passt das Workout in die Zeit – notfalls mit gekürztem Rahmen (die Intervalle bleiben gleich)? */
