@@ -28,7 +28,7 @@ import org.springframework.test.web.servlet.ResultActions;
 import com.jayway.jsonpath.JsonPath;
 
 /** KI-Anbindung: OAuth-Ablauf (Registrierung, Erlaubnis, Token) und der MCP-Endpunkt mit den Lesewerkzeugen */
-@SpringBootTest
+@SpringBootTest(properties = "app.mcp.enabled=true")
 @AutoConfigureMockMvc
 class McpTest {
 
