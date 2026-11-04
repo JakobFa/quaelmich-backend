@@ -22,4 +22,30 @@ class PlanSimulationTest {
 		var profile = PlanReport.profiles().getFirst();
 		assertThat(PlanSimulation.simulate(profile).weeks()).isEqualTo(PlanSimulation.simulate(profile).weeks());
 	}
+
+	@Test
+	void noRiderTypeBreaksTheHardLimitsInTheWeeklyLoop() {
+		for (RiderType type : RiderType.all()) {
+			for (PlanReport.Profile profile : PlanReport.profiles()) {
+				assertThat(LoopSimulation.run(profile, type).hard()).as(profile.name() + " | " + type.name()).isEmpty();
+			}
+		}
+	}
+
+	@Test
+	void theWeeklyLoopIsReproducible() {
+		var profile = PlanReport.profiles().getLast();
+		var type = RiderType.all().get(4);
+		assertThat(LoopSimulation.run(profile, type).weeks()).isEqualTo(LoopSimulation.run(profile, type).weeks());
+	}
+
+	@Test
+	void afterAHolidayWithLotsOfRidingTheLoadIsEased() {
+		RiderType holiday = RiderType.all().stream().filter(type -> type.vacationWeek() >= 0).findFirst().orElseThrow();
+		long withoutRelief = PlanReport.profiles().stream()
+				.filter(profile -> LoopSimulation.run(profile, holiday).warnings().stream()
+						.anyMatch(warning -> warning.startsWith("nach dem Urlaub")))
+				.count();
+		assertThat(withoutRelief).as("Läufe ohne Entlastung nach dem Urlaub").isLessThanOrEqualTo(2);
+	}
 }
