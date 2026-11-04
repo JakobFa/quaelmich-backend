@@ -4,6 +4,7 @@ import java.time.Clock;
 import java.time.DayOfWeek;
 import java.time.LocalDate;
 import java.time.temporal.TemporalAdjusters;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -339,6 +340,113 @@ public class TrainingPlanService {
 			replan(plan, LocalDate.now(clock).plusDays(1), LocalDate.MAX);
 			planRepository.save(plan);
 		});
+	}
+
+	/**
+	 * Die internen Werte, nach denen sich der Plan richtet – für die Fehlersuche im Export: Belastung je Tag, Schnitt
+	 * der letzten 28 Tage, die daraus folgenden Grenzen, die Wochen mit Erfüllung und Härte, und je vergangener
+	 * Einheit geplant gegen gefahren. Keine Strava-Links, nur Zahlen.
+	 */
+	public Map<String, Object> diagnosis(TrainingPlan plan) {
+		PlanHistory history = historyOf(plan);
+		LocalDate today = LocalDate.now(clock);
+		Map<String, Object> out = new java.util.LinkedHashMap<>();
+
+		Map<String, Object> state = new java.util.LinkedHashMap<>();
+		state.put("heute", today.toString());
+		state.put("montagDieserWoche", history.thisMonday().toString());
+		state.put("planStart", String.valueOf(plan.getStartDate()));
+		state.put("krankSeit", plan.getSickSince() == null ? null : plan.getSickSince().toString());
+		state.put("wiedereinstiegAb", plan.getReentryMonday() == null ? null : plan.getReentryMonday().toString());
+		state.put("wiedereinstiegWochen", plan.getReentryWeeks());
+		state.put("zuletztAngepasstWoche", plan.getLastAdaptedMonday() == null ? null
+				: plan.getLastAdaptedMonday().toString());
+		state.put("abgleichFingerabdruck", plan.getActualsFingerprint());
+		out.put("stand", state);
+
+		java.util.Set<LocalDate> recoveryDays = history.recoveryDays();
+		LocalDate dataStart = history.dataStart() == null ? plan.getStartDate() : history.dataStart();
+		Double baseline = PlanGenerator.baselineWeeklyMinutes(history.dailyMinutes(), recoveryDays, dataStart,
+				history.thisMonday());
+		Map<String, Object> load = new java.util.LinkedHashMap<>();
+		load.put("datenAbTag", dataStart.toString());
+		load.put("schnittMinutenProWoche28Tage", baseline == null ? null : Math.round(baseline));
+		var loadCap = PlanGenerator.rollingCap(history.dailyMinutes(), recoveryDays, dataStart, history.thisMonday(),
+				io.github.jakobfa.webtechproject.model.Phase.BASE, false);
+		var recoveryCap = PlanGenerator.rollingCap(history.dailyMinutes(), recoveryDays, dataStart,
+				history.thisMonday(), io.github.jakobfa.webtechproject.model.Phase.RECOVERY, false);
+		var overreachedCap = PlanGenerator.rollingCap(history.dailyMinutes(), recoveryDays, dataStart,
+				history.thisMonday(), io.github.jakobfa.webtechproject.model.Phase.BASE, true);
+		load.put("grenzeBelastungswocheMinuten7Tage", loadCap == null ? null : loadCap.weeklyCapMinutes());
+		load.put("grenzeErholungswocheMinuten7Tage", recoveryCap == null ? null : recoveryCap.weeklyCapMinutes());
+		load.put("grenzeNachZuHarterVorwocheMinuten7Tage", overreachedCap == null ? null
+				: overreachedCap.weeklyCapMinutes());
+		load.put("erholungstage", new java.util.TreeSet<>(recoveryDays).stream().map(LocalDate::toString).toList());
+		load.put("minutenProTag", new java.util.TreeMap<>(history.dailyMinutes()).entrySet().stream()
+				.collect(Collectors.toMap(entry -> entry.getKey().toString(), Map.Entry::getValue,
+						(a, b) -> a, java.util.LinkedHashMap::new)));
+		out.put("belastung", load);
+
+		Map<String, Object> weeks = new java.util.LinkedHashMap<>();
+		history.weeks().forEach((monday, week) -> weeks.put(monday.toString(), weekDiagnosis(week)));
+		out.put("vergangeneWochen", weeks);
+		out.put("laufendeWoche", weekDiagnosis(history.currentWeek()));
+
+		java.util.List<Map<String, Object>> past = new java.util.ArrayList<>();
+		for (PlannedWorkout workout : plan.getWorkouts()) {
+			if (!workout.getDate().isBefore(today)) {
+				continue;
+			}
+			var resolved = library.resolve(workout.getWorkoutId(), workout.getDurationMinutes()).orElseThrow();
+			Map<String, Object> row = new java.util.LinkedHashMap<>();
+			row.put("tag", workout.getDate().toString());
+			row.put("phase", String.valueOf(workout.getPhase()));
+			row.put("einheit", resolved.getTitle());
+			row.put("geplantMinuten", resolved.getDurationInMinutes());
+			row.put("geplantTss", resolved.getTss());
+			row.put("ausgefallenGrund", workout.getSkipReason() == null ? null : workout.getSkipReason().name());
+			row.put("abgehakt", workout.isCompleted());
+			row.put("fahrtZugeordnet", workout.getActivityId() != null);
+			row.put("gefahrenMinuten", workout.getActualDurationMinutes());
+			row.put("gefahrenTss", workout.getActualTss());
+			row.put("tssAusPuls", workout.isActualTssFromHeartRate());
+			row.put("angepasst", workout.getAdjustmentNote());
+			past.add(row);
+		}
+		out.put("vergangeneEinheiten", past);
+
+		java.util.List<Map<String, Object>> rides = new java.util.ArrayList<>();
+		for (ExtraRide ride : extraRides.findByAthleteId(plan.getAthlete().getId())) {
+			Map<String, Object> row = new java.util.LinkedHashMap<>();
+			row.put("tag", String.valueOf(ride.getDate()));
+			row.put("sportart", String.valueOf(ride.getSport()));
+			row.put("minuten", ride.getDurationMinutes());
+			row.put("distanzKm", ride.getDistanceKm());
+			row.put("tss", ride.getTss());
+			row.put("tssAusPuls", ride.isTssFromHeartRate());
+			row.put("tssAusDauer", ride.isTssFromDuration());
+			row.put("quelle", ride.getActivityId() != null
+					&& io.github.jakobfa.webtechproject.integration.RecordedActivity.isFromStrava(ride.getActivityId())
+							? "Strava" : "intervals.icu");
+			row.put("planAngepasst", ride.isAdaptationApplied());
+			rides.add(row);
+		}
+		rides.sort(Comparator.comparing(row -> String.valueOf(row.get("tag"))));
+		out.put("zusatzfahrten", rides);
+		return out;
+	}
+
+	private static Map<String, Object> weekDiagnosis(PlanHistory.Week week) {
+		Map<String, Object> out = new java.util.LinkedHashMap<>();
+		out.put("geplantMinuten", week.plannedMinutes());
+		out.put("gefahrenMinuten", week.actualMinutes());
+		out.put("erfuellung", Math.round(week.fulfilment() * 100) / 100.0);
+		out.put("geplantTss", week.plannedTss());
+		out.put("gefahrenTss", week.actualTss());
+		out.put("belastungsVerhaeltnis", Math.round(week.tssRatio() * 100) / 100.0);
+		out.put("zuHartGefahren", week.overreached());
+		out.put("kranktage", week.sickDays());
+		return out;
 	}
 
 	/**
