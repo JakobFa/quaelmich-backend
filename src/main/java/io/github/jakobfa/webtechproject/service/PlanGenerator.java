@@ -74,6 +74,14 @@ public class PlanGenerator {
 	static final double MAX_WEEKLY_GROWTH = 1.10;
 	/** Eine Erholungswoche hat höchstens so viel von der letzten Belastungswoche */
 	static final double RECOVERY_SHARE = 0.7;
+	/** In Erholungswochen zählt eine Fahrt ab so vielen Minuten als Grundlage (Zone 2) statt als Ausrollen */
+	static final int RECOVERY_ENDURANCE_MIN_MINUTES = 45;
+	/**
+	 * Mit 4 bis unter 7 Wochenstunden bekommt eine Erholungswoche eine kurze, leichte Qualitätseinheit: Bei wenig
+	 * Zeit bleibt sonst fast nur Ausrollen übrig. Wer mehr Zeit hat, erholt sich über den Umfang.
+	 */
+	static final double RECOVERY_TOUCH_MIN_HOURS = 4;
+	static final double RECOVERY_TOUCH_MAX_HOURS = 7;
 	static final int MIN_WEEKLY_GROWTH_MINUTES = 30;
 	/** Nach einer leichten Woche sinkt der Bezugswert nur um so viel – sonst bremst sie die Woche danach aus */
 	static final double REFERENCE_DECAY = 0.85;
@@ -655,7 +663,11 @@ public class PlanGenerator {
 	static List<WorkoutType> hardWorkoutsFor(Level level, Focus focus, Phase phase, int weekIndex,
 			int weeksUntilEvent, double weeklyHours, boolean ftpTest, EventGoal goal) {
 		if (phase == Phase.RECOVERY) {
-			return List.of();
+			// Erholung heißt weniger Umfang, nicht null Reiz: ab Hobby mit etwas Zeit eine kurze, leichte Einheit
+			// (kleinste Stufe) hält die Beine wach – sonst fällt die Belastung um über 70 % statt um 30–50 %
+			return level != Level.BEGINNER && weeklyHours >= RECOVERY_TOUCH_MIN_HOURS
+					&& weeklyHours < RECOVERY_TOUCH_MAX_HOURS
+					? List.of(WorkoutType.SWEET_SPOT) : List.of();
 		}
 		if (phase == Phase.TAPER) {
 			// Woche vor dem Event: eine kurze, harte Einheit passend zum Event
@@ -694,7 +706,9 @@ public class PlanGenerator {
 				case ULTRA -> List.of(WorkoutType.SWEET_SPOT, WorkoutType.THRESHOLD, WorkoutType.TEMPO,
 						WorkoutType.VO2MAX);
 				case MIXED -> List.of(WorkoutType.THRESHOLD, WorkoutType.OVER_UNDER, WorkoutType.VO2MAX);
-				case SHORT_INTENSE -> List.of(WorkoutType.VO2MAX, WorkoutType.THRESHOLD, WorkoutType.OVER_UNDER);
+				// Kriterium braucht auch im Aufbau Antritte: neben Schwelle und Over-Unders eine anaerobe Einheit im Wechsel
+				case SHORT_INTENSE -> List.of(WorkoutType.VO2MAX, WorkoutType.THRESHOLD, WorkoutType.ANAEROBIC,
+						WorkoutType.OVER_UNDER);
 				case TIME_TRIAL -> List.of(WorkoutType.THRESHOLD, WorkoutType.SWEET_SPOT, WorkoutType.OVER_UNDER);
 			};
 			default -> switch (focus) { // Spitze
@@ -784,7 +798,8 @@ public class PlanGenerator {
 			// passt die geplante Stufe nicht in die Zeit, wird es die nächstleichtere Variante –
 			// und passt gar keine, eine kürzere Trainingsart, damit kurze Tage nicht ohne Reiz bleiben
 			List<Workout> options = new ArrayList<>();
-			for (int step = plan.step(); step >= 0; step--) {
+			// in Erholungswochen immer die kleinste Stufe
+			for (int step = plan.phase() == Phase.RECOVERY ? 0 : plan.step(); step >= 0; step--) {
 				options.addAll(rotated(library.alternatives(type, step), rotation));
 			}
 			// passt nicht mal der FTP-Test, gibt es stattdessen eine normale kurze Einheit
@@ -853,7 +868,11 @@ public class PlanGenerator {
 			LocalDate day = entry.getKey();
 			int minutes = entry.getValue();
 			if (day.equals(longDay)) {
-				week.add(longRide(day, minutes, plan));
+				// Wochenend-Fahrer: passt keine harte Einheit in die Woche, bekommt die lange Ausfahrt im Aufbau und in
+				// der Spitze Tempo-Blöcke – sonst gäbe es über Wochen keinen Reiz oberhalb der Grundlage
+				boolean noQuality = hardDays.isEmpty() && !plan.hardWorkouts().isEmpty()
+						&& (plan.phase() == Phase.BUILD || plan.phase() == Phase.PEAK);
+				week.add(longRide(day, minutes, plan, noQuality));
 			} else {
 				int available = availableMinutes(availability, day);
 				PlannedWorkout easy = easyWorkout(day, minutes, available, plan.phase());
@@ -903,12 +922,13 @@ public class PlanGenerator {
 		return result;
 	}
 
-	private PlannedWorkout longRide(LocalDate day, int targetMinutes, WeekPlan plan) {
+	private PlannedWorkout longRide(LocalDate day, int targetMinutes, WeekPlan plan, boolean forceTempo) {
 		int minutes = floorToQuarterHour(targetMinutes);
 		if (minutes < 150) {
 			return easyWorkout(day, minutes, targetMinutes, plan.phase());
 		}
-		if (plan.tempoLongRide() && plan.phase() != Phase.RECOVERY && minutes >= 180) {
+		if ((plan.tempoLongRide() || forceTempo) && plan.phase() != Phase.RECOVERY
+				&& minutes >= (forceTempo ? 150 : 180)) {
 			return new PlannedWorkout(day, WorkoutLibrary.longRideWithTempo(minutes), minutes, plan.phase());
 		}
 		return new PlannedWorkout(day, WorkoutLibrary.longRide(minutes), minutes, plan.phase());
@@ -916,7 +936,9 @@ public class PlanGenerator {
 
 	/** Grundlage ab einer Stunde, sonst lockeres Ausrollen (mindestens 30 min, nie mehr als verfügbar) */
 	private PlannedWorkout easyWorkout(LocalDate day, int minutes, int available, Phase phase) {
-		if (minutes >= 60) {
+		// Erholungswoche: schon ab 45 min Grundlage statt Ausrollen – sonst fällt die Belastung (TSS) um über 70 %,
+		// gewünscht sind etwa 30 bis 50 %; weniger Umfang, aber nicht nur Regenerationstempo
+		if (minutes >= (phase == Phase.RECOVERY ? RECOVERY_ENDURANCE_MIN_MINUTES : 60)) {
 			int capped = Math.min(minutes, 300);
 			return new PlannedWorkout(day, WorkoutLibrary.endurance(capped), capped, phase);
 		}
