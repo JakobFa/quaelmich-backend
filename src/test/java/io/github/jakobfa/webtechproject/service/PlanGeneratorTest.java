@@ -785,4 +785,17 @@ class PlanGeneratorTest {
 		}
 		throw new AssertionError("keine Erholungswoche, obwohl dauerhaft weniger gefahren wurde");
 	}
+
+	@Test
+	void shortlyBeforeTheTaperTheRecoveryWeekStaysIfThereIsNoRoomForAnother() {
+		// 9 Wochen bis zum Event: Erholung in Woche 4, danach bis zum Tapering kein Platz für eine weitere
+		Athlete athlete = athlete(Level.HOBBY, MONDAY.plusWeeks(8).plusDays(5));
+		var plain = generator.generate(athlete, MONDAY);
+		LocalDate recovery = plain.stream().filter(p -> p.getPhase() == Phase.RECOVERY)
+				.map(p -> p.getDate().with(DayOfWeek.MONDAY)).min(LocalDate::compareTo).orElseThrow();
+		// ruhige Wochen davor (würden die Erholung sonst entfallen lassen)
+		var adapted = generator.generateSeason(athlete, MONDAY, Map.of(), List.of(), null,
+				historyAt(recovery, Set.of(), 300, 200, 300, 500, 500, 500));
+		assertThat(phaseOfWeek(adapted, recovery)).isEqualTo(Phase.RECOVERY);
+	}
 }

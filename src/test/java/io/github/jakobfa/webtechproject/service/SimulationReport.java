@@ -125,7 +125,7 @@ public final class SimulationReport {
 	/** Art einer Warnung ohne Datum und Zahlen, zum Zählen */
 	static String kind(String warning) {
 		return warning.replaceAll("^(Woche ab )?\\d{4}-\\d{2}-\\d{2}:?\\s*", "").replaceAll("\"[^\"]*\"", "…")
-				.replaceAll("\\(.*?\\)", "").replaceAll("[-+]?\\d+([.,]\\d+)?", "#").replaceAll("\\s+", " ").trim();
+				.replaceAll("\\(.*\\)", "").replaceAll("[-+]?\\d+([.,]\\d+)?", "#").replaceAll("\\s+", " ").trim();
 	}
 
 	private static Map<String, String[]> readTsv(Path path) throws IOException {
