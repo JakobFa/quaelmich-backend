@@ -142,6 +142,17 @@ class TrainingGuardrailsTest {
 
 	@ParameterizedTest(name = "{0}")
 	@MethodSource("riders")
+	void anFtpTestIsPrecededByARestDay(Rider rider) {
+		var daysWithWorkouts = rider.plan().stream().map(PlannedWorkout::getDate).collect(Collectors.toSet());
+		LocalDate first = rider.plan().stream().map(PlannedWorkout::getDate).min(LocalDate::compareTo).orElseThrow();
+		rider.plan().stream().filter(planned -> planned.getWorkoutId() != null
+				&& planned.getWorkoutId() == WorkoutLibrary.FTP_TEST && planned.getDate().isAfter(first))
+				.forEach(test -> assertThat(daysWithWorkouts).as("Tag vor dem FTP-Test am %s", test.getDate())
+						.doesNotContain(test.getDate().minusDays(1)));
+	}
+
+	@ParameterizedTest(name = "{0}")
+	@MethodSource("riders")
 	void loadWeeksGrowByAboutTenPercentAtMost(Rider rider) {
 		Integer previous = null;
 		for (var entry : weeks(rider).entrySet()) {

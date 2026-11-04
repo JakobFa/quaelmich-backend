@@ -51,7 +51,7 @@ public class ActivityImportService {
 
 	private static final Logger log = LoggerFactory.getLogger(ActivityImportService.class);
 
-	public static final int DAYS_BACK = 14;
+	public static final int DAYS_BACK = 42;
 
 	public record ImportResult(int activities, int matched, int extra, int adjusted) {
 	}

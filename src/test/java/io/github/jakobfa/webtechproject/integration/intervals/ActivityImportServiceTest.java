@@ -93,7 +93,7 @@ class ActivityImportServiceTest {
 		PlannedWorkout yesterday = planned(TODAY.minusDays(1));
 		yesterday.setRating(6);
 		givenPlan(yesterday);
-		when(client.listActivities(CREDENTIALS, TODAY.minusDays(14), TODAY))
+		when(client.listActivities(CREDENTIALS, TODAY.minusDays(ActivityImportService.DAYS_BACK), TODAY))
 				.thenReturn(List.of(indoorRide("i1", TODAY.minusDays(1), 75, 70))); // geplant: 71 min, 67 TSS
 
 		var result = service.importRecent(1L).orElseThrow();
