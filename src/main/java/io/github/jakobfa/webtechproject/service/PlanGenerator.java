@@ -131,15 +131,26 @@ public class PlanGenerator {
 	 */
 	public List<PlannedWorkout> generateSeason(Athlete athlete, LocalDate startDate,
 			Map<LocalDate, WeeklyAvailability> weekAvailability, List<Event> moreEvents, LocalDate horizon) {
+		return generateSeason(athlete, startDate, weekAvailability, moreEvents, horizon, PlanHistory.NONE);
+	}
+
+	/**
+	 * Wie oben, aber der Plan richtet sich nach dem, was in den vergangenen Wochen wirklich gefahren wurde:
+	 * Der Wochenumfang baut auf den gefahrenen Minuten auf, eine Erholungswoche entfällt nach einer zu schwach
+	 * gefahrenen Belastungswoche, und nach längerer Krankheit gibt es einen lockeren Wiedereinstieg.
+	 */
+	public List<PlannedWorkout> generateSeason(Athlete athlete, LocalDate startDate,
+			Map<LocalDate, WeeklyAvailability> weekAvailability, List<Event> moreEvents, LocalDate horizon,
+			PlanHistory history) {
 		return athlete.hasEventGoal()
-				? ridesOfSeason(athlete, startDate, weekAvailability, moreEvents)
-				: generateOpenEnded(athlete, startDate, weekAvailability, horizon);
+				? ridesOfSeason(athlete, startDate, weekAvailability, moreEvents, history)
+				: generateOpenEnded(athlete, startDate, weekAvailability, horizon, history);
 	}
 
 	private List<PlannedWorkout> ridesOfSeason(Athlete athlete, LocalDate startDate,
-			Map<LocalDate, WeeklyAvailability> weekAvailability, List<Event> moreEvents) {
+			Map<LocalDate, WeeklyAvailability> weekAvailability, List<Event> moreEvents, PlanHistory history) {
 		if (moreEvents.isEmpty()) {
-			return generate(athlete, startDate, weekAvailability);
+			return generate(athlete, startDate, weekAvailability, history);
 		}
 		List<Event> events = new ArrayList<>(moreEvents);
 		events.add(athlete.getEvent());
@@ -152,7 +163,8 @@ public class PlanGenerator {
 			if (!event.getDate().isAfter(segmentStart)) {
 				continue;
 			}
-			List<PlannedWorkout> segment = generate(withEvent(athlete, event), segmentStart, weekAvailability);
+			List<PlannedWorkout> segment = generate(withEvent(athlete, event), segmentStart, weekAvailability,
+					history);
 			if (afterEvent) {
 				segment = recoverAfterEvent(segment, segmentStart);
 			}
@@ -194,6 +206,11 @@ public class PlanGenerator {
 	 */
 	public List<PlannedWorkout> generate(Athlete athlete, LocalDate startDate,
 			Map<LocalDate, WeeklyAvailability> weekAvailability) {
+		return generate(athlete, startDate, weekAvailability, PlanHistory.NONE);
+	}
+
+	List<PlannedWorkout> generate(Athlete athlete, LocalDate startDate,
+			Map<LocalDate, WeeklyAvailability> weekAvailability, PlanHistory history) {
 		LocalDate eventDate = athlete.getEvent().getDate();
 		LocalDate firstMonday = startDate.with(previousOrSame(DayOfWeek.MONDAY));
 		LocalDate eventMonday = eventDate.with(previousOrSame(DayOfWeek.MONDAY));
@@ -205,7 +222,7 @@ public class PlanGenerator {
 		int loadWeeksTotal = (int) phases.stream().filter(PlanGenerator::isLoadPhase).count();
 		// Bei sehr weit entfernten Events nur das erste Jahr planen
 		return planWeeks(athlete, EventProfile.of(athlete), phases, startDate, eventDate, weekAvailability,
-				Math.min(allWeeks, MAX_WEEKS), loadWeeksTotal);
+				Math.min(allWeeks, MAX_WEEKS), loadWeeksTotal, history);
 	}
 
 	// ---------- Ziele ohne Event ----------
@@ -225,6 +242,11 @@ public class PlanGenerator {
 	 */
 	public List<PlannedWorkout> generateOpenEnded(Athlete athlete, LocalDate startDate,
 			Map<LocalDate, WeeklyAvailability> weekAvailability, LocalDate horizon) {
+		return generateOpenEnded(athlete, startDate, weekAvailability, horizon, PlanHistory.NONE);
+	}
+
+	List<PlannedWorkout> generateOpenEnded(Athlete athlete, LocalDate startDate,
+			Map<LocalDate, WeeklyAvailability> weekAvailability, LocalDate horizon, PlanHistory history) {
 		LocalDate firstMonday = startDate.with(previousOrSame(DayOfWeek.MONDAY));
 		int weeks = (int) ChronoUnit.WEEKS.between(firstMonday, horizon.with(previousOrSame(DayOfWeek.MONDAY)))
 				+ 1;
@@ -232,7 +254,7 @@ public class PlanGenerator {
 			return List.of();
 		}
 		return planWeeks(athlete, EventProfile.of(athlete), openPhases(weeks), startDate, null, weekAvailability,
-				weeks, OPEN_LOAD_WEEKS_TO_FULL);
+				weeks, OPEN_LOAD_WEEKS_TO_FULL, history);
 	}
 
 	static List<Phase> openPhases(int weeks) {
@@ -249,7 +271,7 @@ public class PlanGenerator {
 	 */
 	private List<PlannedWorkout> planWeeks(Athlete athlete, EventProfile profile, List<Phase> phases,
 			LocalDate startDate, LocalDate eventDate, Map<LocalDate, WeeklyAvailability> weekAvailability,
-			int weeks, int loadWeeksTotal) {
+			int weeks, int loadWeeksTotal, PlanHistory history) {
 		LocalDate firstMonday = startDate.with(previousOrSame(DayOfWeek.MONDAY));
 		int allWeeks = eventDate == null ? Integer.MAX_VALUE : phases.size();
 		List<PlannedWorkout> plan = new ArrayList<>();
@@ -264,8 +286,9 @@ public class PlanGenerator {
 			LocalDate monday = firstMonday.plusWeeks(weekIndex);
 			WeeklyAvailability availability = weekAvailability.getOrDefault(monday, athlete.getAvailability());
 			double weeklyHours = availability.totalHours();
-			Phase phase = phases.get(weekIndex);
 			int weeksUntilEvent = eventDate == null ? Integer.MAX_VALUE : allWeeks - 1 - weekIndex;
+			boolean returning = adaptPhase(phases, weekIndex, monday, history, weeksUntilEvent);
+			Phase phase = phases.get(weekIndex);
 
 			List<LocalDate> trainingDays = monday.datesUntil(monday.plusWeeks(1))
 					.filter(day -> !day.isBefore(startDate) && (eventDate == null || day.isBefore(eventDate)))
@@ -278,8 +301,8 @@ public class PlanGenerator {
 				continue;
 			}
 
-			boolean ftpTest = isFtpTestWeek(phases, weekIndex, allWeeks, weeksUntilEvent, lastFtpTest)
-					|| (ftpTestPending && phase != Phase.RECOVERY);
+			boolean ftpTest = !returning && (isFtpTestWeek(phases, weekIndex, allWeeks, weeksUntilEvent, lastFtpTest)
+					|| (ftpTestPending && phase != Phase.RECOVERY));
 			if (ftpTest) {
 				lastFtpTest = weekIndex;
 			}
@@ -292,16 +315,21 @@ public class PlanGenerator {
 					volumeFactor(phase, loadWeek, startVolume(athlete.getLevel(), weeklyHours)),
 					longRideMinutes(profile, phase, loadWeek, loadWeeksTotal),
 					useTempoLongRide(profile, phase, loadWeek),
-					hardWorkoutsFor(athlete.getLevel(), profile.focus(), phase, weekIndex, weeksUntilEvent,
-							weeklyHours, ftpTest,
-							profile.goal()),
+					// Wiedereinstieg nach Krankheit: keine harten Einheiten
+					returning ? List.of()
+							: hardWorkoutsFor(athlete.getLevel(), profile.focus(), phase, weekIndex, weeksUntilEvent,
+									weeklyHours, ftpTest, profile.goal()),
 					weekCap(phase, reference),
 					backToBack(athlete.getLevel(), profile, phase, loadWeek));
 			List<PlannedWorkout> planned = planWeek(availability, trainingDays, week);
 			plan.addAll(planned);
 			if (isLoadPhase(phase) && !startDate.isAfter(monday)) {
 				// angefangene Startwoche zählt nicht als Bezug, sie ist nur kurz
-				reference = Math.max(minutesOf(planned), reference * REFERENCE_DECAY);
+				// vergangene Wochen zählen mit dem, was wirklich gefahren wurde – nicht mit dem Plan
+				var pastWeek = history.isEmpty() || !monday.isBefore(history.thisMonday()) ? null
+						: history.weeks().get(monday);
+				int weekMinutes = pastWeek != null ? pastWeek.actualMinutes() : minutesOf(planned);
+				reference = Math.max(weekMinutes, reference * REFERENCE_DECAY);
 			}
 			boolean testMissed = ftpTest
 					&& planned.stream().noneMatch(workout -> workout.getWorkoutId() == WorkoutLibrary.FTP_TEST);
@@ -313,6 +341,34 @@ public class PlanGenerator {
 			}
 		}
 		return plan;
+	}
+
+	/**
+	 * Passt die Phase einer laufenden oder kommenden Woche an die Wirklichkeit an. Liefert true, wenn die Woche
+	 * ein lockerer Wiedereinstieg nach Krankheit ist.
+	 * <ul>
+	 * <li>Wiedereinstieg: die Woche wird zur Erholungswoche, ohne harte Einheiten.</li>
+	 * <li>Auf eine Belastungswoche, die zu weniger als 70 % gefahren wurde, folgt keine Erholungswoche: Man hat sich
+	 * nicht überlastet, sondern zu wenig getan (oder war krank) – die Woche davor wird wiederholt.</li>
+	 * </ul>
+	 * Das Tapering und die Event-Woche bleiben, wie sie sind.
+	 */
+	private static boolean adaptPhase(List<Phase> phases, int weekIndex, LocalDate monday, PlanHistory history,
+			int weeksUntilEvent) {
+		if (!history.applies(monday) || phases.get(weekIndex) == Phase.TAPER || weeksUntilEvent <= 1) {
+			return false;
+		}
+		if (history.isReentryWeek(monday)) {
+			phases.set(weekIndex, Phase.RECOVERY);
+			return true;
+		}
+		if (weekIndex > 0 && phases.get(weekIndex) == Phase.RECOVERY && isLoadPhase(phases.get(weekIndex - 1))) {
+			var previous = history.before(monday);
+			if (previous != null && previous.fulfilment() < PlanHistory.MIN_FULFILMENT) {
+				phases.set(weekIndex, phases.get(weekIndex - 1));
+			}
+		}
+		return false;
 	}
 
 	/** Was in einer normalen Woche geplant wird */

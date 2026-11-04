@@ -104,6 +104,108 @@ public class AbsenceService {
 		});
 	}
 
+	/** So weit zurück darf eine Krankheit nachgetragen werden */
+	static final int MAX_SICK_DAYS_BACK = 56;
+	/** Ab so vielen Krankheitstagen gibt es eine lockere Wiedereinstiegswoche (ab 14 Tagen zwei) */
+	static final int REENTRY_AFTER_DAYS = 7;
+	static final int LONG_ILLNESS_DAYS = 14;
+
+	/**
+	 * Krank (oder verletzt) melden.
+	 * <ul>
+	 * <li>Ohne until: "ich bin krank" – der Plan steht still (alle offenen Einheiten ab from ausgesetzt, auch
+	 * künftige), bis {@link #endSickness} aufgerufen wird. from darf in der Vergangenheit liegen: Man hat die App
+	 * erst nach Krankheitsbeginn geöffnet.</li>
+	 * <li>Mit until: ein abgeschlossener Zeitraum, auch rückwirkend – die Einheiten dazwischen entfallen, danach
+	 * geht es sanft weiter.</li>
+	 * </ul>
+	 * NotPossibleException bei einem Datum zu weit in der Vergangenheit/Zukunft oder wenn schon eine offene Krankheit
+	 * läuft und ein Zeitraum gemeldet wird. Leer ohne Plan.
+	 */
+	@Transactional
+	public Optional<TrainingPlan> startSickness(Long userId, LocalDate from, LocalDate until) {
+		LocalDate today = LocalDate.now(clock);
+		if (from.isAfter(today) || ChronoUnit.DAYS.between(from, today) > MAX_SICK_DAYS_BACK
+				|| (until != null && (until.isBefore(from) || until.isAfter(today.plusDays(MAX_SICK_DAYS_BACK))))) {
+			throw new NotPossibleException();
+		}
+		return planOf(userId).map(plan -> {
+			if (until == null) {
+				LocalDate since = plan.getSickSince() == null || from.isBefore(plan.getSickSince()) ? from
+						: plan.getSickSince();
+				plan.setSickSince(since);
+				markSick(plan, since, LocalDate.MAX);
+				return plan;
+			}
+			if (plan.getSickSince() != null) {
+				throw new NotPossibleException(); // erst "wieder gesund" melden
+			}
+			markSick(plan, from, until);
+			LocalDate back = until.plusDays(1).isBefore(today) ? today : until.plusDays(1);
+			returnAfter(plan, ChronoUnit.DAYS.between(from, until) + 1, back, until);
+			return plan;
+		});
+	}
+
+	/**
+	 * "Wieder gesund": Der Plan läuft ab heute weiter (since = ab wann man schon wieder gesund war, nicht vor dem
+	 * Krankheitsbeginn und nicht in der Zukunft). Die Tage dazwischen bleiben als krank markiert. Nach längerer
+	 * Krankheit folgt ein lockerer Wiedereinstieg. Leer ohne Plan; NotPossibleException, wenn niemand krank ist.
+	 */
+	@Transactional
+	public Optional<TrainingPlan> endSickness(Long userId, LocalDate since) {
+		LocalDate today = LocalDate.now(clock);
+		return planOf(userId).map(plan -> {
+			LocalDate sickSince = plan.getSickSince();
+			LocalDate healthy = since == null ? today : since;
+			if (sickSince == null || healthy.isAfter(today) || healthy.isBefore(sickSince)) {
+				throw new NotPossibleException();
+			}
+			plan.setSickSince(null);
+			// ab dem ersten gesunden Tag gilt der Plan wieder; was als krank markiert war, wird frei
+			plan.getWorkouts().stream()
+					.filter(planned -> !planned.getDate().isBefore(healthy))
+					.filter(planned -> planned.getSkipReason() == SkipReason.SICK && planned.getActivityId() == null)
+					.forEach(planned -> planned.setSkipReason(null));
+			LocalDate back = healthy.isBefore(today) ? today : healthy;
+			returnAfter(plan, ChronoUnit.DAYS.between(sickSince, healthy), back, healthy.minusDays(1));
+			return plan;
+		});
+	}
+
+	/** Offene Einheiten im Zeitraum als krank markieren (Erledigtes und Gefahrenes bleibt unberührt) */
+	private void markSick(TrainingPlan plan, LocalDate from, LocalDate until) {
+		plan.getWorkouts().stream()
+				.filter(planned -> !planned.getDate().isBefore(from) && !planned.getDate().isAfter(until))
+				.filter(planned -> !planned.isCompleted() && planned.getActivityId() == null)
+				.forEach(planned -> {
+					planned.setSkipReason(SkipReason.SICK);
+					planned.setRating(null);
+				});
+	}
+
+	/**
+	 * Nach der Krankheit: Plan ab heute an die Wirklichkeit anpassen. Ab 7 Tagen ein lockerer Wiedereinstieg
+	 * (ab 14 Tagen zwei Wochen), ab 4 Tagen wird zumindest das erste harte Training sanfter.
+	 */
+	private void returnAfter(TrainingPlan plan, long sickDays, LocalDate back, LocalDate lastSickDay) {
+		if (sickDays >= REENTRY_AFTER_DAYS) {
+			int weeks = sickDays >= LONG_ILLNESS_DAYS ? 2 : 1;
+			// Wer erst Freitag bis Sonntag zurückkommt, startet die lockere Woche mit der nächsten Woche
+			if (back.getDayOfWeek().getValue() >= java.time.DayOfWeek.FRIDAY.getValue()) {
+				weeks++;
+			}
+			plan.setReentryMonday(back.with(java.time.temporal.TemporalAdjusters.previousOrSame(
+					java.time.DayOfWeek.MONDAY)));
+			plan.setReentryWeeks(weeks);
+		}
+		planService.replanFromToday(plan);
+		if (sickDays >= GENTLE_RETURN_AFTER_DAYS) {
+			gentleReturnAfter(plan, lastSickDay,
+					"Angepasst: Nach deiner Krankheit bis %s – sanfter Wiedereinstieg.".formatted(DAY.format(lastSickDay)));
+		}
+	}
+
 	/** Pause beenden: ab heute gilt der Plan wieder. Leer ohne Plan. */
 	@Transactional
 	public Optional<TrainingPlan> resume(Long userId) {
