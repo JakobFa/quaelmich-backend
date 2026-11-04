@@ -63,6 +63,18 @@ tasks.register('planSimulation', JavaExec) {
 	}
 }
 
+// Zufallssuche: so viele zufällige erfundene Fahrer wie in die Zeit passen; Befunde gruppiert, mit Startwert zum Nachstellen
+tasks.register('fuzzSimulation', JavaExec) {
+	description = 'Zufällige erfundene Fahrer im Wochen-Kreislauf: [-PbudgetSeconds=60] [-PfuzzBase=Tag] [-Pseed=Startwert] → build/fuzz-simulation.md'
+	classpath = sourceSets.test.runtimeClasspath
+	mainClass = 'io.github.jakobfa.webtechproject.service.FuzzSimulation'
+	doFirst {
+		args = [layout.buildDirectory.file('fuzz-simulation.md').get().asFile.path,
+				project.findProperty('budgetSeconds') ?: '60', project.findProperty('fuzzBase') ?: '',
+				project.findProperty('seed') ?: '']
+	}
+}
+
 // Persönliche Simulation aus einem Daten-Export; nur lokal, Ergebnis nicht einchecken
 tasks.register('exportSimulation', JavaExec) {
 	description = 'Simuliert einen echten Nutzer aus seinem Export: -PexportFile=... -Pctl=96 -Patl=55 [-Pfrom=2026-11-03]'

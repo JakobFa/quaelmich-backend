@@ -48,4 +48,23 @@ class PlanSimulationTest {
 				.count();
 		assertThat(withoutRelief).as("Läufe ohne Entlastung nach dem Urlaub").isLessThanOrEqualTo(2);
 	}
+
+	@Test
+	void randomRidersAreReproducibleAlsoInParallel() {
+		var seeds = java.util.stream.LongStream.range(4242, 4282).boxed().toList();
+		var sequential = seeds.stream().map(seed -> LoopSimulation.run(RandomRider.of(seed).profile(),
+				RandomRider.of(seed).type()).weeks()).toList();
+		var parallel = seeds.parallelStream().map(seed -> LoopSimulation.run(RandomRider.of(seed).profile(),
+				RandomRider.of(seed).type()).weeks()).toList();
+		assertThat(parallel).isEqualTo(sequential);
+		assertThat(RandomRider.of(4242).description()).isEqualTo(RandomRider.of(4242).description());
+	}
+
+	@Test
+	void aFewHundredRandomRidersKeepTheHardLimits() {
+		java.util.stream.LongStream.range(1, 300).parallel().forEach(seed -> {
+			RandomRider rider = RandomRider.of(seed);
+			assertThat(LoopSimulation.run(rider.profile(), rider.type()).hard()).as(rider.description()).isEmpty();
+		});
+	}
 }

@@ -96,9 +96,14 @@ final class LoopSimulation {
 		}
 		Map<LocalDate, Integer> actualTssByDay = new HashMap<>();
 		actual.forEach((day, minutes) -> actualTssByDay.put(day, (int) (minutes * PRE_HISTORY_TSS_PER_MINUTE)));
-		double ctl = PlanSimulation.startFitness(profile.level())
-				* (type.preHistory()[5] < 0.5 ? 0.75 : 1);
-		double atl = type.preHistory()[5] < 0.5 ? ctl * 0.5 : ctl;
+		// Fitness und Ermüdung entstehen aus der Vorgeschichte (Start auf Level-Niveau, dann 6 Wochen Training)
+		double ctl = PlanSimulation.startFitness(profile.level());
+		double atl = ctl;
+		for (int back = 42; back >= 1; back--) {
+			int tss = actualTssByDay.get(start.minusDays(back));
+			ctl += (tss - ctl) / 42.0;
+			atl += (tss - atl) / 7.0;
+		}
 		double ctl0 = ctl;
 
 		Map<LocalDate, PlanHistory.Week> pastWeeks = new TreeMap<>();
@@ -112,6 +117,7 @@ final class LoopSimulation {
 		List<Week> result = new ArrayList<>();
 		List<Phase> phaseList = new ArrayList<>();
 		Map<LocalDate, Integer> plannedOn = new HashMap<>();
+		Set<LocalDate> reentry = new HashSet<>();
 		double eventDayTsb = Double.NaN;
 		double previousCtl = ctl;
 		int sickStreak = 0;
@@ -130,6 +136,9 @@ final class LoopSimulation {
 					.sorted(java.util.Comparator.comparing(PlannedWorkout::getDate)).toList());
 			Phase phase = week.isEmpty() ? null : week.getFirst().getPhase();
 			phaseList.add(phase);
+			if (history.isReentryWeek(monday)) {
+				reentry.add(monday);
+			}
 
 			// Prüfungen am Plan dieser Woche (vor dem Fahren)
 			WeeklyAvailability availability = weekAvailability.getOrDefault(monday, usual);
@@ -140,7 +149,7 @@ final class LoopSimulation {
 				Workout workout = resolve(planned);
 				plannedMinutes += workout.getDurationInMinutes();
 				plannedTss += workout.getTss();
-				int available = (int) (availability.hoursOn(planned.getDate().getDayOfWeek()) * 60);
+				int available = (int) Math.round(availability.hoursOn(planned.getDate().getDayOfWeek()) * 60);
 				if (workout.getDurationInMinutes() > available) {
 					hard.add("%s: %d min geplant, aber nur %d min Zeit (%s)".formatted(planned.getDate(),
 							workout.getDurationInMinutes(), available, workout.getTitle()));
@@ -246,8 +255,9 @@ final class LoopSimulation {
 				warnings.add("Woche ab %s: Fitness steigt um %.1f CTL (Grenze %.0f)".formatted(monday, ramp,
 						WARN_WEEKLY_CTL_RAMP));
 			}
+			// selbst verursacht: Urlaub, Rennen (und die Woche danach) oder deutlich mehr als geplant gefahren
 			boolean riderCaused = type.isVacation(w) || type.isVacation(w - 1) || w == type.raceWeek()
-					|| w == type.raceWeek() + 1;
+					|| w == type.raceWeek() + 1 || type.compliance() > 1.1 || type.commuteMinutes() >= 60;
 			if (minTsb < HARD_MIN_TSB && !riderCaused) {
 				hard.add("Woche ab %s: Frische bis %.0f TSB gefallen (Grenze %d)".formatted(monday, minTsb,
 						HARD_MIN_TSB));
@@ -257,7 +267,7 @@ final class LoopSimulation {
 			}
 		}
 
-		int maxInRow = checkRhythm(phaseList, result, start, hard, warnings);
+		int maxInRow = checkRhythm(phaseList, result, reentry, start, hard, warnings);
 		checkEventDay(athlete, eventDayTsb, warnings);
 		checkType(type, result, start, warnings);
 		int recoveries = (int) phaseList.stream().filter(phase -> phase == Phase.RECOVERY).count();
@@ -269,8 +279,8 @@ final class LoopSimulation {
 	 * die tatsächlich so ruhig war wie eine Erholungswoche (höchstens 75 % der 3 Wochen davor), zählt wie eine – so
 	 * wertet es auch der Plan.
 	 */
-	private static int checkRhythm(List<Phase> phases, List<Week> weeks, LocalDate start, List<String> hard,
-			List<String> warnings) {
+	private static int checkRhythm(List<Phase> phases, List<Week> weeks, Set<LocalDate> reentry, LocalDate start,
+			List<String> hard, List<String> warnings) {
 		int inRow = 0;
 		int max = 0;
 		for (int i = 0; i < phases.size(); i++) {
@@ -292,11 +302,20 @@ final class LoopSimulation {
 			} else {
 				inRow = 0;
 			}
-			// zwei hintereinander nur, wenn die erste ruhig gefahren wurde (sonst ist die zweite die eigentliche)
-			if (i > 0 && phase == Phase.RECOVERY && phases.get(i - 1) == Phase.RECOVERY && i >= 4
+			// drei Erholungswochen am Stück nie; zwei nur, wenn die erste nicht ruhig gefahren wurde (Warnung zum Prüfen).
+			// Der lockere Wiedereinstieg nach Krankheit darf mehrere ruhige Wochen haben.
+			boolean afterIllness = reentry.contains(monday) || reentry.contains(monday.minusWeeks(1))
+					|| reentry.contains(monday.minusWeeks(2));
+			if (afterIllness) {
+				// nichts zu prüfen
+			} else if (i > 1 && phase == Phase.RECOVERY && phases.get(i - 1) == Phase.RECOVERY
+					&& phases.get(i - 2) == Phase.RECOVERY) {
+				hard.add("Woche ab %s: drei Erholungswochen hintereinander".formatted(monday));
+			} else if (i > 3 && phase == Phase.RECOVERY && phases.get(i - 1) == Phase.RECOVERY
 					&& weeks.get(i - 1).actualMinutes() <= weeks.subList(i - 4, i - 1).stream()
-							.mapToInt(Week::actualMinutes).average().orElse(0) * 0.85) {
-				hard.add("Woche ab %s: zwei Erholungswochen hintereinander".formatted(monday));
+							.mapToInt(Week::actualMinutes).average().orElse(0) * 0.8) {
+				warnings.add("Woche ab %s: zwei Erholungswochen hintereinander, obwohl die erste ruhig gefahren wurde"
+						.formatted(monday));
 			}
 			if (i + 1 < phases.size() && phase == Phase.RECOVERY && phases.get(i + 1) == Phase.TAPER) {
 				warnings.add("Woche ab %s: Erholungswoche direkt vor dem Tapering".formatted(monday));
@@ -325,7 +344,8 @@ final class LoopSimulation {
 		if (type.vacationWeek() >= 0 && type.vacationWeek() + type.vacationWeeks() + 1 < weeks.size()) {
 			expectRelief(weeks, type.vacationWeek() + type.vacationWeeks() - 1, "nach dem Urlaub", warnings);
 		}
-		if (type.illnessWeek() >= 0) {
+		// nach einer Krankheit, die einen Wiedereinstieg auslöst, und mit Wochen davor zum Vergleichen
+		if (type.illnessWeek() >= 3 && type.illnessDays() >= AbsenceService.REENTRY_AFTER_DAYS) {
 			int back = type.illnessWeek() + (type.illnessDays() + 6) / 7;
 			if (back < weeks.size()) {
 				Week week = weeks.get(back);
@@ -391,14 +411,19 @@ final class LoopSimulation {
 
 	private static WeeklyAvailability scaled(WeeklyAvailability usual, double factor) {
 		WeeklyAvailability copy = new WeeklyAvailability();
-		copy.setMonday(usual.hoursOn(DayOfWeek.MONDAY) * factor);
-		copy.setTuesday(usual.hoursOn(DayOfWeek.TUESDAY) * factor);
-		copy.setWednesday(usual.hoursOn(DayOfWeek.WEDNESDAY) * factor);
-		copy.setThursday(usual.hoursOn(DayOfWeek.THURSDAY) * factor);
-		copy.setFriday(usual.hoursOn(DayOfWeek.FRIDAY) * factor);
-		copy.setSaturday(usual.hoursOn(DayOfWeek.SATURDAY) * factor);
-		copy.setSunday(usual.hoursOn(DayOfWeek.SUNDAY) * factor);
+		// in Viertelstunden, wie man es in der App einträgt
+		copy.setMonday(quarter(usual.hoursOn(DayOfWeek.MONDAY) * factor));
+		copy.setTuesday(quarter(usual.hoursOn(DayOfWeek.TUESDAY) * factor));
+		copy.setWednesday(quarter(usual.hoursOn(DayOfWeek.WEDNESDAY) * factor));
+		copy.setThursday(quarter(usual.hoursOn(DayOfWeek.THURSDAY) * factor));
+		copy.setFriday(quarter(usual.hoursOn(DayOfWeek.FRIDAY) * factor));
+		copy.setSaturday(quarter(usual.hoursOn(DayOfWeek.SATURDAY) * factor));
+		copy.setSunday(quarter(usual.hoursOn(DayOfWeek.SUNDAY) * factor));
 		return copy;
+	}
+
+	private static double quarter(double hours) {
+		return Math.round(hours * 4) / 4.0;
 	}
 
 	private static Workout resolve(PlannedWorkout planned) {
