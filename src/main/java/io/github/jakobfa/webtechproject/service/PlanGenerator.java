@@ -1036,7 +1036,12 @@ public class PlanGenerator {
 			} else {
 				int available = availableMinutes(availability, day);
 				PlannedWorkout easy = easyWorkout(day, minutes, available, plan.phase());
-				if (spiceWeek && !spiced && easy.getWorkoutId() == WorkoutLibrary.endurance(60).getId()) {
+				// der Tag nach einem FTP-Test bleibt ohne Einlagen (der Test ermüdet)
+				boolean afterTest = plan.ftpTestDays().contains(day.minusDays(1))
+						|| week.stream().anyMatch(planned -> planned.getWorkoutId() != null
+								&& planned.getWorkoutId() == WorkoutLibrary.FTP_TEST
+								&& planned.getDate().equals(day.minusDays(1)));
+				if (spiceWeek && !spiced && !afterTest && easy.getWorkoutId() == WorkoutLibrary.endurance(60).getId()) {
 					int length = easy.getDurationMinutes();
 					// reihum: Antritte, Tempo-Einlagen, Tempo-Finale (Abwechslung unter der Woche)
 					Workout spice = switch (plan.weekIndex() % 3) {
