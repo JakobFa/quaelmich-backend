@@ -1,0 +1,191 @@
+lauf	hart	warnungen
+Einsteigerin, 3 h, erste 100 km | planmäßig	0	0
+Einsteiger, 5 h, Gravel ankommen | planmäßig	0	1
+Hobby, 6 h, Gran Fondo | planmäßig	0	3
+Hobby, 7 h, Zeitfahren | planmäßig	0	0
+Hobby, 5 h, nur am Wochenende, Bikepacking | planmäßig	0	2
+Ambitioniert, 7 h, Ultra ankommen | planmäßig	0	2
+Ambitioniert, 10 h, Ötztaler vorne | planmäßig	0	1
+Ambitioniert, 8 h, Straßenrennen | planmäßig	0	0
+Ambitioniert, 4 h, wenig Zeit, Gran Fondo | planmäßig	0	0
+Leistung, 12 h, Kriterium | planmäßig	0	2
+Leistung, 15 h, Ultra auf Zeit | planmäßig	0	2
+Leistung, 19 h, Ultra 900 km | planmäßig	0	5
+Leistung, 9 h, Gravel vorne, kurzfristig | planmäßig	0	1
+Hobby, 5 h, FTP steigern | planmäßig	0	0
+Ambitioniert, 8 h, FTP steigern | planmäßig	0	7
+Hobby, 6 h, Ausdauer | planmäßig	0	0
+Einsteiger, 3 h, fit bleiben | planmäßig	0	3
+Ambitioniert, 6 h, fit bleiben | planmäßig	0	0
+Ambitioniert, 7 h, schneller am Berg | planmäßig	0	0
+Einsteigerin, 3 h, erste 100 km | Übererfüller (+25 %)	0	0
+Einsteiger, 5 h, Gravel ankommen | Übererfüller (+25 %)	0	0
+Hobby, 6 h, Gran Fondo | Übererfüller (+25 %)	0	0
+Hobby, 7 h, Zeitfahren | Übererfüller (+25 %)	0	0
+Hobby, 5 h, nur am Wochenende, Bikepacking | Übererfüller (+25 %)	0	0
+Ambitioniert, 7 h, Ultra ankommen | Übererfüller (+25 %)	0	0
+Ambitioniert, 10 h, Ötztaler vorne | Übererfüller (+25 %)	0	1
+Ambitioniert, 8 h, Straßenrennen | Übererfüller (+25 %)	0	0
+Ambitioniert, 4 h, wenig Zeit, Gran Fondo | Übererfüller (+25 %)	0	0
+Leistung, 12 h, Kriterium | Übererfüller (+25 %)	0	0
+Leistung, 15 h, Ultra auf Zeit | Übererfüller (+25 %)	0	13
+Leistung, 19 h, Ultra 900 km | Übererfüller (+25 %)	0	18
+Leistung, 9 h, Gravel vorne, kurzfristig | Übererfüller (+25 %)	0	1
+Hobby, 5 h, FTP steigern | Übererfüller (+25 %)	0	0
+Ambitioniert, 8 h, FTP steigern | Übererfüller (+25 %)	0	1
+Hobby, 6 h, Ausdauer | Übererfüller (+25 %)	0	0
+Einsteiger, 3 h, fit bleiben | Übererfüller (+25 %)	0	0
+Ambitioniert, 6 h, fit bleiben | Übererfüller (+25 %)	0	0
+Ambitioniert, 7 h, schneller am Berg | Übererfüller (+25 %)	0	0
+Einsteigerin, 3 h, erste 100 km | Pendler (2 × 35 min an Werktagen)	0	0
+Einsteiger, 5 h, Gravel ankommen | Pendler (2 × 35 min an Werktagen)	0	0
+Hobby, 6 h, Gran Fondo | Pendler (2 × 35 min an Werktagen)	0	0
+Hobby, 7 h, Zeitfahren | Pendler (2 × 35 min an Werktagen)	0	2
+Hobby, 5 h, nur am Wochenende, Bikepacking | Pendler (2 × 35 min an Werktagen)	0	0
+Ambitioniert, 7 h, Ultra ankommen | Pendler (2 × 35 min an Werktagen)	0	0
+Ambitioniert, 10 h, Ötztaler vorne | Pendler (2 × 35 min an Werktagen)	0	1
+Ambitioniert, 8 h, Straßenrennen | Pendler (2 × 35 min an Werktagen)	0	0
+Ambitioniert, 4 h, wenig Zeit, Gran Fondo | Pendler (2 × 35 min an Werktagen)	0	0
+Leistung, 12 h, Kriterium | Pendler (2 × 35 min an Werktagen)	0	1
+Leistung, 15 h, Ultra auf Zeit | Pendler (2 × 35 min an Werktagen)	0	4
+Leistung, 19 h, Ultra 900 km | Pendler (2 × 35 min an Werktagen)	0	6
+Leistung, 9 h, Gravel vorne, kurzfristig | Pendler (2 × 35 min an Werktagen)	0	0
+Hobby, 5 h, FTP steigern | Pendler (2 × 35 min an Werktagen)	0	0
+Ambitioniert, 8 h, FTP steigern | Pendler (2 × 35 min an Werktagen)	0	0
+Hobby, 6 h, Ausdauer | Pendler (2 × 35 min an Werktagen)	0	0
+Einsteiger, 3 h, fit bleiben | Pendler (2 × 35 min an Werktagen)	0	0
+Ambitioniert, 6 h, fit bleiben | Pendler (2 × 35 min an Werktagen)	0	0
+Ambitioniert, 7 h, schneller am Berg | Pendler (2 × 35 min an Werktagen)	0	0
+Einsteigerin, 3 h, erste 100 km | Wochenend-Fahrer (unter der Woche oft nicht)	0	4
+Einsteiger, 5 h, Gravel ankommen | Wochenend-Fahrer (unter der Woche oft nicht)	0	5
+Hobby, 6 h, Gran Fondo | Wochenend-Fahrer (unter der Woche oft nicht)	0	10
+Hobby, 7 h, Zeitfahren | Wochenend-Fahrer (unter der Woche oft nicht)	0	5
+Hobby, 5 h, nur am Wochenende, Bikepacking | Wochenend-Fahrer (unter der Woche oft nicht)	0	0
+Ambitioniert, 7 h, Ultra ankommen | Wochenend-Fahrer (unter der Woche oft nicht)	0	12
+Ambitioniert, 10 h, Ötztaler vorne | Wochenend-Fahrer (unter der Woche oft nicht)	0	6
+Ambitioniert, 8 h, Straßenrennen | Wochenend-Fahrer (unter der Woche oft nicht)	0	11
+Ambitioniert, 4 h, wenig Zeit, Gran Fondo | Wochenend-Fahrer (unter der Woche oft nicht)	0	4
+Leistung, 12 h, Kriterium | Wochenend-Fahrer (unter der Woche oft nicht)	0	5
+Leistung, 15 h, Ultra auf Zeit | Wochenend-Fahrer (unter der Woche oft nicht)	0	13
+Leistung, 19 h, Ultra 900 km | Wochenend-Fahrer (unter der Woche oft nicht)	0	12
+Leistung, 9 h, Gravel vorne, kurzfristig | Wochenend-Fahrer (unter der Woche oft nicht)	0	1
+Hobby, 5 h, FTP steigern | Wochenend-Fahrer (unter der Woche oft nicht)	0	9
+Ambitioniert, 8 h, FTP steigern | Wochenend-Fahrer (unter der Woche oft nicht)	0	9
+Hobby, 6 h, Ausdauer | Wochenend-Fahrer (unter der Woche oft nicht)	0	9
+Einsteiger, 3 h, fit bleiben | Wochenend-Fahrer (unter der Woche oft nicht)	0	1
+Ambitioniert, 6 h, fit bleiben | Wochenend-Fahrer (unter der Woche oft nicht)	0	10
+Ambitioniert, 7 h, schneller am Berg | Wochenend-Fahrer (unter der Woche oft nicht)	0	11
+Einsteigerin, 3 h, erste 100 km | Urlaub mit viel Fahren (Woche 6–7)	0	3
+Einsteiger, 5 h, Gravel ankommen | Urlaub mit viel Fahren (Woche 6–7)	0	4
+Hobby, 6 h, Gran Fondo | Urlaub mit viel Fahren (Woche 6–7)	0	4
+Hobby, 7 h, Zeitfahren | Urlaub mit viel Fahren (Woche 6–7)	0	4
+Hobby, 5 h, nur am Wochenende, Bikepacking | Urlaub mit viel Fahren (Woche 6–7)	0	7
+Ambitioniert, 7 h, Ultra ankommen | Urlaub mit viel Fahren (Woche 6–7)	0	3
+Ambitioniert, 10 h, Ötztaler vorne | Urlaub mit viel Fahren (Woche 6–7)	0	4
+Ambitioniert, 8 h, Straßenrennen | Urlaub mit viel Fahren (Woche 6–7)	0	3
+Ambitioniert, 4 h, wenig Zeit, Gran Fondo | Urlaub mit viel Fahren (Woche 6–7)	0	8
+Leistung, 12 h, Kriterium | Urlaub mit viel Fahren (Woche 6–7)	0	6
+Leistung, 15 h, Ultra auf Zeit | Urlaub mit viel Fahren (Woche 6–7)	0	13
+Leistung, 19 h, Ultra 900 km | Urlaub mit viel Fahren (Woche 6–7)	0	5
+Leistung, 9 h, Gravel vorne, kurzfristig | Urlaub mit viel Fahren (Woche 6–7)	0	2
+Hobby, 5 h, FTP steigern | Urlaub mit viel Fahren (Woche 6–7)	0	4
+Ambitioniert, 8 h, FTP steigern | Urlaub mit viel Fahren (Woche 6–7)	0	4
+Hobby, 6 h, Ausdauer | Urlaub mit viel Fahren (Woche 6–7)	0	3
+Einsteiger, 3 h, fit bleiben | Urlaub mit viel Fahren (Woche 6–7)	0	3
+Ambitioniert, 6 h, fit bleiben | Urlaub mit viel Fahren (Woche 6–7)	0	4
+Ambitioniert, 7 h, schneller am Berg | Urlaub mit viel Fahren (Woche 6–7)	0	3
+Einsteigerin, 3 h, erste 100 km | Rennen mittendrin (Woche 8, 10 h)	0	3
+Einsteiger, 5 h, Gravel ankommen | Rennen mittendrin (Woche 8, 10 h)	0	4
+Hobby, 6 h, Gran Fondo | Rennen mittendrin (Woche 8, 10 h)	0	2
+Hobby, 7 h, Zeitfahren | Rennen mittendrin (Woche 8, 10 h)	0	1
+Hobby, 5 h, nur am Wochenende, Bikepacking | Rennen mittendrin (Woche 8, 10 h)	0	3
+Ambitioniert, 7 h, Ultra ankommen | Rennen mittendrin (Woche 8, 10 h)	0	6
+Ambitioniert, 10 h, Ötztaler vorne | Rennen mittendrin (Woche 8, 10 h)	0	3
+Ambitioniert, 8 h, Straßenrennen | Rennen mittendrin (Woche 8, 10 h)	0	2
+Ambitioniert, 4 h, wenig Zeit, Gran Fondo | Rennen mittendrin (Woche 8, 10 h)	0	2
+Leistung, 12 h, Kriterium | Rennen mittendrin (Woche 8, 10 h)	0	4
+Leistung, 15 h, Ultra auf Zeit | Rennen mittendrin (Woche 8, 10 h)	0	10
+Leistung, 19 h, Ultra 900 km | Rennen mittendrin (Woche 8, 10 h)	0	6
+Leistung, 9 h, Gravel vorne, kurzfristig | Rennen mittendrin (Woche 8, 10 h)	0	1
+Hobby, 5 h, FTP steigern | Rennen mittendrin (Woche 8, 10 h)	0	3
+Ambitioniert, 8 h, FTP steigern | Rennen mittendrin (Woche 8, 10 h)	0	4
+Hobby, 6 h, Ausdauer | Rennen mittendrin (Woche 8, 10 h)	0	2
+Einsteiger, 3 h, fit bleiben | Rennen mittendrin (Woche 8, 10 h)	0	2
+Ambitioniert, 6 h, fit bleiben | Rennen mittendrin (Woche 8, 10 h)	0	4
+Ambitioniert, 7 h, schneller am Berg | Rennen mittendrin (Woche 8, 10 h)	0	2
+Einsteigerin, 3 h, erste 100 km | Start nach Off-Season	0	1
+Einsteiger, 5 h, Gravel ankommen | Start nach Off-Season	0	2
+Hobby, 6 h, Gran Fondo | Start nach Off-Season	0	0
+Hobby, 7 h, Zeitfahren | Start nach Off-Season	0	3
+Hobby, 5 h, nur am Wochenende, Bikepacking | Start nach Off-Season	0	3
+Ambitioniert, 7 h, Ultra ankommen | Start nach Off-Season	0	4
+Ambitioniert, 10 h, Ötztaler vorne | Start nach Off-Season	0	3
+Ambitioniert, 8 h, Straßenrennen | Start nach Off-Season	0	3
+Ambitioniert, 4 h, wenig Zeit, Gran Fondo | Start nach Off-Season	0	1
+Leistung, 12 h, Kriterium | Start nach Off-Season	0	1
+Leistung, 15 h, Ultra auf Zeit | Start nach Off-Season	0	6
+Leistung, 19 h, Ultra 900 km | Start nach Off-Season	0	5
+Leistung, 9 h, Gravel vorne, kurzfristig | Start nach Off-Season	0	2
+Hobby, 5 h, FTP steigern | Start nach Off-Season	0	0
+Ambitioniert, 8 h, FTP steigern | Start nach Off-Season	0	3
+Hobby, 6 h, Ausdauer | Start nach Off-Season	0	2
+Einsteiger, 3 h, fit bleiben | Start nach Off-Season	0	4
+Ambitioniert, 6 h, fit bleiben | Start nach Off-Season	0	2
+Ambitioniert, 7 h, schneller am Berg | Start nach Off-Season	0	6
+Einsteigerin, 3 h, erste 100 km | Lange Krankheit (Woche 7, 12 Tage)	0	2
+Einsteiger, 5 h, Gravel ankommen | Lange Krankheit (Woche 7, 12 Tage)	0	4
+Hobby, 6 h, Gran Fondo | Lange Krankheit (Woche 7, 12 Tage)	0	3
+Hobby, 7 h, Zeitfahren | Lange Krankheit (Woche 7, 12 Tage)	0	2
+Hobby, 5 h, nur am Wochenende, Bikepacking | Lange Krankheit (Woche 7, 12 Tage)	0	3
+Ambitioniert, 7 h, Ultra ankommen | Lange Krankheit (Woche 7, 12 Tage)	0	3
+Ambitioniert, 10 h, Ötztaler vorne | Lange Krankheit (Woche 7, 12 Tage)	0	1
+Ambitioniert, 8 h, Straßenrennen | Lange Krankheit (Woche 7, 12 Tage)	0	4
+Ambitioniert, 4 h, wenig Zeit, Gran Fondo | Lange Krankheit (Woche 7, 12 Tage)	0	2
+Leistung, 12 h, Kriterium | Lange Krankheit (Woche 7, 12 Tage)	0	8
+Leistung, 15 h, Ultra auf Zeit | Lange Krankheit (Woche 7, 12 Tage)	0	3
+Leistung, 19 h, Ultra 900 km | Lange Krankheit (Woche 7, 12 Tage)	0	4
+Leistung, 9 h, Gravel vorne, kurzfristig | Lange Krankheit (Woche 7, 12 Tage)	0	0
+Hobby, 5 h, FTP steigern | Lange Krankheit (Woche 7, 12 Tage)	0	3
+Ambitioniert, 8 h, FTP steigern | Lange Krankheit (Woche 7, 12 Tage)	0	8
+Hobby, 6 h, Ausdauer | Lange Krankheit (Woche 7, 12 Tage)	0	3
+Einsteiger, 3 h, fit bleiben | Lange Krankheit (Woche 7, 12 Tage)	0	1
+Ambitioniert, 6 h, fit bleiben | Lange Krankheit (Woche 7, 12 Tage)	0	3
+Ambitioniert, 7 h, schneller am Berg | Lange Krankheit (Woche 7, 12 Tage)	0	3
+Einsteigerin, 3 h, erste 100 km | Reisewoche ohne Zeit (Woche 5)	0	3
+Einsteiger, 5 h, Gravel ankommen | Reisewoche ohne Zeit (Woche 5)	0	2
+Hobby, 6 h, Gran Fondo | Reisewoche ohne Zeit (Woche 5)	0	3
+Hobby, 7 h, Zeitfahren | Reisewoche ohne Zeit (Woche 5)	0	1
+Hobby, 5 h, nur am Wochenende, Bikepacking | Reisewoche ohne Zeit (Woche 5)	0	0
+Ambitioniert, 7 h, Ultra ankommen | Reisewoche ohne Zeit (Woche 5)	0	4
+Ambitioniert, 10 h, Ötztaler vorne | Reisewoche ohne Zeit (Woche 5)	0	6
+Ambitioniert, 8 h, Straßenrennen | Reisewoche ohne Zeit (Woche 5)	0	4
+Ambitioniert, 4 h, wenig Zeit, Gran Fondo | Reisewoche ohne Zeit (Woche 5)	0	2
+Leistung, 12 h, Kriterium | Reisewoche ohne Zeit (Woche 5)	0	1
+Leistung, 15 h, Ultra auf Zeit | Reisewoche ohne Zeit (Woche 5)	0	5
+Leistung, 19 h, Ultra 900 km | Reisewoche ohne Zeit (Woche 5)	0	10
+Leistung, 9 h, Gravel vorne, kurzfristig | Reisewoche ohne Zeit (Woche 5)	0	1
+Hobby, 5 h, FTP steigern | Reisewoche ohne Zeit (Woche 5)	0	3
+Ambitioniert, 8 h, FTP steigern | Reisewoche ohne Zeit (Woche 5)	0	3
+Hobby, 6 h, Ausdauer | Reisewoche ohne Zeit (Woche 5)	0	3
+Einsteiger, 3 h, fit bleiben | Reisewoche ohne Zeit (Woche 5)	0	4
+Ambitioniert, 6 h, fit bleiben | Reisewoche ohne Zeit (Woche 5)	0	1
+Ambitioniert, 7 h, schneller am Berg | Reisewoche ohne Zeit (Woche 5)	0	3
+Einsteigerin, 3 h, erste 100 km | Schichtdienst (Zeit wechselt wöchentlich)	0	5
+Einsteiger, 5 h, Gravel ankommen | Schichtdienst (Zeit wechselt wöchentlich)	0	3
+Hobby, 6 h, Gran Fondo | Schichtdienst (Zeit wechselt wöchentlich)	0	4
+Hobby, 7 h, Zeitfahren | Schichtdienst (Zeit wechselt wöchentlich)	0	3
+Hobby, 5 h, nur am Wochenende, Bikepacking | Schichtdienst (Zeit wechselt wöchentlich)	0	6
+Ambitioniert, 7 h, Ultra ankommen | Schichtdienst (Zeit wechselt wöchentlich)	0	9
+Ambitioniert, 10 h, Ötztaler vorne | Schichtdienst (Zeit wechselt wöchentlich)	0	1
+Ambitioniert, 8 h, Straßenrennen | Schichtdienst (Zeit wechselt wöchentlich)	0	0
+Ambitioniert, 4 h, wenig Zeit, Gran Fondo | Schichtdienst (Zeit wechselt wöchentlich)	0	4
+Leistung, 12 h, Kriterium | Schichtdienst (Zeit wechselt wöchentlich)	0	2
+Leistung, 15 h, Ultra auf Zeit | Schichtdienst (Zeit wechselt wöchentlich)	0	3
+Leistung, 19 h, Ultra 900 km | Schichtdienst (Zeit wechselt wöchentlich)	0	11
+Leistung, 9 h, Gravel vorne, kurzfristig | Schichtdienst (Zeit wechselt wöchentlich)	0	0
+Hobby, 5 h, FTP steigern | Schichtdienst (Zeit wechselt wöchentlich)	0	4
+Ambitioniert, 8 h, FTP steigern | Schichtdienst (Zeit wechselt wöchentlich)	0	4
+Hobby, 6 h, Ausdauer | Schichtdienst (Zeit wechselt wöchentlich)	0	4
+Einsteiger, 3 h, fit bleiben | Schichtdienst (Zeit wechselt wöchentlich)	0	4
+Ambitioniert, 6 h, fit bleiben | Schichtdienst (Zeit wechselt wöchentlich)	0	13
+Ambitioniert, 7 h, schneller am Berg | Schichtdienst (Zeit wechselt wöchentlich)	0	5
