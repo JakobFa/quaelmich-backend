@@ -461,6 +461,11 @@ public class PlanGenerator {
 	static final int BASELINE_DAYS = 28;
 	/** Mit weniger Tagen Daten gibt es noch keinen verlässlichen Schnitt – dann kein Deckel */
 	static final int MIN_BASELINE_DAYS = 3;
+	/**
+	 * Ein einzelner Tag zählt im Schnitt höchstens so viel: Ein Rennen oder eine Ultra-Fahrt (z. B. 12 Stunden) soll die
+	 * Obergrenze der Folgewochen nicht anheben – sie wären sonst ein Sprung weit über das, was sonst gefahren wird.
+	 */
+	static final int BASELINE_MAX_DAY_MINUTES = 360;
 
 	/**
 	 * Wie weit liegt die letzte Woche über dem Schnitt der Wochen davor, wenn der Umfang stetig um 10 % pro Woche
@@ -493,7 +498,7 @@ public class PlanGenerator {
 			if (recoveryDays.contains(day)) {
 				continue;
 			}
-			sum += daily.getOrDefault(day, 0);
+			sum += Math.min(daily.getOrDefault(day, 0), BASELINE_MAX_DAY_MINUTES);
 			countedDays++;
 		}
 		return countedDays < MIN_BASELINE_DAYS ? null : sum * 7.0 / countedDays;
@@ -516,7 +521,7 @@ public class PlanGenerator {
 			if (recoveryDays.contains(day)) {
 				continue; // Erholungstage verfälschen den Schnitt der Belastung
 			}
-			sum += daily.getOrDefault(day, 0);
+			sum += Math.min(daily.getOrDefault(day, 0), BASELINE_MAX_DAY_MINUTES);
 			countedDays++;
 		}
 		if (countedDays < MIN_BASELINE_DAYS) {
