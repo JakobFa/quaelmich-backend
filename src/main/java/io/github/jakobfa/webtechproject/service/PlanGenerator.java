@@ -270,8 +270,8 @@ public class PlanGenerator {
 		int allWeeks = eventDate == null ? Integer.MAX_VALUE : phases.size();
 		List<PlannedWorkout> plan = new ArrayList<>();
 		Map<Phase, Integer> weeksInPhase = new EnumMap<>(Phase.class);
-		// wie die Wochen ohne Anpassung an die Wirklichkeit geplant waren
-		List<Phase> scheduled = new ArrayList<>(phases);
+		// Grundlage/Aufbau/Spitze/Tapering ohne Erholung – daran richtet sich ein neu begonnener Rhythmus aus
+		List<Phase> labels = eventDate != null ? labelsFor(phases.size()) : openLabels(phases);
 		int loadWeek = 0;
 		// Minuten je Tag: Vergangenes aus dem, was gefahren wurde, dazu das, was dieser Plan schon vorsieht. Daraus
 		// rechnen die gleitenden Zeitfenster (7 Tage gegen den Schnitt der 28 Tage davor) – nicht die Kalenderwoche.
@@ -288,8 +288,9 @@ public class PlanGenerator {
 			WeeklyAvailability availability = weekAvailability.getOrDefault(monday, athlete.getAvailability());
 			double weeklyHours = availability.totalHours();
 			int weeksUntilEvent = eventDate == null ? Integer.MAX_VALUE : allWeeks - 1 - weekIndex;
-			boolean returning = adaptPhase(phases, scheduled, weekIndex, monday, history, weeksUntilEvent, daily,
-					recoveryDays, dataStart);
+			followPastWeek(phases, labels, weekIndex, monday, history);
+			boolean returning = adaptPhase(phases, labels, weekIndex, monday, history, weeksUntilEvent,
+					daily, recoveryDays, dataStart);
 			Phase phase = phases.get(weekIndex);
 
 			List<LocalDate> trainingDays = monday.datesUntil(monday.plusWeeks(1))
@@ -420,7 +421,8 @@ public class PlanGenerator {
 	 * </ul>
 	 * Das Tapering und die Event-Woche bleiben, wie sie sind.
 	 */
-	private static boolean adaptPhase(List<Phase> phases, List<Phase> scheduled, int weekIndex, LocalDate monday,
+	private static boolean adaptPhase(List<Phase> phases, List<Phase> labels, int weekIndex,
+			LocalDate monday,
 			PlanHistory history, int weeksUntilEvent, Map<LocalDate, Integer> daily,
 			java.util.Set<LocalDate> recoveryDays, LocalDate dataStart) {
 		if (!history.applies(monday) || phases.get(weekIndex) == Phase.TAPER || weeksUntilEvent <= 1) {
@@ -430,7 +432,8 @@ public class PlanGenerator {
 			phases.set(weekIndex, Phase.RECOVERY);
 			return true;
 		}
-		if (weekIndex > 0 && phases.get(weekIndex) == Phase.RECOVERY && isLoadPhase(scheduled.get(weekIndex - 1))) {
+		// (Erholungswochen können durch einen neu begonnenen Rhythmus gewandert sein)
+		if (weekIndex > 0 && phases.get(weekIndex) == Phase.RECOVERY) {
 			var previous = history.before(monday);
 			Double recent = history.averageFulfilment(monday, PlanHistory.RECENT_WEEKS);
 			boolean weak = (previous != null && previous.fulfilment() < PlanHistory.MIN_FULFILMENT)
@@ -443,7 +446,12 @@ public class PlanGenerator {
 			boolean afterRecovery = phases.get(weekIndex - 1) == Phase.RECOVERY;
 			// direkt nach einem Wiedereinstieg nicht gleich noch eine Erholungswoche
 			if (weak || rested || afterRecovery || history.isReentryWeek(monday.minusWeeks(1))) {
-				phases.set(weekIndex, scheduled.get(weekIndex - 1));
+				phases.set(weekIndex, labels.get(weekIndex));
+				// der Rhythmus zählt neu: direkt nach einer Erholung ist das Woche 1, sonst ab der letzten Woche, die so
+				// ruhig war wie eine Erholungswoche – gab es keine, kommt die Erholung nur eine Woche später
+				int loaded = afterRecovery || history.isReentryWeek(monday.minusWeeks(1)) ? 1
+						: weeksSinceRecoveryLikeWeek(daily, recoveryDays, dataStart, monday);
+				restartBlocks(phases, labels, weekIndex, loaded);
 			}
 		}
 		// Umgekehrt: deutlich mehr gefahren als in den Wochen davor – die Erholungswoche kommt eine Woche früher.
@@ -456,6 +464,7 @@ public class PlanGenerator {
 				&& !history.isReentryWeek(monday.minusWeeks(1))
 				&& spiked(daily, recoveryDays, dataStart, monday)) {
 			phases.set(weekIndex, Phase.RECOVERY);
+			restartBlocks(phases, labels, weekIndex, 0);
 		}
 		return false;
 	}
@@ -531,6 +540,87 @@ public class PlanGenerator {
 			return false;
 		}
 		return recent >= before * SPIKE_RATIO && recent - before >= SPIKE_MIN_EXTRA_MINUTES;
+	}
+
+	/**
+	 * Woche des neuen Blocks, die mit monday beginnt: 1, wenn die Woche davor so ruhig war wie eine Erholungswoche
+	 * (höchstens RECOVERY_ACUTE_RATIO des Schnitts der 3 Wochen vor dem Block), 2 oder 3, wenn das 2 oder 3 Wochen her
+	 * ist. Gab es keine so ruhige Woche, ist die Erholung nur aufgeschoben: LOAD_WEEKS_PER_BLOCK (die nächste Woche
+	 * wird Erholung). Ohne genug Daten ebenso.
+	 */
+	static int weeksSinceRecoveryLikeWeek(Map<LocalDate, Integer> daily, java.util.Set<LocalDate> recoveryDays,
+			LocalDate dataStart, LocalDate monday) {
+		Double before = weeklyAverage(daily, recoveryDays, dataStart, monday, LOAD_BLOCK_DAYS + 1, LOAD_HISTORY_DAYS,
+				LOAD_BLOCK_DAYS * 2 / 3);
+		if (before == null || before <= 0) {
+			return LOAD_WEEKS_PER_BLOCK;
+		}
+		for (int week = 1; week < LOAD_WEEKS_PER_BLOCK; week++) {
+			Double minutes = weeklyAverage(daily, java.util.Set.of(), dataStart, monday, 7 * (week - 1) + 1, 7 * week,
+					7);
+			if (minutes != null && minutes <= before * RECOVERY_ACUTE_RATIO) {
+				return week;
+			}
+		}
+		return LOAD_WEEKS_PER_BLOCK;
+	}
+
+	private static LocalDate dataStartOf(PlanHistory history) {
+		return history.dataStart() != null ? history.dataStart() : LocalDate.MIN;
+	}
+
+	/** So viele Belastungswochen, dann eine Erholungswoche (wie in phasesFor und OPEN_CYCLE) */
+	static final int LOAD_WEEKS_PER_BLOCK = 3;
+
+	/**
+	 * Setzt die Erholungswochen nach weekIndex neu: Weicht die Wirklichkeit vom Rhythmus ab (Erholungswoche entfallen
+	 * oder vorgezogen), zählt der nächste Block ab hier – nicht weiter ab Planstart. loadedAtIndex = Belastungswochen
+	 * des neuen Blocks einschließlich weekIndex (1 nach entfallener, 0 nach vorgezogener Erholung). Die Phasen selbst
+	 * (labels: Grundlage, Aufbau, Spitze, Tapering) bleiben, wo sie sind; wie in phasesFor bleibt die letzte Woche
+	 * vor dem Tapering Belastung (das Tapering ist selbst die Entlastung).
+	 */
+	static void restartBlocks(List<Phase> phases, List<Phase> labels, int weekIndex, int loadedAtIndex) {
+		int end = labels.indexOf(Phase.TAPER);
+		boolean taper = end >= 0;
+		if (!taper) {
+			end = phases.size();
+		}
+		int loaded = loadedAtIndex;
+		for (int i = weekIndex + 1; i < end; i++) {
+			boolean lastBeforeTaper = taper && i == end - 1;
+			if (loaded >= LOAD_WEEKS_PER_BLOCK && !lastBeforeTaper) {
+				phases.set(i, Phase.RECOVERY);
+				loaded = 0;
+			} else {
+				phases.set(i, labels.get(i));
+				loaded++;
+			}
+		}
+	}
+
+	/**
+	 * Vergangene Wochen: so, wie sie wirklich waren. Stand im gespeicherten Plan keine Erholung, wo der Rhythmus eine
+	 * vorsah (entfallen), oder eine, wo er keine vorsah (vorgezogen), beginnt der Rhythmus dort neu – sonst kämen die
+	 * Erholungswochen danach wieder an die alten Stellen, sobald die Woche vorbei ist.
+	 */
+	private static void followPastWeek(List<Phase> phases, List<Phase> labels, int weekIndex, LocalDate monday,
+			PlanHistory history) {
+		// nur Wochen, die im gespeicherten Plan stehen – nur von denen ist bekannt, welche Phase sie wirklich hatten
+		if (history.isEmpty() || !monday.isBefore(history.thisMonday()) || !history.weeks().containsKey(monday)) {
+			return;
+		}
+		boolean wasRecovery = monday.datesUntil(monday.plusWeeks(1)).anyMatch(history.recoveryDays()::contains);
+		Phase planned = phases.get(weekIndex);
+		if (planned == Phase.RECOVERY && !wasRecovery && weekIndex > 0) {
+			phases.set(weekIndex, labels.get(weekIndex));
+			boolean afterRecovery = phases.get(weekIndex - 1) == Phase.RECOVERY;
+			restartBlocks(phases, labels, weekIndex, afterRecovery ? 1
+					: weeksSinceRecoveryLikeWeek(history.dailyMinutes(), history.recoveryDays(), dataStartOf(history),
+							monday));
+		} else if (isLoadPhase(planned) && wasRecovery) {
+			phases.set(weekIndex, Phase.RECOVERY);
+			restartBlocks(phases, labels, weekIndex, 0);
+		}
 	}
 
 	/** Belastungswochen direkt vor weekIndex (bis zur letzten Erholungswoche) */
@@ -752,19 +842,9 @@ public class PlanGenerator {
 	 * ist selbst die Entlastung). So gibt es nie mehr als 4 harte Wochen am Stück.
 	 */
 	static List<Phase> phasesFor(int weeks) {
-		int taper = weeks >= 3 ? 2 : 1;
-		int peak = Math.min(weeks >= 16 ? 3 : weeks >= 6 ? 2 : 1, weeks - taper);
-		int rest = weeks - taper - peak;
-		int build = (int) Math.round(rest * 0.4);
-		int base = rest - build;
-
-		List<Phase> phases = new ArrayList<>();
-		for (int i = 0; i < weeks; i++) {
-			phases.add(i < base ? Phase.BASE : i < base + build ? Phase.BUILD : i < rest + peak ? Phase.PEAK
-					: Phase.TAPER);
-		}
+		List<Phase> phases = labelsFor(weeks);
+		int loadSpan = (int) phases.stream().filter(phase -> phase != Phase.TAPER).count();
 		int loaded = 0;
-		int loadSpan = rest + peak;
 		for (int i = 0; i < loadSpan; i++) {
 			boolean lastBeforeTaper = i == loadSpan - 1;
 			if (loaded == 3 && !lastBeforeTaper) {
@@ -775,6 +855,32 @@ public class PlanGenerator {
 			}
 		}
 		return phases;
+	}
+
+	/** Grundlage, Aufbau, Spitze und Tapering je Woche – ohne Erholungswochen, am Eventdatum ausgerichtet */
+	static List<Phase> labelsFor(int weeks) {
+		int taper = weeks >= 3 ? 2 : 1;
+		int peak = Math.min(weeks >= 16 ? 3 : weeks >= 6 ? 2 : 1, weeks - taper);
+		int rest = weeks - taper - peak;
+		int build = (int) Math.round(rest * 0.4);
+		int base = rest - build;
+		List<Phase> labels = new ArrayList<>();
+		for (int i = 0; i < weeks; i++) {
+			labels.add(i < base ? Phase.BASE : i < base + build ? Phase.BUILD : i < rest + peak ? Phase.PEAK
+					: Phase.TAPER);
+		}
+		return labels;
+	}
+
+	/** Ohne Event: die Phase, die eine Erholungswoche des Zyklus ersetzt, ist die des Blocks davor */
+	static List<Phase> openLabels(List<Phase> phases) {
+		List<Phase> labels = new ArrayList<>(phases);
+		for (int i = 0; i < labels.size(); i++) {
+			if (labels.get(i) == Phase.RECOVERY) {
+				labels.set(i, i > 0 ? labels.get(i - 1) : Phase.BASE);
+			}
+		}
+		return labels;
 	}
 
 	static boolean isLoadPhase(Phase phase) {
