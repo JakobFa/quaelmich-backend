@@ -45,13 +45,16 @@ public class AccountService {
 	private final StravaService strava;
 	private final IntervalsConnectionService intervals;
 	private final PlanResponseMapper planMapper;
+	private final io.github.jakobfa.webtechproject.service.TrainingPlanService planService;
 	private final io.github.jakobfa.webtechproject.repository.RaceEventRepository raceEvents;
 
 	public AccountService(AppUserRepository users, PasswordEncoder passwordEncoder, AthleteRepository athletes,
 			TrainingPlanRepository plans, ExtraRideRepository extraRides, CustomWorkoutRepository customWorkouts,
 			FeedbackRepository feedback, InvitationRepository invitations, PasswordResetTokenRepository resetTokens,
 			StravaService strava, IntervalsConnectionService intervals, PlanResponseMapper planMapper,
-			io.github.jakobfa.webtechproject.repository.RaceEventRepository raceEvents) {
+			io.github.jakobfa.webtechproject.repository.RaceEventRepository raceEvents,
+			io.github.jakobfa.webtechproject.service.TrainingPlanService planService) {
+		this.planService = planService;
 		this.raceEvents = raceEvents;
 		this.users = users;
 		this.passwordEncoder = passwordEncoder;
@@ -101,7 +104,11 @@ public class AccountService {
 			data.put("konto", Map.of("email", user.getEmail(), "registriert", String.valueOf(user.getCreatedAt())));
 			athletes.findByOwnerId(userId).ifPresent(athlete -> {
 				data.put("profil", athlete);
-				plans.findByAthleteId(athlete.getId()).ifPresent(plan -> data.put("plan", planMapper.toResponse(plan)));
+				plans.findByAthleteId(athlete.getId()).ifPresent(plan -> {
+					data.put("plan", planMapper.toResponse(plan));
+					// Interne Werte des Plans (Belastung je Tag, Grenzen, Wochen) – für die Fehlersuche
+					data.put("diagnose", planService.diagnosis(plan));
+				});
 				data.put("weitereEvents", raceEvents.findByAthleteIdOrderByDate(athlete.getId()));
 				data.put("fahrten", extraRides.findByAthleteId(athlete.getId()).stream()
 						.map(PlanResponseMapper::toResponse).toList());

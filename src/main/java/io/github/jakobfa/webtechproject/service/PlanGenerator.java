@@ -544,6 +544,29 @@ public class PlanGenerator {
 		return !history.isEmpty() && monday.isBefore(history.thisMonday());
 	}
 
+	/**
+	 * Schnitt der Belastung pro Woche aus den bis zu 28 Tagen vor monday (ohne Erholungstage und mit hochgerechneter
+	 * Kurzzeit am Anfang); null, wenn es noch zu wenig Daten gibt.
+	 */
+	static Double baselineWeeklyMinutes(Map<LocalDate, Integer> daily, java.util.Set<LocalDate> recoveryDays,
+			LocalDate dataStart, LocalDate monday) {
+		long days = Math.min(BASELINE_DAYS, ChronoUnit.DAYS.between(dataStart, monday));
+		if (days < MIN_BASELINE_DAYS) {
+			return null;
+		}
+		int sum = 0;
+		int countedDays = 0;
+		for (int back = 1; back <= days; back++) {
+			LocalDate day = monday.minusDays(back);
+			if (recoveryDays.contains(day)) {
+				continue;
+			}
+			sum += daily.getOrDefault(day, 0);
+			countedDays++;
+		}
+		return countedDays < MIN_BASELINE_DAYS ? null : sum * 7.0 / countedDays;
+	}
+
 	/** Der Deckel für die 7-Tage-Fenster dieser Woche, null = keiner (zu wenig Daten, Tapering) */
 	static RollingCap rollingCap(Map<LocalDate, Integer> daily, java.util.Set<LocalDate> recoveryDays,
 			LocalDate dataStart, LocalDate monday, Phase phase, boolean overreached) {
