@@ -288,7 +288,8 @@ public class PlanGenerator {
 			WeeklyAvailability availability = weekAvailability.getOrDefault(monday, athlete.getAvailability());
 			double weeklyHours = availability.totalHours();
 			int weeksUntilEvent = eventDate == null ? Integer.MAX_VALUE : allWeeks - 1 - weekIndex;
-			boolean returning = adaptPhase(phases, scheduled, weekIndex, monday, history, weeksUntilEvent);
+			boolean returning = adaptPhase(phases, scheduled, weekIndex, monday, history, weeksUntilEvent, daily,
+					recoveryDays, dataStart);
 			Phase phase = phases.get(weekIndex);
 
 			List<LocalDate> trainingDays = monday.datesUntil(monday.plusWeeks(1))
@@ -411,11 +412,15 @@ public class PlanGenerator {
 	 * <li>Wiedereinstieg: die Woche wird zur Erholungswoche, ohne harte Einheiten.</li>
 	 * <li>Auf eine Belastungswoche, die zu weniger als 70 % gefahren wurde, folgt keine Erholungswoche: Man hat sich
 	 * nicht überlastet, sondern zu wenig getan (oder war krank) – die Woche davor wird wiederholt.</li>
+	 * <li>Ebenso, wenn die letzten 3 Wochen deutlich weniger waren als der Schnitt der 4 Wochen davor (siehe
+	 * {@link #builtUp}): z. B. nach einem Rennen oder Urlaub, auf den ruhige Wochen folgten. Dann hat sich keine
+	 * Ermüdung angesammelt, die eine Erholungswoche abbauen müsste.</li>
 	 * </ul>
 	 * Das Tapering und die Event-Woche bleiben, wie sie sind.
 	 */
 	private static boolean adaptPhase(List<Phase> phases, List<Phase> scheduled, int weekIndex, LocalDate monday,
-			PlanHistory history, int weeksUntilEvent) {
+			PlanHistory history, int weeksUntilEvent, Map<LocalDate, Integer> daily,
+			java.util.Set<LocalDate> recoveryDays, LocalDate dataStart) {
 		if (!history.applies(monday) || phases.get(weekIndex) == Phase.TAPER || weeksUntilEvent <= 1) {
 			return false;
 		}
@@ -428,12 +433,57 @@ public class PlanGenerator {
 			Double recent = history.averageFulfilment(monday, PlanHistory.RECENT_WEEKS);
 			boolean weak = (previous != null && previous.fulfilment() < PlanHistory.MIN_FULFILMENT)
 					|| (recent != null && recent < PlanHistory.MIN_RECENT_FULFILMENT);
+			// nur, wo der Block schon größtenteils gefahren ist (laufende und nächste Woche); weiter vorn zählt der Plan
+			boolean nearNow = !monday.isAfter(history.thisMonday().plusWeeks(1));
+			boolean rested = nearNow && loadWeeksBefore(phases, weekIndex) < MAX_LOAD_WEEKS_WITHOUT_RECOVERY
+					&& !builtUp(daily, recoveryDays, dataStart, monday);
 			// direkt nach einem Wiedereinstieg nicht gleich noch eine Erholungswoche
-			if (weak || history.isReentryWeek(monday.minusWeeks(1))) {
+			if (weak || rested || history.isReentryWeek(monday.minusWeeks(1))) {
 				phases.set(weekIndex, scheduled.get(weekIndex - 1));
 			}
 		}
 		return false;
+	}
+
+	/** So viele Tage vor einer Erholungswoche zählen als der Block, dessen Ermüdung sie abbauen soll */
+	static final int LOAD_BLOCK_DAYS = 21;
+	/** Unter so viel vom Schnitt davor gelten die letzten 3 Wochen als ruhig (kein Aufbau von Ermüdung) */
+	static final double RESTED_BLOCK_RATIO = 0.9;
+	/** Spätestens nach so vielen Belastungswochen am Stück kommt die Erholungswoche, auch ohne Anstieg */
+	static final int MAX_LOAD_WEEKS_WITHOUT_RECOVERY = 6;
+
+	/**
+	 * Hat sich vor monday Belastung aufgebaut? Nein nur, wenn die letzten 3 Wochen im Schnitt unter 90 % der 4 Wochen
+	 * davor lagen (je Tag höchstens BASELINE_MAX_DAY_MINUTES, wie beim Wochendeckel). Ohne genug Daten für den Vergleich:
+	 * ja – dann bleibt die Erholungswoche, wie sie geplant ist.
+	 */
+	static boolean builtUp(Map<LocalDate, Integer> daily, java.util.Set<LocalDate> recoveryDays, LocalDate dataStart,
+			LocalDate monday) {
+		Double before = windowAverage(daily, recoveryDays, dataStart, monday.minusDays(LOAD_BLOCK_DAYS),
+				MEMORY_MIN_DAYS);
+		if (before == null || before <= 0) {
+			return true;
+		}
+		int sum = 0;
+		int counted = 0;
+		for (int back = 1; back <= LOAD_BLOCK_DAYS; back++) {
+			LocalDate day = monday.minusDays(back);
+			if (day.isBefore(dataStart)) {
+				continue;
+			}
+			sum += Math.min(daily.getOrDefault(day, 0), BASELINE_MAX_DAY_MINUTES);
+			counted++;
+		}
+		return counted < LOAD_BLOCK_DAYS || sum * 7.0 / counted >= before * RESTED_BLOCK_RATIO;
+	}
+
+	/** Belastungswochen direkt vor weekIndex (bis zur letzten Erholungswoche) */
+	private static int loadWeeksBefore(List<Phase> phases, int weekIndex) {
+		int count = 0;
+		for (int i = weekIndex - 1; i >= 0 && isLoadPhase(phases.get(i)); i--) {
+			count++;
+		}
+		return count;
 	}
 
 	/** Was in einer normalen Woche geplant wird */
@@ -992,6 +1042,12 @@ public class PlanGenerator {
 				restDays.add(testDay.minusDays(1));
 			}
 		}
+		// Erholungswoche mit vielen Trainingstagen: der Tag nach dem großen Umfangstag (meist der Montag nach dem
+		// Belastungs-Wochenende) bleibt ganz frei – statt jeden Tag dieselbe kurze Grundlage
+		if (plan.phase() == Phase.RECOVERY && days.size() >= RECOVERY_REST_MIN_DAYS) {
+			days.stream().filter(day -> !day.equals(firstLong) && !day.equals(partner))
+					.filter(day -> isAfterBigDay(availability, day)).findFirst().ifPresent(restDays::add);
+		}
 
 		// Abwechslung: je Trainingsart jede Woche das nächste Workout derselben Stufe (zweimal dieselbe Art in
 		// einer Woche: zwei verschiedene)
@@ -1083,8 +1139,11 @@ public class PlanGenerator {
 		}
 		fillHardDays(week, availability, plan, flexible, days.getLast());
 
-		// ein lockerer Tag pro Woche bekommt Einlagen (Antritte oder Tempo), damit nicht jeder Tag gleich aussieht
-		boolean spiceWeek = plan.phase() == Phase.BASE || plan.phase() == Phase.BUILD || plan.phase() == Phase.PEAK;
+		// ein lockerer Tag pro Woche bekommt Einlagen (Antritte oder Tempo), damit nicht jeder Tag gleich aussieht –
+		// in der Erholungswoche ohne kurze Qualitätseinheit ein paar Antritte, die die Beine wach halten
+		boolean recoverySpice = plan.phase() == Phase.RECOVERY && plan.hardWorkouts().isEmpty();
+		boolean spiceWeek = plan.phase() == Phase.BASE || plan.phase() == Phase.BUILD || plan.phase() == Phase.PEAK
+				|| recoverySpice;
 		boolean spiced = false;
 		for (var entry : flexible.entrySet()) {
 			LocalDate day = entry.getKey();
@@ -1107,7 +1166,8 @@ public class PlanGenerator {
 						&& easy.getWorkoutId() == WorkoutLibrary.endurance(60).getId()) {
 					int length = easy.getDurationMinutes();
 					// reihum: Antritte, Tempo-Einlagen, Tempo-Finale (Abwechslung unter der Woche)
-					Workout spice = switch (plan.weekIndex() % 3) {
+					Workout spice = recoverySpice ? WorkoutLibrary.enduranceWithSprints(length)
+							: switch (plan.weekIndex() % 3) {
 						case 0 -> WorkoutLibrary.enduranceWithSprints(length);
 						case 1 -> WorkoutLibrary.enduranceWithTempo(length);
 						default -> WorkoutLibrary.enduranceWithFinish(length);
@@ -1122,6 +1182,9 @@ public class PlanGenerator {
 		week.sort(Comparator.comparing(PlannedWorkout::getDate));
 		return week;
 	}
+
+	/** Ab so vielen Trainingstagen bekommt eine Erholungswoche einen zusätzlichen freien Tag */
+	static final int RECOVERY_REST_MIN_DAYS = 5;
 
 	/** Erst ab so viel Zusatzzeit lohnt sich das Auffüllen eines harten Tags */
 	static final int FILL_MIN_EXTRA = 15;
