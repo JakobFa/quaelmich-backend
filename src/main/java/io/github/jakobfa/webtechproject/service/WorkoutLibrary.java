@@ -278,6 +278,56 @@ public class WorkoutLibrary {
 									steady(RECOVERY, min(5), 50)),
 							cooldown())),
 
+			// ---------- Neue Intervallformen (IDs ab 71) ----------
+			new Workout(71L, "Norwegian Schwelle 6 × 8", WorkoutType.THRESHOLD,
+					"Sechs Blöcke knapp unter der FTP mit nur 90 Sekunden Pause – die Methode der norwegischen "
+							+ "Ausdauerathleten: viel Schwellenzeit, ohne dass es zu hart wird.",
+					steps(warmup(), repeat(6, steady(INTERVAL, min(8), 95), steady(RECOVERY, 90, 55)), cooldown())),
+			new Workout(72L, "Seiler 4 × 8", WorkoutType.THRESHOLD,
+					"Vier Mal acht Minuten an der Schwelle mit zwei Minuten Pause – gut belegt für die Entwicklung "
+							+ "der Ausdauerleistung (nach Stephen Seiler).",
+					steps(warmup(), repeat(4, steady(INTERVAL, min(8), 97), steady(RECOVERY, min(2), 55)),
+							cooldown())),
+			new Workout(73L, "VO2max Leiter 1-2-3-4-3-2-1", WorkoutType.VO2MAX,
+					"Die Intervalle werden erst länger und dann wieder kürzer – 16 Minuten über der Schwelle, "
+							+ "aber nie lang am Stück. Kurzweilig und mental leichter als 5 × 5.",
+					steps(warmup(),
+							steady(INTERVAL, min(1), 120), steady(RECOVERY, min(1), 50),
+							steady(INTERVAL, min(2), 118), steady(RECOVERY, min(2), 50),
+							steady(INTERVAL, min(3), 115), steady(RECOVERY, min(3), 50),
+							steady(INTERVAL, min(4), 112), steady(RECOVERY, min(4), 50),
+							steady(INTERVAL, min(3), 115), steady(RECOVERY, min(3), 50),
+							steady(INTERVAL, min(2), 118), steady(RECOVERY, min(2), 50),
+							steady(INTERVAL, min(1), 120), cooldown())),
+			new Workout(74L, "Tabata 2 × 8 × 20/10", WorkoutType.ANAEROBIC,
+					"20 Sekunden Vollgas, 10 Sekunden Pause, acht Mal – zwei Serien. Kurz, sehr hart und für "
+							+ "Tage mit wenig Zeit.",
+					steps(warmup(),
+							repeat(2, repeat(8, steady(INTERVAL, 20, 150), steady(RECOVERY, 10, 40)),
+									steady(RECOVERY, min(6), 50)),
+							cooldown())),
+			new Workout(75L, "Kraftausdauer 4 × 8", WorkoutType.SWEET_SPOT,
+					"Vier Blöcke am Sweet Spot mit niedriger Trittfrequenz (50 bis 60 U/min), im großen Gang "
+							+ "sitzend – trainiert die Muskelkraft für lange Anstiege und Ultra-Distanzen.",
+					steps(warmup(), repeat(4, steady(INTERVAL, min(8), 88), steady(RECOVERY, min(4), 55)),
+							cooldown())),
+			new Workout(76L, "Berg-Wiederholungen 5 × 5", WorkoutType.THRESHOLD,
+					"Fünf Mal fünf Minuten knapp über der Schwelle – am besten am Berg oder in einer Steigung, "
+							+ "mit lockerer Abfahrt als Pause.",
+					steps(warmup(), repeat(5, steady(INTERVAL, min(5), 103), steady(RECOVERY, min(3), 50)),
+							cooldown())),
+			new Workout(77L, "Mikro-Bursts 2 × 20 × 15/15", WorkoutType.VO2MAX,
+					"15 Sekunden hart, 15 Sekunden locker, 20 Mal – zwei Serien. Wenig Ermüdung der Beine, aber der "
+							+ "Puls bleibt oben (Variante des 30/15-Prinzips von Rønnestad).",
+					steps(warmup(),
+							repeat(2, repeat(20, steady(INTERVAL, 15, 125), steady(RECOVERY, 15, 50)),
+									steady(RECOVERY, min(5), 50)),
+							cooldown())),
+
+			// ---------- Grundlage und lange Ausfahrt mit Einlagen (Länge frei wählbar) ----------
+			enduranceWithFinish(90),
+			longRideProgressive(240),
+
 			// ---------- Sprint ----------
 			new Workout(65L, "Sprints 8 × 10 s", WorkoutType.SPRINT,
 					"Acht kurze Vollgas-Sprints in lockerer Grundlage – viel Spritzigkeit, wenig Ermüdung.",
@@ -367,6 +417,47 @@ public class WorkoutLibrary {
 	 * derselben Art, deren Belastung (TSS) dieser Stufe am nächsten liegt. Die Variante steht vorn.
 	 */
 	public List<Workout> alternatives(WorkoutType type, int step) {
+		return alternatives(type, step, null);
+	}
+
+	/**
+	 * Für welche Ziele eine Spezialeinheit gedacht ist; alles andere passt zu jedem Ziel. Der Plan setzt sie nur dort
+	 * ein, wo sie hilft (z. B. Kraftausdauer bei niedriger Trittfrequenz für lange Events, Tabata für kurze, harte).
+	 */
+	static final java.util.Map<Long, java.util.Set<EventProfile.Focus>> SUITABLE_FOR = java.util.Map.of(
+			71L, java.util.Set.of(EventProfile.Focus.ULTRA, EventProfile.Focus.LONG_FLAT,
+					EventProfile.Focus.LONG_CLIMBING, EventProfile.Focus.TIME_TRIAL),
+			74L, java.util.Set.of(EventProfile.Focus.SHORT_INTENSE, EventProfile.Focus.MIXED),
+			75L, java.util.Set.of(EventProfile.Focus.ULTRA, EventProfile.Focus.LONG_FLAT,
+					EventProfile.Focus.LONG_CLIMBING),
+			76L, java.util.Set.of(EventProfile.Focus.LONG_CLIMBING, EventProfile.Focus.MIXED),
+			77L, java.util.Set.of(EventProfile.Focus.SHORT_INTENSE, EventProfile.Focus.MIXED,
+					EventProfile.Focus.TIME_TRIAL));
+
+	/** Ab welcher Steigerungsstufe eine Spezialeinheit sinnvoll ist (sie sind härter oder umfangreicher) */
+	static final java.util.Map<Long, Integer> SPECIALTY_MIN_STEP = java.util.Map.of(71L, 2, 74L, 2, 75L, 1, 76L, 2,
+			77L, 1);
+
+	/**
+	 * Spezialeinheiten dieser Art, die zu diesem Ziel gehören und auf dieser Stufe schon passen. Der Plan stellt sie
+	 * reihum vor die normale Auswahl, damit sie auch wirklich vorkommen (sonst entschiede allein die Belastung, ob sie
+	 * jemals an der Reihe sind).
+	 */
+	public List<Workout> specialtiesFor(WorkoutType type, int step, EventProfile.Focus focus) {
+		return variety.stream()
+				.filter(workout -> workout.getType() == type && SUITABLE_FOR.containsKey(workout.getId())
+						&& suitableFor(workout, focus) && step >= SPECIALTY_MIN_STEP.getOrDefault(workout.getId(), 0))
+				.toList();
+	}
+
+	/** Passt die Einheit zu diesem Ziel? Ohne Angabe (focus null) passt alles. */
+	static boolean suitableFor(Workout workout, EventProfile.Focus focus) {
+		var focuses = SUITABLE_FOR.get(workout.getId());
+		return focus == null || focuses == null || focuses.contains(focus);
+	}
+
+	/** Wie oben, aber ohne Spezialeinheiten, die nicht zum Ziel passen */
+	public List<Workout> alternatives(WorkoutType type, int step, EventProfile.Focus focus) {
 		List<Workout> variants = variantsOf(type);
 		if (variants.isEmpty()) {
 			return List.of();
@@ -375,7 +466,8 @@ public class WorkoutLibrary {
 		List<Workout> result = new ArrayList<>();
 		result.add(variants.get(index));
 		variety.stream()
-				.filter(workout -> workout.getType() == type && nearestStep(variants, workout) == index)
+				.filter(workout -> workout.getType() == type && nearestStep(variants, workout) == index
+						&& suitableFor(workout, focus))
 				.forEach(result::add);
 		return result;
 	}
@@ -421,6 +513,8 @@ public class WorkoutLibrary {
 			case 27 -> Optional.of(longRideWithTempo(durationMinutes));
 			case 29 -> Optional.of(enduranceWithSprints(durationMinutes));
 			case 30 -> Optional.of(enduranceWithTempo(durationMinutes));
+			case 31 -> Optional.of(enduranceWithFinish(durationMinutes));
+			case 32 -> Optional.of(longRideProgressive(durationMinutes));
 			default -> findById(id).map(workout -> isLengthAdjustable(workout)
 					? WorkoutFitter.fit(workout, durationMinutes).orElse(workout)
 					: workout);
@@ -506,6 +600,37 @@ public class WorkoutLibrary {
 		return new Workout(30L, "Grundlage %s mit Tempo-Einlagen".formatted(formatMinutes(minutes)),
 				WorkoutType.ENDURANCE, "Locker in Zone 2, dazwischen dreimal 6 Minuten zügig – noch kein hartes Training.",
 				steps(parts.toArray()));
+	}
+
+	/** Grundlage, zum Schluss dreimal fünf Minuten Tempo: übt, auch müde noch Leistung zu bringen */
+	public static Workout enduranceWithFinish(int minutes) {
+		int easy = minutes - 20 - 3 * 5 - 2 * 2;
+		List<Object> parts = new ArrayList<>();
+		parts.add(warmup());
+		parts.add(steady(STEADY, min(easy), 68));
+		for (int i = 0; i < 3; i++) {
+			parts.add(steady(INTERVAL, min(5), 83));
+			if (i < 2) {
+				parts.add(steady(RECOVERY, min(2), 60));
+			}
+		}
+		parts.add(cooldown());
+		return new Workout(31L, "Grundlage %s mit Tempo-Finale".formatted(formatMinutes(minutes)),
+				WorkoutType.ENDURANCE,
+				"Locker in Zone 2, die letzten Minuten dreimal fünf Minuten zügig im Tempo – übt, am Ende noch "
+						+ "Leistung zu bringen.",
+				steps(parts.toArray()));
+	}
+
+	/** Lange Ausfahrt, in der die letzte Stunde Schritt für Schritt schneller wird (72, 76, 80, 84 % FTP) */
+	public static Workout longRideProgressive(int minutes) {
+		int easy = minutes - 15 - 60 - 15;
+		return new Workout(32L, "Lange Ausfahrt " + formatMinutes(minutes) + " progressiv", WorkoutType.LONG_RIDE,
+				"Lange Grundlage, deren letzte Stunde alle 15 Minuten etwas schneller wird – genau das, was im "
+						+ "Ultra gefragt ist: stark zu enden statt einzubrechen.",
+				steps(ramp(WARMUP, min(15), 50, 68), steady(STEADY, min(easy), 68), steady(STEADY, min(15), 72),
+						steady(STEADY, min(15), 76), steady(STEADY, min(15), 80), steady(STEADY, min(15), 84),
+						ramp(COOLDOWN, min(15), 65, 50)));
 	}
 
 	/** 45 → "45 min", 180 → "3 h", 210 → "3:30 h" */

@@ -98,10 +98,19 @@ public record PlanHistory(LocalDate thisMonday, Map<LocalDate, Week> weeks, Loca
 				fixedMinutes, DoneHard.NONE);
 	}
 
-	/** Die harten Einheiten dieser Woche vor heute: Tage und Arten */
+	/**
+	 * Die harten Einheiten dieser Woche vor heute (Tage und Arten) und die schon feststehenden FTP-Tests ab heute
+	 * (selbst gewählt): Der Tag vor einem Test bleibt frei.
+	 */
 	public record DoneHard(java.util.Set<LocalDate> days,
-			java.util.List<io.github.jakobfa.webtechproject.model.WorkoutType> types) {
-		public static final DoneHard NONE = new DoneHard(java.util.Set.of(), java.util.List.of());
+			java.util.List<io.github.jakobfa.webtechproject.model.WorkoutType> types,
+			java.util.Set<LocalDate> upcomingFtpTestDays) {
+		public DoneHard(java.util.Set<LocalDate> days,
+				java.util.List<io.github.jakobfa.webtechproject.model.WorkoutType> types) {
+			this(days, types, java.util.Set.of());
+		}
+
+		public static final DoneHard NONE = new DoneHard(java.util.Set.of(), java.util.List.of(), java.util.Set.of());
 	}
 
 	public boolean isEmpty() {

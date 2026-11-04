@@ -363,7 +363,8 @@ public class PlanGenerator {
 					useTempoLongRide(profile, phase, loadWeek),
 					hardWorkouts, rolling,
 					backToBack(athlete.getLevel(), profile, phase, loadWeek),
-					currentWeek ? history.doneHard().days() : java.util.Set.of());
+					currentWeek ? history.doneHard().days() : java.util.Set.of(), profile.focus(),
+					history.doneHard().upcomingFtpTestDays(), athlete.getLevel() != Level.BEGINNER);
 			List<PlannedWorkout> planned = planWeek(availability, trainingDays, week);
 			if (overreached) {
 				// nicht alles Gewünschte passt in die Tage: eine weniger als tatsächlich eingeplant wurde
@@ -372,7 +373,7 @@ public class PlanGenerator {
 					week = new WeekPlan(week.phase(), week.weekIndex(), week.step(), week.volume(),
 							week.longRideMinutes(), week.tempoLongRide(),
 							hardWorkouts.subList(0, (int) placed - 1), week.rolling(), week.backToBack(),
-							week.doneHardDays());
+							week.doneHardDays(), week.focus(), week.ftpTestDays(), week.specialties());
 					planned = planWeek(availability, trainingDays, week);
 				}
 			}
@@ -438,7 +439,8 @@ public class PlanGenerator {
 	/** Was in einer normalen Woche geplant wird */
 	record WeekPlan(Phase phase, int weekIndex, int step, double volume, int longRideMinutes,
 			boolean tempoLongRide, List<WorkoutType> hardWorkouts, RollingCap rolling, boolean backToBack,
-			java.util.Set<LocalDate> doneHardDays) {
+			java.util.Set<LocalDate> doneHardDays, EventProfile.Focus focus, java.util.Set<LocalDate> ftpTestDays,
+			boolean specialties) {
 	}
 
 	/**
@@ -922,6 +924,13 @@ public class PlanGenerator {
 		List<LocalDate> hardDays = new ArrayList<>(plan.doneHardDays());
 		// Tage, die frei bleiben: vor dem FTP-Test braucht es einen Pausentag, sonst misst er Müdigkeit statt FTP
 		java.util.Set<LocalDate> restDays = new java.util.HashSet<>();
+		// Ein schon feststehender FTP-Test (selbst gewählt): der Tag davor bleibt frei – es sei denn, es ist die lange
+		// Ausfahrt (die bleibt)
+		for (LocalDate testDay : plan.ftpTestDays()) {
+			if (!testDay.minusDays(1).equals(firstLong)) {
+				restDays.add(testDay.minusDays(1));
+			}
+		}
 
 		// Abwechslung: je Trainingsart jede Woche das nächste Workout derselben Stufe (zweimal dieselbe Art in
 		// einer Woche: zwei verschiedene)
@@ -932,9 +941,13 @@ public class PlanGenerator {
 			// passt die geplante Stufe nicht in die Zeit, wird es die nächstleichtere Variante –
 			// und passt gar keine, eine kürzere Trainingsart, damit kurze Tage nicht ohne Reiz bleiben
 			List<Workout> options = new ArrayList<>();
+			// Spezialeinheiten für dieses Ziel (z. B. Kraftausdauer für Ultra) kommen reihum zuerst an die Reihe
+			if (plan.specialties() && Math.floorMod(rotation + type.ordinal(), SPECIALTY_EVERY_NTH_WEEK) == 0) {
+				options.addAll(rotated(library.specialtiesFor(type, plan.step(), plan.focus()), rotation));
+			}
 			// in Erholungswochen immer die kleinste Stufe
 			for (int step = plan.phase() == Phase.RECOVERY ? 0 : plan.step(); step >= 0; step--) {
-				options.addAll(rotated(library.alternatives(type, step), rotation));
+				options.addAll(rotated(library.alternatives(type, step, plan.focus()), rotation));
 			}
 			// passt nicht mal der FTP-Test, gibt es stattdessen eine normale kurze Einheit
 			SHORT_FALLBACKS.stream().filter(fallback -> fallback != type)
@@ -1023,10 +1036,19 @@ public class PlanGenerator {
 			} else {
 				int available = availableMinutes(availability, day);
 				PlannedWorkout easy = easyWorkout(day, minutes, available, plan.phase());
-				if (spiceWeek && !spiced && easy.getWorkoutId() == WorkoutLibrary.endurance(60).getId()) {
+				// der Tag nach einem FTP-Test bleibt ohne Einlagen (der Test ermüdet)
+				boolean afterTest = plan.ftpTestDays().contains(day.minusDays(1))
+						|| week.stream().anyMatch(planned -> planned.getWorkoutId() != null
+								&& planned.getWorkoutId() == WorkoutLibrary.FTP_TEST
+								&& planned.getDate().equals(day.minusDays(1)));
+				if (spiceWeek && !spiced && !afterTest && easy.getWorkoutId() == WorkoutLibrary.endurance(60).getId()) {
 					int length = easy.getDurationMinutes();
-					Workout spice = plan.weekIndex() % 2 == 0 ? WorkoutLibrary.enduranceWithSprints(length)
-							: WorkoutLibrary.enduranceWithTempo(length);
+					// reihum: Antritte, Tempo-Einlagen, Tempo-Finale (Abwechslung unter der Woche)
+					Workout spice = switch (plan.weekIndex() % 3) {
+						case 0 -> WorkoutLibrary.enduranceWithSprints(length);
+						case 1 -> WorkoutLibrary.enduranceWithTempo(length);
+						default -> WorkoutLibrary.enduranceWithFinish(length);
+					};
 					easy = new PlannedWorkout(day, spice, length, plan.phase());
 					spiced = true;
 				}
@@ -1135,8 +1157,22 @@ public class PlanGenerator {
 				&& minutes >= (forceTempo ? 150 : 180)) {
 			return new PlannedWorkout(day, WorkoutLibrary.longRideWithTempo(minutes), minutes, plan.phase());
 		}
+		// Ultra und lange Events: jede zweite lange Ausfahrt (ohne Tempo-Blöcke) wird in der letzten Stunde
+		// progressiv schneller – Ermüdungsresistenz, ohne hart zu sein
+		boolean longEvent = plan.focus() == EventProfile.Focus.ULTRA || plan.focus() == EventProfile.Focus.LONG_FLAT
+				|| plan.focus() == EventProfile.Focus.LONG_CLIMBING;
+		if (longEvent && minutes >= PROGRESSIVE_LONG_RIDE_MIN_MINUTES && plan.weekIndex() % 2 == 1
+				&& (plan.phase() == Phase.BASE || plan.phase() == Phase.BUILD)) {
+			return new PlannedWorkout(day, WorkoutLibrary.longRideProgressive(minutes), minutes, plan.phase());
+		}
 		return new PlannedWorkout(day, WorkoutLibrary.longRide(minutes), minutes, plan.phase());
 	}
+
+	/** Jede so-vielte Woche stellt der Plan eine passende Spezialeinheit vor die normale Auswahl */
+	static final int SPECIALTY_EVERY_NTH_WEEK = 3;
+
+	/** Eine progressive lange Ausfahrt braucht mindestens so viel Zeit (eine Stunde Steigerung plus Rahmen) */
+	static final int PROGRESSIVE_LONG_RIDE_MIN_MINUTES = 210;
 
 	/** Grundlage ab einer Stunde, sonst lockeres Ausrollen (mindestens 30 min, nie mehr als verfügbar) */
 	private PlannedWorkout easyWorkout(LocalDate day, int minutes, int available, Phase phase) {
