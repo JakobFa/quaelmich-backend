@@ -38,7 +38,7 @@ class WorkoutLibraryTest {
 	@Test
 	void tooHighStepGivesHardestVariant() {
 		assertThat(library.variant(WorkoutType.SWEET_SPOT, 0).getTitle()).isEqualTo("Sweet Spot 3 × 10");
-		assertThat(library.variant(WorkoutType.SWEET_SPOT, 99).getTitle()).isEqualTo("Sweet Spot 3 × 15");
+		assertThat(library.variant(WorkoutType.SWEET_SPOT, 99).getTitle()).isEqualTo("Sweet Spot 2 × 40");
 	}
 
 	@Test
@@ -47,7 +47,7 @@ class WorkoutLibraryTest {
 
 		assertThat(library.findAll()).contains(fourByEight);
 		assertThat(library.variantsOf(WorkoutType.SWEET_SPOT)).doesNotContain(fourByEight)
-				.extracting(Workout::getId).containsExactly(14L, 5L, 16L, 15L);
+				.extracting(Workout::getId).containsExactly(14L, 5L, 16L, 15L, 80L, 81L);
 		assertThat(library.findAll().stream().filter(w -> w.getType() == WorkoutType.VO2MAX).count())
 				.as("mehr Auswahl als in der Steigerung").isGreaterThan(library.variantsOf(WorkoutType.VO2MAX).size());
 	}

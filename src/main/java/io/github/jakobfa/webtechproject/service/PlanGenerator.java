@@ -447,7 +447,7 @@ public class PlanGenerator {
 			}
 			// Gleitendes Zeitfenster: höchstens so viel in 7 Tagen, wie der Schnitt der letzten 28 Tage hergibt
 			RollingCap rolling = isPastVirtualWeek(history, monday) ? null
-					: rollingCap(daily, recoveryDays, dataStart, monday, phase, overreached);
+					: rollingCap(daily, recoveryDays, dataStart, monday, phase, overreached, memoryAllowed(history, monday));
 			if (rolling != null) {
 				rolling = new RollingCap(rolling.daily(), rolling.weeklyCapMinutes(), history.fixedMinutes());
 			}
@@ -572,60 +572,106 @@ public class PlanGenerator {
 		return n * 0.1 / (1 - Math.pow(1.1, -n));
 	}
 
+	/** Gedächtnis nur ohne Krankheit oder Verletzung in den Wochen, auf die es zurückgreift */
+	static boolean memoryAllowed(PlanHistory history, LocalDate monday) {
+		if (history.reentryMonday() != null) {
+			return false;
+		}
+		LocalDate from = monday.minusWeeks(MEMORY_WEEKS + 4L);
+		return history.weeks().entrySet().stream()
+				.noneMatch(entry -> !entry.getKey().isBefore(from) && entry.getValue().sickDays() > 0);
+	}
+
 	private static boolean isPastVirtualWeek(PlanHistory history, LocalDate monday) {
 		return !history.isEmpty() && monday.isBefore(history.thisMonday());
 	}
 
 	/**
-	 * Schnitt der Belastung pro Woche aus den bis zu 28 Tagen vor monday (ohne Erholungstage und mit hochgerechneter
-	 * Kurzzeit am Anfang); null, wenn es noch zu wenig Daten gibt.
+	 * Trainingsgedächtnis: Fitness baut sich über Wochen ab, nicht über Tage. Nach einer Off-Season oder ein paar
+	 * ruhigen Wochen zählt deshalb auch das beste 28-Tage-Fenster der letzten Wochen – je Woche Abstand um 5 %
+	 * abgeschwächt (grob wie die Fitness abklingt). Nur Fenster mit genug Daten zählen, sonst würde eine kurze
+	 * Spitze hochgerechnet. Nach Krankheit oder Verletzung gilt es nicht (dafür gibt es den Wiedereinstieg).
 	 */
-	static Double baselineWeeklyMinutes(Map<LocalDate, Integer> daily, java.util.Set<LocalDate> recoveryDays,
-			LocalDate dataStart, LocalDate monday) {
-		long days = Math.min(BASELINE_DAYS, ChronoUnit.DAYS.between(dataStart, monday));
-		if (days < MIN_BASELINE_DAYS) {
-			return null;
-		}
-		int sum = 0;
-		int countedDays = 0;
-		for (int back = 1; back <= days; back++) {
-			LocalDate day = monday.minusDays(back);
-			if (recoveryDays.contains(day)) {
-				continue;
-			}
-			sum += Math.min(daily.getOrDefault(day, 0), BASELINE_MAX_DAY_MINUTES);
-			countedDays++;
-		}
-		return countedDays < MIN_BASELINE_DAYS ? null : sum * 7.0 / countedDays;
-	}
+	static final int MEMORY_WEEKS = 8;
+	static final double MEMORY_WEEKLY_DECAY = 0.95;
+	static final int MEMORY_MIN_DAYS = 21;
 
-	/** Der Deckel für die 7-Tage-Fenster dieser Woche, null = keiner (zu wenig Daten, Tapering) */
-	static RollingCap rollingCap(Map<LocalDate, Integer> daily, java.util.Set<LocalDate> recoveryDays,
-			LocalDate dataStart, LocalDate monday, Phase phase, boolean overreached) {
-		if (!isLoadPhase(phase) && phase != Phase.RECOVERY) {
-			return null;
-		}
-		long days = Math.min(BASELINE_DAYS, ChronoUnit.DAYS.between(dataStart, monday));
-		if (days < MIN_BASELINE_DAYS) {
-			return null;
-		}
+	/** Schnitt pro Woche aus den bis zu 28 Tagen vor end (ohne Erholungstage, ohne Tage vor dataStart) */
+	private static Double windowAverage(Map<LocalDate, Integer> daily, java.util.Set<LocalDate> recoveryDays,
+			LocalDate dataStart, LocalDate end, int minDays) {
 		int sum = 0;
 		int countedDays = 0;
-		for (int back = 1; back <= days; back++) {
-			LocalDate day = monday.minusDays(back);
-			if (recoveryDays.contains(day)) {
+		for (int back = 1; back <= BASELINE_DAYS; back++) {
+			LocalDate day = end.minusDays(back);
+			if (day.isBefore(dataStart) || recoveryDays.contains(day)) {
 				continue; // Erholungstage verfälschen den Schnitt der Belastung
 			}
 			sum += Math.min(daily.getOrDefault(day, 0), BASELINE_MAX_DAY_MINUTES);
 			countedDays++;
 		}
-		if (countedDays < MIN_BASELINE_DAYS) {
+		return countedDays < minDays ? null : sum * 7.0 / countedDays;
+	}
+
+	/** Das Gedächtnis (siehe MEMORY_WEEKS): bestes abgeschwächtes Fenster vor monday, 0 ohne genug Daten */
+	static double memoryWeeklyMinutes(Map<LocalDate, Integer> daily, java.util.Set<LocalDate> recoveryDays,
+			LocalDate dataStart, LocalDate monday) {
+		double best = 0;
+		for (int k = 1; k <= MEMORY_WEEKS; k++) {
+			Double average = windowAverage(daily, recoveryDays, dataStart, monday.minusWeeks(k), MEMORY_MIN_DAYS);
+			if (average != null) {
+				best = Math.max(best, average * Math.pow(MEMORY_WEEKLY_DECAY, k));
+			}
+		}
+		return best;
+	}
+
+	/** Gezählte Tage im 28-Tage-Fenster vor monday */
+	private static int countedDays(java.util.Set<LocalDate> recoveryDays, LocalDate dataStart, LocalDate monday) {
+		int counted = 0;
+		for (int back = 1; back <= BASELINE_DAYS; back++) {
+			LocalDate day = monday.minusDays(back);
+			if (!day.isBefore(dataStart) && !recoveryDays.contains(day)) {
+				counted++;
+			}
+		}
+		return counted;
+	}
+
+	/**
+	 * Schnitt der Belastung pro Woche aus den bis zu 28 Tagen vor monday (ohne Erholungstage und mit hochgerechneter
+	 * Kurzzeit am Anfang), mindestens das Trainingsgedächtnis; null, wenn es noch zu wenig Daten gibt.
+	 */
+	static Double baselineWeeklyMinutes(Map<LocalDate, Integer> daily, java.util.Set<LocalDate> recoveryDays,
+			LocalDate dataStart, LocalDate monday) {
+		return baselineWeeklyMinutes(daily, recoveryDays, dataStart, monday, true);
+	}
+
+	static Double baselineWeeklyMinutes(Map<LocalDate, Integer> daily, java.util.Set<LocalDate> recoveryDays,
+			LocalDate dataStart, LocalDate monday, boolean withMemory) {
+		Double recent = windowAverage(daily, recoveryDays, dataStart, monday, MIN_BASELINE_DAYS);
+		if (recent == null) {
 			return null;
 		}
-		double weeklyAverage = sum * 7.0 / countedDays;
-		if (weeklyAverage <= 0) {
+		return withMemory ? Math.max(recent, memoryWeeklyMinutes(daily, recoveryDays, dataStart, monday)) : recent;
+	}
+
+	/** Der Deckel für die 7-Tage-Fenster dieser Woche, null = keiner (zu wenig Daten, Tapering) */
+	static RollingCap rollingCap(Map<LocalDate, Integer> daily, java.util.Set<LocalDate> recoveryDays,
+			LocalDate dataStart, LocalDate monday, Phase phase, boolean overreached) {
+		return rollingCap(daily, recoveryDays, dataStart, monday, phase, overreached, true);
+	}
+
+	/** Wie oben; withMemory = false nach Krankheit oder Verletzung (dann nur die letzten 28 Tage) */
+	static RollingCap rollingCap(Map<LocalDate, Integer> daily, java.util.Set<LocalDate> recoveryDays,
+			LocalDate dataStart, LocalDate monday, Phase phase, boolean overreached, boolean withMemory) {
+		if (!isLoadPhase(phase) && phase != Phase.RECOVERY) {
 			return null;
 		}
+		Double weeklyAverage = baselineWeeklyMinutes(daily, recoveryDays, dataStart, monday, withMemory);
+		if (weeklyAverage == null || weeklyAverage <= 0) {
+			return null;
+		}
+		int countedDays = countedDays(recoveryDays, dataStart, monday);
 		double ratio = phase == Phase.RECOVERY ? RECOVERY_ACUTE_RATIO
 				: overreached ? OVERREACHED_ACUTE_RATIO : Math.min(ACUTE_CHRONIC_RATIO, Math.max(steadyGrowthRatio(countedDays / 7.0), EARLY_MIN_RATIO));
 		// Belastungswochen dürfen mindestens eine halbe Stunde über den Schnitt (sonst bremst der Prozentsatz bei kleinen
@@ -754,7 +800,8 @@ public class PlanGenerator {
 		int maxStep = switch (level) {
 			case BEGINNER -> 1;
 			case HOBBY -> 2;
-			default -> 3;
+			case AMBITIOUS -> 4;
+			case PERFORMANCE -> HARDEST_STEP;
 		};
 		int top = phase == Phase.PEAK ? Math.min(HARDEST_STEP, maxStep + 1) : maxStep;
 		int step = switch (phase) {
@@ -770,8 +817,12 @@ public class PlanGenerator {
 		};
 	}
 
-	/** Höchste Stufe in der Bibliothek (z. B. VO2max 5 × 5, Schwelle 3 × 15) */
-	static final int HARDEST_STEP = 3;
+	/**
+	 * Höchste Stufe in der Bibliothek (z. B. Tempo 2 × 45, Schwelle 2 × 30). Die Stufen über 3 machen die
+	 * Blöcke länger statt härter, damit die Steigerung auch über lange Pläne trägt; Arten mit weniger Stufen
+	 * (VO2max, Over-Unders) bleiben auf ihrer schwersten.
+	 */
+	static final int HARDEST_STEP = 5;
 
 	// ---------- Umfang ----------
 
@@ -838,7 +889,7 @@ public class PlanGenerator {
 		};
 	}
 
-	/** Lange Events: im Aufbau und in der Spitze jede zweite lange Ausfahrt mit Tempo-Blöcken */
+	/** Lange Events und Ultras: im Aufbau und in der Spitze jede zweite lange Ausfahrt mit Tempo-Blöcken */
 	static boolean useTempoLongRide(EventProfile profile, Phase phase, int loadWeek) {
 		boolean buildOrPeak = phase == Phase.BUILD || phase == Phase.PEAK;
 		return switch (profile.goal()) {
@@ -846,7 +897,9 @@ public class PlanGenerator {
 			case FINISH -> false;
 			// vorne mitfahren: Renntempo üben – auch bei Ultras, und bei langen Events jede Woche
 			case COMPETE -> buildOrPeak && (isLongEvent(profile) || profile.focus() == Focus.ULTRA);
-			case GOOD_TIME -> isLongEvent(profile) && buildOrPeak && loadWeek % 2 == 0;
+			// Ultras: über Stunden 65–80 % FTP halten ist genau der Reiz, den die lange Ausfahrt hier setzen soll
+			case GOOD_TIME -> (isLongEvent(profile) || profile.focus() == Focus.ULTRA) && buildOrPeak
+					&& loadWeek % 2 == 0;
 		};
 	}
 
@@ -1014,9 +1067,12 @@ public class PlanGenerator {
 		// Harte Einheiten nicht am Tag der langen Ausfahrt (bzw. des Back-to-back) und nicht direkt davor oder
 		// danach. Sie sind kurz und kommen deshalb auf den Tag mit der knappsten Zeit, auf den sie noch passen –
 		// die Tage mit viel Zeit bleiben für Umfang (Grundlage, lange Ausfahrt). Bei gleicher Zeit gilt der frühere.
+		// Der Tag nach einem großen Umfangstag (meist der Montag nach dem Wochenende) kommt nur zum Zug, wenn sonst
+		// nichts passt – mit müden Beinen leidet die Qualität der Intervalle.
 		List<LocalDate> candidates = days.stream()
 				.filter(day -> day.isBefore(firstLong.minusDays(1)) || day.isAfter(lastLong.plusDays(1)))
-				.sorted(Comparator.comparingInt((LocalDate day) -> availableMinutes(availability, day)))
+				.sorted(Comparator.comparing((LocalDate day) -> isAfterBigDay(availability, day))
+						.thenComparingInt(day -> availableMinutes(availability, day)))
 				.toList();
 
 		List<PlannedWorkout> week = new ArrayList<>();
@@ -1120,6 +1176,7 @@ public class PlanGenerator {
 			fitRollingWindow(flexible, longDay, hardByDay, plan.rolling().daily(), plan.rolling().fixed(),
 					plan.rolling().weeklyCapMinutes());
 		}
+		fillHardDays(week, availability, plan, flexible, days.getLast());
 
 		// ein lockerer Tag pro Woche bekommt Einlagen (Antritte oder Tempo), damit nicht jeder Tag gleich aussieht
 		boolean spiceWeek = plan.phase() == Phase.BASE || plan.phase() == Phase.BUILD || plan.phase() == Phase.PEAK;
@@ -1141,7 +1198,8 @@ public class PlanGenerator {
 						|| week.stream().anyMatch(planned -> planned.getWorkoutId() != null
 								&& planned.getWorkoutId() == WorkoutLibrary.FTP_TEST
 								&& planned.getDate().equals(day.minusDays(1)));
-				if (spiceWeek && !spiced && !afterTest && easy.getWorkoutId() == WorkoutLibrary.endurance(60).getId()) {
+				if (spiceWeek && !spiced && !afterTest && !isAfterBigDay(availability, day)
+						&& easy.getWorkoutId() == WorkoutLibrary.endurance(60).getId()) {
 					int length = easy.getDurationMinutes();
 					// reihum: Antritte, Tempo-Einlagen, Tempo-Finale (Abwechslung unter der Woche)
 					Workout spice = switch (plan.weekIndex() % 3) {
@@ -1158,6 +1216,70 @@ public class PlanGenerator {
 
 		week.sort(Comparator.comparing(PlannedWorkout::getDate));
 		return week;
+	}
+
+	/** Erst ab so viel Zusatzzeit lohnt sich das Auffüllen eines harten Tags */
+	static final int FILL_MIN_EXTRA = 15;
+	/** Ab so viel verfügbarer Zeit gilt ein Tag als großer Umfangstag (lange Ausfahrt, lange Grundlage) */
+	static final int BIG_DAY_MINUTES = 180;
+
+	/** Ist der Vortag (laut Wochenzeit) ein großer Umfangstag? Gilt auch über die Wochengrenze (So → Mo). */
+	static boolean isAfterBigDay(WeeklyAvailability availability, LocalDate day) {
+		return availableMinutes(availability, day.minusDays(1)) >= BIG_DAY_MINUTES;
+	}
+
+	/**
+	 * Wie lang die harte Einheit mit lockerer Grundlage nach dem Hauptteil werden soll (siehe WorkoutFitter):
+	 * aerober Umfang, der kaum zusätzlich ermüdet. Im gleichen Verhältnis wie die lockeren Tage (Umfangsfaktor),
+	 * nicht in Erholung und Tapering. null = Workout bleibt, wie es ist.
+	 */
+	static Integer filledLength(Workout workout, int available, WeekPlan plan) {
+		if (!isLoadPhase(plan.phase()) || !WorkoutLibrary.isLengthAdjustable(workout)) {
+			return null;
+		}
+		int target = Math.min(available, floorToQuarterHour(available * plan.volume()));
+		return target >= workout.getDurationInMinutes() + FILL_MIN_EXTRA ? target : null;
+	}
+
+	/**
+	 * Füllt die harten Tage auf (siehe filledLength) – erst wenn die lockeren Tage feststehen und nur so weit, wie
+	 * jedes 7-Tage-Fenster unter dem Deckel bleibt. Eine harte Einheit wird dabei nie länger als die längste lockere
+	 * Fahrt der Woche.
+	 */
+	private void fillHardDays(List<PlannedWorkout> week, WeeklyAvailability availability, WeekPlan plan,
+			java.util.Map<LocalDate, Integer> flexible, LocalDate lastDay) {
+		int longest = flexible.values().stream().mapToInt(Integer::intValue).max().orElse(0);
+		for (int i = 0; i < week.size(); i++) {
+			PlannedWorkout hard = week.get(i);
+			if (hard.getWorkoutId() == null || hard.getWorkoutId() >= WorkoutLibrary.CUSTOM_ID_OFFSET) {
+				continue;
+			}
+			Workout workout = library.findById(hard.getWorkoutId()).orElseThrow();
+			int current = library.resolve(hard.getWorkoutId(), hard.getDurationMinutes()).orElseThrow()
+					.getDurationInMinutes();
+			Integer target = filledLength(workout, availableMinutes(availability, hard.getDate()), plan);
+			if (target == null) {
+				continue;
+			}
+			int length = Math.min(target, longest);
+			if (plan.rolling() != null) {
+				java.util.Map<LocalDate, Integer> hardByDay = new java.util.HashMap<>();
+				for (PlannedWorkout other : week) {
+					hardByDay.merge(other.getDate(), library.resolve(other.getWorkoutId(), other.getDurationMinutes())
+							.orElseThrow().getDurationInMinutes(), Integer::sum);
+				}
+				int slack = Integer.MAX_VALUE;
+				for (LocalDate end = hard.getDate(); !end.isAfter(lastDay); end = end.plusDays(1)) {
+					slack = Math.min(slack, plan.rolling().weeklyCapMinutes() - windowMinutes(end, flexible, hardByDay,
+							plan.rolling().daily(), plan.rolling().fixed()));
+				}
+				length = Math.min(length, current + Math.max(0, slack));
+			}
+			length = floorToQuarterHour(length);
+			if (length >= current + FILL_MIN_EXTRA) {
+				week.set(i, new PlannedWorkout(hard.getDate(), workout, length, plan.phase()));
+			}
+		}
 	}
 
 	/**
@@ -1301,7 +1423,14 @@ public class PlanGenerator {
 				0);
 		Workout opener = library.findById(28L).orElseThrow();
 
-		boolean sharpenerPlaced = false;
+		// die knackige Einheit mit Abstand zum Event (spätestens 3 Tage vorher), möglichst nicht am Tag nach einem
+		// großen Umfangstag
+		LocalDate sharpenerDay = days.stream()
+				.filter(day -> day.isBefore(eventDate.minusDays(2))
+						&& availableMinutes(availability, day) >= sharpener.getDurationInMinutes())
+				.min(Comparator.comparing((LocalDate day) -> isAfterBigDay(availability, day))
+						.thenComparing(Comparator.naturalOrder()))
+				.orElse(null);
 		for (LocalDate day : days) {
 			int available = availableMinutes(availability, day);
 			if (day.equals(restDay)) {
@@ -1313,11 +1442,8 @@ public class PlanGenerator {
 				}
 				continue;
 			}
-			// die knackige Einheit mit Abstand zum Event (spätestens 3 Tage vorher)
-			if (!sharpenerPlaced && day.isBefore(eventDate.minusDays(2))
-					&& available >= sharpener.getDurationInMinutes()) {
+			if (day.equals(sharpenerDay)) {
 				week.add(new PlannedWorkout(day, sharpener, null, Phase.TAPER));
-				sharpenerPlaced = true;
 				continue;
 			}
 			week.add(easyWorkout(day, Math.min(60, floorToQuarterHour(available * 0.4)), available, Phase.TAPER));
