@@ -53,8 +53,16 @@ public class TrainingPlan {
 	/** Nach längerer Krankheit: Montag der Woche, ab der der lockere Wiedereinstieg gilt (sonst null) */
 	private LocalDate reentryMonday;
 
-	/** So viele Wochen ab {@link #reentryMonday} sind lockerer Wiedereinstieg */
-	private int reentryWeeks;
+	/**
+	 * So viele Wochen ab {@link #reentryMonday} sind lockerer Wiedereinstieg. Bewusst ein Integer (nullable): Eine
+	 * neue Pflichtspalte (int = NOT NULL) kann "ddl-auto=update" in einer Tabelle mit Zeilen nicht anlegen – dann
+	 * fehlt die Spalte und jede Abfrage des Plans schlägt fehl. Null zählt wie 0.
+	 */
+	private Integer reentryWeeks;
+
+	public int getReentryWeeks() {
+		return reentryWeeks == null ? 0 : reentryWeeks;
+	}
 
 	/** Montag der Woche, für die der Plan zuletzt an die gefahrenen Werte angepasst wurde */
 	private LocalDate lastAdaptedMonday;
