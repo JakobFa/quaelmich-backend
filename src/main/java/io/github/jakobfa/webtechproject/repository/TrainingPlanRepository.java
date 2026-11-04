@@ -10,4 +10,6 @@ public interface TrainingPlanRepository extends JpaRepository<TrainingPlan, Long
 
 	Optional<TrainingPlan> findByAthleteId(Long athleteId);
 
+	Optional<TrainingPlan> findByCalendarToken(String calendarToken);
+
 }

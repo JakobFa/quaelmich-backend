@@ -7,6 +7,7 @@ import java.util.List;
 import java.util.Map;
 
 import jakarta.persistence.CascadeType;
+import jakarta.persistence.Column;
 import jakarta.persistence.CollectionTable;
 import jakarta.persistence.ElementCollection;
 import jakarta.persistence.MapKeyColumn;
@@ -38,6 +39,10 @@ public class TrainingPlan {
 	private Athlete athlete;
 
 	private LocalDate startDate;
+
+	/** Geheimer Teil des Kalender-Abo-Links (iCal); null = kein Abo eingerichtet */
+	@Column(unique = true)
+	private String calendarToken;
 
 	/** Abweichende Zeit für einzelne Wochen (Schlüssel: Montag der Woche) – sonst gilt die normale Verfügbarkeit */
 	@ElementCollection(fetch = FetchType.EAGER) // klein, wird bei jeder Plan-Antwort gebraucht
