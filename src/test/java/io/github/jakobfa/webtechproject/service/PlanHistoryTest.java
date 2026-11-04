@@ -370,5 +370,24 @@ class PlanHistoryTest {
 
 		assertThat(withForm).isGreaterThanOrEqualTo(withoutForm);
 	}
+
+	@Test
+	void shortFixedWorkoutsDoNotUseUpTheWindowWithTheirGeneratedLength() {
+		LocalDate thisMonday = START.plusWeeks(3);
+		LocalDate today = thisMonday.plusDays(2); // Mittwoch
+		Map<LocalDate, Integer> daily = dailyMinutesBefore(thisMonday, 35, 70); // 490 Minuten pro Woche
+		var generatedLength = new PlanHistory(thisMonday, Map.of(), null, 0, today,
+				new PlanHistory.Week(0, 0, 0, 0, 0), daily, START);
+		// Mittwoch bis Freitag stehen schon fest und sind kurz (selbst getauscht oder angepasst)
+		Map<LocalDate, Integer> fixed = Map.of(today, 36, today.plusDays(1), 36, today.plusDays(2), 36);
+		var withFixed = new PlanHistory(thisMonday, Map.of(), null, 0, today, new PlanHistory.Week(0, 0, 0, 0, 0),
+				daily, START, java.util.Set.of(), fixed);
+
+		int generated = minutes(byWeek(GENERATOR.generate(athlete(), START, Map.of(), generatedLength)).get(thisMonday));
+		int shortFixed = minutes(byWeek(GENERATOR.generate(athlete(), START, Map.of(), withFixed)).get(thisMonday));
+
+		// die kurzen Einheiten lassen mehr Platz für den Rest der Woche (der Wochenendtag wird nicht unnötig gekürzt)
+		assertThat(shortFixed).isGreaterThanOrEqualTo(generated);
+	}
 }
 

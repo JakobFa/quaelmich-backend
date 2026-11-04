@@ -218,8 +218,17 @@ public class TrainingPlanService {
 						.datesUntil(planned.getDate().with(TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY)).plusWeeks(1)))
 				.filter(day -> day.isBefore(today))
 				.collect(Collectors.toSet());
+		// Einheiten ab heute, die schon feststehen: selbst getauscht oder angepasst, abgehakt, ausgefallen
+		Map<LocalDate, Integer> fixed = new java.util.HashMap<>();
+		for (PlannedWorkout workout : plan.getWorkouts()) {
+			if (!workout.getDate().isBefore(today) && isKept(workout)) {
+				fixed.merge(workout.getDate(), workout.getSkipReason() != null ? 0
+						: library.resolve(workout.getWorkoutId(), workout.getDurationMinutes()).orElseThrow()
+								.getDurationInMinutes(), Integer::sum);
+			}
+		}
 		return new PlanHistory(thisMonday, weeks, reentry, reentry == null ? 0 : plan.getReentryWeeks(), today,
-				currentWeek, daily, dataStart, recoveryDays);
+				currentWeek, daily, dataStart, recoveryDays, fixed);
 	}
 
 	/**
