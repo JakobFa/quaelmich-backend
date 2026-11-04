@@ -104,18 +104,18 @@ class ActualsAdaptationTest {
 	}
 
 	@Test
-	void otherSportsCountTooWithTheirOwnWeight() {
+	void otherSportsCountOnlyWithTheirLoad() {
 		shiftPlanBack();
 		LocalDate lastWeek = THIS_MONDAY.minusWeeks(1);
 		var base = history().weeks().get(lastWeek);
 
-		extraRide(lastWeek.plusDays(2), 60, 50, Sport.RUN); // 60 min Laufen: 42 Radminuten, volle gemessene Belastung
-		extraRide(lastWeek.plusDays(3), 100, null, Sport.SWIM); // ohne Messung: aus der Dauer geschätzt, anteilig
-		extraRide(lastWeek.plusDays(4), 60, null, Sport.STRENGTH);
+		extraRide(lastWeek.plusDays(2), 60, 50, Sport.RUN); // gemessene Belastung zählt, die Minuten nicht
+		extraRide(lastWeek.plusDays(3), 100, null, Sport.SWIM); // ohne Messung: Belastung aus der Dauer geschätzt
+		extraRide(lastWeek.plusDays(4), 60, 25, Sport.STRENGTH);
 
 		var week = history().weeks().get(lastWeek);
-		assertThat(week.actualMinutes()).isEqualTo(base.actualMinutes() + 42 + 60 + 18);
-		assertThat(week.actualTss()).isEqualTo(base.actualTss() + 50 + 30 + 9);
+		assertThat(week.actualMinutes()).isEqualTo(base.actualMinutes());
+		assertThat(week.actualTss()).isEqualTo(base.actualTss() + 50 + 50 + 25);
 	}
 
 	@Test

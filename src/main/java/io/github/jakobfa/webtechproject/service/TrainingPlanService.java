@@ -238,33 +238,15 @@ public class TrainingPlanService {
 			}
 		}
 		for (ExtraRide ride : rides) {
-			// auch Laufen, Schwimmen, Kraft usw. belasten: Die gemessene Belastung zählt voll, der Umfang (Radminuten)
-			// je nach Sportart anteilig
-			double weight = volumeWeight(ride.getSport());
-			actualMinutes += ride.getDurationMinutes() == null ? 0 : (int) Math.round(ride.getDurationMinutes() * weight);
+			// Radfahrten zählen für Umfang (Minuten) und Belastung; andere Sportarten (Laufen, Schwimmen, Kraft …)
+			// nur mit ihrer Belastung (TSS) – ihre Minuten sagen nichts über den Radumfang
+			if (ride.getSport() == null || ride.getSport() == Sport.RIDE) {
+				actualMinutes += ride.getDurationMinutes() == null ? 0 : ride.getDurationMinutes();
+			}
 			actualTss += ride.getTss() != null ? ride.getTss()
-					: ride.getDurationMinutes() == null ? 0
-							: (int) Math.round(estimateTss(ride.getDurationMinutes()) * weight);
+					: ride.getDurationMinutes() == null ? 0 : estimateTss(ride.getDurationMinutes());
 		}
 		return new PlanHistory.Week(plannedMinutes, actualMinutes, sickDays, plannedTss, actualTss);
-	}
-
-	/**
-	 * Wie viel einer Minute der Sportart auf den Umfang (Radminuten) zählt. Laufen belastet fast wie Radfahren (und
-	 * mehr für die Beine), Schwimmen etwas weniger, Gehen und Kraft deutlich weniger. Ohne Angabe: Radfahren.
-	 */
-	static double volumeWeight(Sport sport) {
-		if (sport == null) {
-			return 1.0;
-		}
-		return switch (sport) {
-			case RIDE -> 1.0;
-			case RUN -> 0.7;
-			case SWIM -> 0.6;
-			case HIKE -> 0.5;
-			case OTHER -> 0.4;
-			case WALK, STRENGTH -> 0.3;
-		};
 	}
 
 	/** Ohne gemessene Belastung: ruhige Schätzung aus der Dauer (wie bei den Erfahrungspunkten) */
