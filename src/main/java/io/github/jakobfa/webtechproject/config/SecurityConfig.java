@@ -48,7 +48,8 @@ public class SecurityConfig {
 	private static final Logger log = LoggerFactory.getLogger(SecurityConfig.class);
 
 	@Bean
-	public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
+	public SecurityFilterChain securityFilterChain(HttpSecurity http,
+			@Value("${app.public.api-url:https://api.quaelmich.com}") String apiUrl) throws Exception {
 		return http
 				.cors(Customizer.withDefaults()) // nutzt die CORS-Regeln aus WebConfig
 				.csrf(csrf -> csrf.disable()) // kein Cookie-Login → kein CSRF-Risiko
@@ -65,10 +66,26 @@ public class SecurityConfig {
 						.requestMatchers(HttpMethod.GET, "/workouts", "/workouts/**", "/auth/registration").permitAll()
 						// Kalender-Abo: der geheime Token im Pfad ist die Zugangsberechtigung (Kalender-Apps können kein Login)
 						.requestMatchers(HttpMethod.GET, "/calendar/*").permitAll()
+						// KI-Anbindung (MCP): Entdeckung, Registrierung und Token sind öffentlich; /mcp prüft sein Zugriffstoken selbst
+						.requestMatchers(HttpMethod.GET, "/.well-known/**", "/oauth/client").permitAll()
+						.requestMatchers(HttpMethod.POST, "/oauth/register", "/oauth/token").permitAll()
+						.requestMatchers("/mcp").permitAll()
 						.requestMatchers("/error").permitAll()
 						.requestMatchers(HttpMethod.GET, "/health").permitAll()
 						.anyRequest().authenticated())
-				.oauth2ResourceServer(oauth -> oauth.jwt(Customizer.withDefaults()))
+				.oauth2ResourceServer(oauth -> oauth.jwt(Customizer.withDefaults())
+						// /mcp hat eigene (undurchsichtige) Zugriffstoken: Spring soll sie nicht als Login-JWT lesen
+						.bearerTokenResolver(request -> "/mcp".equals(request.getRequestURI()) ? null
+								: new org.springframework.security.oauth2.server.resource.web.DefaultBearerTokenResolver()
+										.resolve(request))
+						// Spring liefert /.well-known/oauth-protected-resource/... selbst aus (Pfad mit Endung) – ohne den
+						// Anmelde-Server. Hier die richtigen Werte für unseren MCP-Dienst eintragen.
+						.protectedResourceMetadata(metadata -> metadata.protectedResourceMetadataCustomizer(builder -> {
+							builder.resource(apiUrl + "/mcp");
+							builder.authorizationServer(apiUrl);
+							builder.scope("plan:read").scope("plan:write");
+							builder.resourceName("quaelmich");
+						})))
 				.build();
 	}
 
