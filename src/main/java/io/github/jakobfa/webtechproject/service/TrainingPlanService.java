@@ -14,6 +14,8 @@ import java.util.stream.Collectors;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import io.github.jakobfa.webtechproject.integration.strava.StravaConnectionRepository;
+import io.github.jakobfa.webtechproject.integration.strava.StravaRetentionService;
 import io.github.jakobfa.webtechproject.model.Event;
 import io.github.jakobfa.webtechproject.model.Phase;
 import io.github.jakobfa.webtechproject.model.PlannedWorkout;
@@ -37,12 +39,14 @@ public class TrainingPlanService {
 	private final RaceEventRepository raceEvents;
 	private final WorkoutLibrary library;
 	private final ExtraRideRepository extraRides;
+	private final StravaConnectionRepository stravaConnections;
 	private final Clock clock;
 
 	public TrainingPlanService(AthleteRepository athleteRepository, TrainingPlanRepository planRepository,
 			PlanGenerator planGenerator, RaceEventRepository raceEvents, WorkoutLibrary library,
-			ExtraRideRepository extraRides, Clock clock) {
+			ExtraRideRepository extraRides, StravaConnectionRepository stravaConnections, Clock clock) {
 		this.extraRides = extraRides;
+		this.stravaConnections = stravaConnections;
 		this.library = library;
 		this.raceEvents = raceEvents;
 		this.athleteRepository = athleteRepository;
@@ -356,10 +360,21 @@ public class TrainingPlanService {
 	 * wenn sich seit dem letzten Abgleich etwas an den gefahrenen Werten geändert hat. Wer krank gemeldet ist,
 	 * bleibt angehalten.
 	 */
+	/**
+	 * Sind die Strava-Werte zu alt (oder schon gelöscht, siehe StravaRetentionService), darf sich der Plan nicht daran
+	 * anpassen: Er würde fehlende Fahrten für ausgefallene halten. Der nächste Import holt sie neu und passt dann an.
+	 */
+	private boolean stravaDataOutdated(Long athleteId) {
+		return athleteRepository.findById(athleteId)
+				.flatMap(athlete -> stravaConnections.findByOwnerId(athlete.getOwner().getId()))
+				.map(connection -> StravaRetentionService.isOutdated(connection, java.time.Instant.now(clock)))
+				.orElse(false);
+	}
+
 	@Transactional
 	public void adaptToActuals(Long athleteId) {
 		planRepository.findByAthleteId(athleteId).ifPresent(plan -> {
-			if (plan.getSickSince() != null) {
+			if (plan.getSickSince() != null || stravaDataOutdated(athleteId)) {
 				return;
 			}
 			PlanHistory history = historyOf(plan);
