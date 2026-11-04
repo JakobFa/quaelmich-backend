@@ -622,14 +622,14 @@ public class WorkoutLibrary {
 				steps(parts.toArray()));
 	}
 
-	/** Lange Ausfahrt, in der die letzte Stunde Schritt für Schritt schneller wird (74, 78, 82, 86 % FTP) */
+	/** Lange Ausfahrt, in der die letzte Stunde Schritt für Schritt schneller wird (72, 76, 80, 84 % FTP) */
 	public static Workout longRideProgressive(int minutes) {
 		int easy = minutes - 15 - 60 - 15;
 		return new Workout(32L, "Lange Ausfahrt " + formatMinutes(minutes) + " progressiv", WorkoutType.LONG_RIDE,
 				"Lange Grundlage, deren letzte Stunde alle 15 Minuten etwas schneller wird – genau das, was im "
 						+ "Ultra gefragt ist: stark zu enden statt einzubrechen.",
-				steps(ramp(WARMUP, min(15), 50, 68), steady(STEADY, min(easy), 68), steady(STEADY, min(15), 74),
-						steady(STEADY, min(15), 78), steady(STEADY, min(15), 82), steady(STEADY, min(15), 86),
+				steps(ramp(WARMUP, min(15), 50, 68), steady(STEADY, min(easy), 68), steady(STEADY, min(15), 72),
+						steady(STEADY, min(15), 76), steady(STEADY, min(15), 80), steady(STEADY, min(15), 84),
 						ramp(COOLDOWN, min(15), 65, 50)));
 	}
 

@@ -1157,7 +1157,7 @@ public class PlanGenerator {
 		boolean longEvent = plan.focus() == EventProfile.Focus.ULTRA || plan.focus() == EventProfile.Focus.LONG_FLAT
 				|| plan.focus() == EventProfile.Focus.LONG_CLIMBING;
 		if (longEvent && minutes >= PROGRESSIVE_LONG_RIDE_MIN_MINUTES && plan.weekIndex() % 2 == 1
-				&& (plan.phase() == Phase.BASE || plan.phase() == Phase.BUILD || plan.phase() == Phase.PEAK)) {
+				&& (plan.phase() == Phase.BASE || plan.phase() == Phase.BUILD)) {
 			return new PlannedWorkout(day, WorkoutLibrary.longRideProgressive(minutes), minutes, plan.phase());
 		}
 		return new PlannedWorkout(day, WorkoutLibrary.longRide(minutes), minutes, plan.phase());
