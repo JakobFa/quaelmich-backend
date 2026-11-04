@@ -178,10 +178,12 @@ public class TrainingPlanService {
 				.filter(planned -> !planned.getDate().isAfter(thisMonday.plusDays(6)))
 				.collect(Collectors.groupingBy(
 						planned -> planned.getDate().with(TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY))));
-		Map<LocalDate, List<ExtraRide>> ridesByWeek = extraRides
-				.findByAthleteIdAndDateGreaterThanEqualOrderByDate(plan.getAthlete().getId(),
-						plan.getStartDate().with(TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY)))
-				.stream().filter(ride -> ride.getDate() != null && !ride.getDate().isAfter(today))
+		// Fahrten auch vor dem Planstart zählen für den Ausgangswert (die letzten 6 Wochen davor)
+		List<ExtraRide> allRides = extraRides.findByAthleteIdAndDateGreaterThanEqualOrderByDate(
+				plan.getAthlete().getId(), plan.getStartDate().minusWeeks(6));
+		Map<LocalDate, List<ExtraRide>> ridesByWeek = allRides
+				.stream().filter(ride -> ride.getDate() != null && !ride.getDate().isAfter(today)
+						&& !ride.getDate().isBefore(plan.getStartDate().with(TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY))))
 				.collect(Collectors.groupingBy(
 						ride -> ride.getDate().with(TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY))));
 
@@ -204,15 +206,69 @@ public class TrainingPlanService {
 		LocalDate reentry = plan.getReentryWeeks() > 0 && plan.getReentryMonday() != null
 				&& plan.getReentryMonday().plusWeeks(plan.getReentryWeeks()).isAfter(thisMonday)
 						? plan.getReentryMonday() : null;
-		// so viel war für den Rest der laufenden Woche (ab heute) schon geplant
-		int plannedRest = plan.getWorkouts().stream()
-				.filter(planned -> !planned.getDate().isBefore(today) && !planned.getDate().isAfter(thisMonday.plusDays(6)))
-				.filter(planned -> planned.getSkipReason() == null)
-				.mapToInt(planned -> library.resolve(planned.getWorkoutId(), planned.getDurationMinutes()).orElseThrow()
-						.getDurationInMinutes())
-				.sum();
+		Map<LocalDate, Integer> daily = dailyMinutes(plan, allRides, today);
+		LocalDate dataStart = daily.entrySet().stream().filter(entry -> entry.getValue() > 0)
+				.map(Map.Entry::getKey).min(LocalDate::compareTo).orElse(plan.getStartDate());
+		if (plan.getStartDate().isBefore(dataStart)) {
+			dataStart = plan.getStartDate();
+		}
+		Set<LocalDate> recoveryDays = plan.getWorkouts().stream()
+				.filter(planned -> planned.getPhase() == Phase.RECOVERY && planned.getDate().isBefore(today))
+				.flatMap(planned -> planned.getDate().with(TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY))
+						.datesUntil(planned.getDate().with(TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY)).plusWeeks(1)))
+				.filter(day -> day.isBefore(today))
+				.collect(Collectors.toSet());
 		return new PlanHistory(thisMonday, weeks, reentry, reentry == null ? 0 : plan.getReentryWeeks(), today,
-				currentWeek, plannedRest);
+				currentWeek, daily, dataStart, recoveryDays);
+	}
+
+	/**
+	 * Minuten je vergangenem Tag (vor heute), die für die Belastung zählen: Gefahrenes (zugeordnete Fahrten,
+	 * abgehakte Einheiten, Zusatzfahrten Rad). Wurde ein Tag ohne Krankheit, Verletzung oder Pause ausgelassen, zählt
+	 * mindestens das Geplante – sonst würde eine schwache Woche den Plan dauerhaft nach unten ziehen. Der Zeitraum
+	 * reicht auch vor den Planstart zurück, damit der Plan bei der echten Form beginnt.
+	 */
+	static final double SKIPPED_SHARE = 0.7;
+	static final int MAX_SKIPPED_FLOOR_MINUTES = 140;
+
+	private Map<LocalDate, Integer> dailyMinutes(TrainingPlan plan, List<ExtraRide> rides, LocalDate today) {
+		Map<LocalDate, Integer> actual = new java.util.HashMap<>();
+		Map<LocalDate, Integer> planned = new java.util.HashMap<>();
+		Set<LocalDate> excused = new java.util.HashSet<>();
+		for (PlannedWorkout workout : plan.getWorkouts()) {
+			if (!workout.getDate().isBefore(today)) {
+				continue;
+			}
+			int minutes = library.resolve(workout.getWorkoutId(), workout.getDurationMinutes()).orElseThrow()
+					.getDurationInMinutes();
+			planned.merge(workout.getDate(), minutes, Integer::sum);
+			if (workout.getSkipReason() == SkipReason.SICK || workout.getSkipReason() == SkipReason.INJURED
+					|| workout.getSkipReason() == SkipReason.PAUSE) {
+				excused.add(workout.getDate());
+			} else if (workout.getSkipReason() == null && workout.getActivityId() != null) {
+				actual.merge(workout.getDate(), workout.getActualDurationMinutes() != null
+						? workout.getActualDurationMinutes() : minutes, Integer::sum);
+			} else if (workout.getSkipReason() == null && workout.isCompleted()) {
+				actual.merge(workout.getDate(), minutes, Integer::sum);
+			}
+		}
+		for (ExtraRide ride : rides) {
+			if (ride.getDate() != null && ride.getDate().isBefore(today)
+					&& (ride.getSport() == null || ride.getSport() == Sport.RIDE) && ride.getDurationMinutes() != null) {
+				actual.merge(ride.getDate(), ride.getDurationMinutes(), Integer::sum);
+			}
+		}
+		Map<LocalDate, Integer> result = new java.util.HashMap<>();
+		Set<LocalDate> days = new java.util.HashSet<>(actual.keySet());
+		days.addAll(planned.keySet());
+		for (LocalDate day : days) {
+			int done = actual.getOrDefault(day, 0);
+			// Ausgelassene Einheiten zählen nur zu 70 % und höchstens bis 2:20 h (sonst bläht eine unrealistisch lange
+			// geplante Fahrt, die nie gefahren wurde, den Schnitt auf)
+			int floor = (int) Math.min(planned.getOrDefault(day, 0) * SKIPPED_SHARE, MAX_SKIPPED_FLOOR_MINUTES);
+			result.put(day, excused.contains(day) ? done : Math.max(done, floor));
+		}
+		return result;
 	}
 
 	/**
@@ -275,7 +331,7 @@ public class TrainingPlanService {
 				return;
 			}
 			PlanHistory history = historyOf(plan);
-			Integer fingerprint = java.util.Objects.hash(history.weeks(), history.currentWeek(),
+			Integer fingerprint = java.util.Objects.hash(history.weeks(), history.currentWeek(), history.dailyMinutes(),
 					history.reentryMonday(), history.reentryWeeks());
 			if (fingerprint.equals(plan.getActualsFingerprint())) {
 				return;
