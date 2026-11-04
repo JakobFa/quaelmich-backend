@@ -444,5 +444,22 @@ class PlanHistoryTest {
 		// Mo und Di waren Trainingstage; von Mi bis So darf nicht jeder Tag belegt sein
 		assertThat(week.stream().map(PlannedWorkout::getDate).distinct().count()).isLessThan(5);
 	}
+
+	@Test
+	void theDayBeforeASelfChosenFtpTestStaysFree() {
+		LocalDate thisMonday = START.plusWeeks(5);
+		LocalDate today = thisMonday.plusDays(2); // Mittwoch; der Test ist morgen (selbst gewählt)
+		var doneHard = new PlanHistory.DoneHard(java.util.Set.of(), List.of(), java.util.Set.of(today.plusDays(1)));
+		var history = new PlanHistory(thisMonday, Map.of(), null, 0, today, new PlanHistory.Week(0, 0, 0, 0, 0),
+				dailyMinutesBefore(thisMonday, 35, 60), START, java.util.Set.of(), Map.of(today.plusDays(1), 36),
+				doneHard);
+
+		var week = byWeek(GENERATOR.generate(athlete(), START, Map.of(), history)).get(thisMonday);
+
+		// heute (der Tag vor dem Test) gibt es kein Training
+		assertThat(week).noneMatch(planned -> planned.getDate().equals(today));
+		// und auch am Tag danach ist nichts Hartes vor dem Test verplant
+		assertThat(week.stream().filter(planned -> planned.getDate().equals(today.minusDays(1)))).isEmpty();
+	}
 }
 
