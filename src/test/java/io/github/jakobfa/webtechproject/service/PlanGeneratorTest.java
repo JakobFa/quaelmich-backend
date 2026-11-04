@@ -226,7 +226,9 @@ class PlanGeneratorTest {
 	@Test
 	void beginnersStayOnEasierVariants() {
 		assertThat(PlanGenerator.progressionStep(Level.BEGINNER, Phase.BASE, 10)).isEqualTo(1);
-		assertThat(PlanGenerator.progressionStep(Level.PERFORMANCE, Phase.BASE, 10)).isEqualTo(3);
+		assertThat(PlanGenerator.progressionStep(Level.PERFORMANCE, Phase.BASE, 10)).isEqualTo(5);
+		assertThat(PlanGenerator.progressionStep(Level.PERFORMANCE, Phase.BASE, 6)).as("Steigerung geht über Stufe 3 hinaus").isEqualTo(3);
+		assertThat(PlanGenerator.progressionStep(Level.AMBITIOUS, Phase.BASE, 20)).isEqualTo(4);
 		assertThat(PlanGenerator.progressionStep(Level.HOBBY, Phase.BUILD, 0)).as("Aufbau beginnt nicht bei null").isEqualTo(1);
 		assertThat(PlanGenerator.progressionStep(Level.HOBBY, Phase.PEAK, 2)).as("Spitze über der Level-Grenze").isEqualTo(3);
 	}
@@ -355,6 +357,93 @@ class PlanGeneratorTest {
 		var ultraFinish = new EventProfile(1800, EventProfile.Focus.ULTRA, finish);
 		assertThat(PlanGenerator.useTempoLongRide(ultraCompete, Phase.BUILD, 1)).isTrue();
 		assertThat(PlanGenerator.useTempoLongRide(ultraFinish, Phase.BUILD, 0)).isFalse();
+		var ultraGoodTime = new EventProfile(1800, EventProfile.Focus.ULTRA, goodTime);
+		assertThat(PlanGenerator.useTempoLongRide(ultraGoodTime, Phase.BUILD, 0))
+				.as("Ultra mit guter Zeit: Tempo-Blöcke in der langen Ausfahrt").isTrue();
+		assertThat(PlanGenerator.useTempoLongRide(ultraGoodTime, Phase.BASE, 0)).isFalse();
+	}
+
+	/** Viel Zeit, langes Wochenende: wie ein Ultra-Fahrer mit 19 h */
+	private static Athlete ultraRider() {
+		Athlete athlete = athlete(Level.PERFORMANCE, MONDAY.plusWeeks(28).plusDays(4), 900.0, 8500, EventType.ULTRA);
+		WeeklyAvailability availability = athlete.getAvailability();
+		availability.setMonday(2.0);
+		availability.setTuesday(2.0);
+		availability.setWednesday(1.0);
+		availability.setThursday(2.0);
+		availability.setFriday(2.0);
+		availability.setSaturday(5.0);
+		availability.setSunday(5.0);
+		return athlete;
+	}
+
+	@Test
+	void noHardSessionTheDayAfterABigWeekend() {
+		List<PlannedWorkout> plan = generator.generate(ultraRider(), MONDAY);
+
+		assertThat(plan.stream().filter(planned -> isHard(workoutOf(planned)))
+				.filter(planned -> planned.getDate().getDayOfWeek() == DayOfWeek.MONDAY))
+				.as("montags nach 2 × 5 h ist Dienstag oder Donnerstag besser").isEmpty();
+	}
+
+	@Test
+	void hardSessionsKeepProgressingForMonths() {
+		List<PlannedWorkout> plan = generator.generate(ultraRider(), MONDAY);
+
+		List<Integer> tempo = plan.stream().map(this::workoutOf).filter(w -> w.getType() == WorkoutType.TEMPO)
+				.map(PlanGeneratorTest::intervalMinutes).toList();
+		assertThat(tempo.stream().mapToInt(Integer::intValue).max().orElseThrow())
+				.as("Tempo-Blöcke werden über den Plan deutlich länger").isGreaterThanOrEqualTo(75)
+				.isGreaterThan(tempo.getFirst());
+	}
+
+	private static int intervalMinutes(Workout workout) {
+		return workout.getSteps().stream()
+				.filter(step -> step.kind() == io.github.jakobfa.webtechproject.model.StepKind.INTERVAL)
+				.mapToInt(io.github.jakobfa.webtechproject.model.WorkoutStep::durationSeconds).sum() / 60;
+	}
+
+	@Test
+	void hardDaysAreFilledWithEasyRiding() {
+		List<PlannedWorkout> plan = generator.generate(ultraRider(), MONDAY);
+
+		List<Workout> hard = plan.stream().filter(planned -> planned.getPhase() == Phase.BUILD)
+				.map(this::workoutOf).filter(PlanGeneratorTest::isHard)
+				.filter(w -> w.getType() != WorkoutType.FTP_TEST).toList();
+		assertThat(hard).isNotEmpty();
+		assertThat(hard.stream().filter(w -> w.getDurationInMinutes() >= 105).count())
+				.as("2 h am harten Tag: Intervalle plus lockere Grundlage – meistens")
+				.isGreaterThan(hard.size() / 2);
+		assertThat(hard).allMatch(w -> w.getDurationInMinutes() <= 120);
+	}
+
+	@Test
+	void fitnessMemoryAfterAnOffSeason() {
+		LocalDate monday = LocalDate.of(2026, 11, 9);
+		Map<LocalDate, Integer> daily = new java.util.HashMap<>();
+		// vier Wochen à ca. 16 h, dann drei Wochen Off-Season à ca. 5 h
+		for (LocalDate day = monday.minusDays(49); day.isBefore(monday); day = day.plusDays(1)) {
+			daily.put(day, day.isBefore(monday.minusDays(21)) ? 140 : 43);
+		}
+		LocalDate dataStart = monday.minusDays(49);
+
+		Double recent = PlanGenerator.baselineWeeklyMinutes(daily, Set.of(), dataStart, monday, false);
+		Double withMemory = PlanGenerator.baselineWeeklyMinutes(daily, Set.of(), dataStart, monday, true);
+		assertThat(withMemory).as("die Fitness vor der Pause zählt (abgeschwächt) mit").isGreaterThan(recent * 1.3);
+		assertThat(withMemory).as("aber nicht voll").isLessThan(140 * 7.0);
+
+		var withCap = PlanGenerator.rollingCap(daily, Set.of(), dataStart, monday, Phase.BASE, false, true);
+		var withoutCap = PlanGenerator.rollingCap(daily, Set.of(), dataStart, monday, Phase.BASE, false, false);
+		assertThat(withCap.weeklyCapMinutes()).isGreaterThan(withoutCap.weeklyCapMinutes());
+	}
+
+	@Test
+	void noFitnessMemoryAfterIllness() {
+		LocalDate monday = LocalDate.of(2026, 11, 9);
+		var sick = new PlanHistory(monday, Map.of(monday.minusWeeks(2), new PlanHistory.Week(600, 0, 5)), null, 0);
+		var healthy = new PlanHistory(monday, Map.of(monday.minusWeeks(2), new PlanHistory.Week(600, 300, 0)), null, 0);
+		assertThat(PlanGenerator.memoryAllowed(sick, monday)).isFalse();
+		assertThat(PlanGenerator.memoryAllowed(healthy, monday)).isTrue();
 	}
 
 	@Test
