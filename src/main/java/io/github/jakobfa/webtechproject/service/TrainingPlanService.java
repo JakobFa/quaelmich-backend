@@ -14,6 +14,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import io.github.jakobfa.webtechproject.model.Event;
+import io.github.jakobfa.webtechproject.model.Phase;
 import io.github.jakobfa.webtechproject.model.PlannedWorkout;
 import io.github.jakobfa.webtechproject.model.ExtraRide;
 import io.github.jakobfa.webtechproject.model.RaceEvent;
@@ -118,8 +119,26 @@ public class TrainingPlanService {
 			plan.getWorkouts().removeAll(open);
 			fresh.forEach(plan::addWorkout);
 		}
+		alignPhasePerWeek(plan, fresh);
 		holdWhileSick(plan);
 		plan.sortByDate();
+	}
+
+	/**
+	 * Eine Woche hat eine Phase. Wird sie bei der Anpassung geändert (z. B. Erholungswoche entfällt), bekommen auch
+	 * die schon vergangenen Tage derselben Woche die neue Phase – sonst steht über der Woche "Erholung" und darunter
+	 * Grundlage.
+	 */
+	private static void alignPhasePerWeek(TrainingPlan plan, List<PlannedWorkout> fresh) {
+		Map<LocalDate, Phase> phaseOfWeek = new java.util.HashMap<>();
+		fresh.forEach(planned -> phaseOfWeek.put(
+				planned.getDate().with(TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY)), planned.getPhase()));
+		plan.getWorkouts().forEach(planned -> {
+			Phase phase = phaseOfWeek.get(planned.getDate().with(TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY)));
+			if (phase != null && planned.getPhase() != phase) {
+				planned.setPhase(phase);
+			}
+		});
 	}
 
 	private static boolean sameWorkouts(List<PlannedWorkout> a, List<PlannedWorkout> b) {

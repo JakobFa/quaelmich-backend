@@ -173,4 +173,23 @@ class ActualsAdaptationTest {
 
 		assertThat(fingerprint()).isNotNull();
 	}
+
+	@Test
+	void whenTheRecoveryWeekIsDroppedTheWholeWeekShowsTheSamePhase() {
+		// 21 Tage zurück: die laufende Woche ist die Erholungswoche, die Woche davor wurde nicht gefahren
+		tx.executeWithoutResult(status -> {
+			TrainingPlan plan = plans.findById(planId).orElseThrow();
+			plan.setStartDate(plan.getStartDate().minusDays(21));
+			plan.getWorkouts().forEach(planned -> planned.setDate(planned.getDate().minusDays(21)));
+			plans.save(plan);
+		});
+
+		planService.currentPlan(athleteId); // erstes Öffnen der Woche: Anpassung
+
+		var phases = tx.execute(status -> plans.findById(planId).orElseThrow().getWorkouts().stream()
+				.filter(planned -> !planned.getDate().isBefore(THIS_MONDAY)
+						&& !planned.getDate().isAfter(THIS_MONDAY.plusDays(6)))
+				.map(PlannedWorkout::getPhase).distinct().toList());
+		assertThat(phases).hasSize(1).doesNotContain(io.github.jakobfa.webtechproject.model.Phase.RECOVERY);
+	}
 }
