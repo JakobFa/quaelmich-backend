@@ -40,6 +40,12 @@ public class TrainingPlan {
 
 	private LocalDate startDate;
 
+	/**
+	 * Fingerabdruck der gefahrenen Werte, mit dem der Plan zuletzt abgeglichen wurde: Ändert sich etwas (neue Fahrt,
+	 * abgehakt, krank), wird der Rest des Plans neu angepasst. Bewusst nullable (siehe SchemaForExistingDataTest).
+	 */
+	private Integer actualsFingerprint;
+
 	/** Geheimer Teil des Kalender-Abo-Links (iCal); null = kein Abo eingerichtet */
 	@Column(unique = true)
 	private String calendarToken;

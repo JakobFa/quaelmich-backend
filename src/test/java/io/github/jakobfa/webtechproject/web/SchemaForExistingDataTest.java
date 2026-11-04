@@ -29,6 +29,6 @@ class SchemaForExistingDataTest {
 
 		// nur der Schlüssel, die Planverbindung und das Startdatum gab es von Anfang an
 		assertThat(notNullable).doesNotContain("reentry_weeks", "sick_since", "reentry_monday",
-				"last_adapted_monday", "calendar_token");
+				"last_adapted_monday", "calendar_token", "actuals_fingerprint");
 	}
 }

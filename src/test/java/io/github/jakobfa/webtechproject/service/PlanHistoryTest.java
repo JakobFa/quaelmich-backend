@@ -165,4 +165,85 @@ class PlanHistoryTest {
 		// die laufende Woche darf nicht auf dem hohen Plan-Stand weitermachen
 		assertThat(minutes(adapted.get(thisMonday))).isLessThan(minutes(plain.get(thisMonday)));
 	}
+
+	private static boolean isHard(PlannedWorkout planned) {
+		return !java.util.Set.of(WorkoutType.RECOVERY, WorkoutType.ENDURANCE, WorkoutType.LONG_RIDE).contains(
+				LIBRARY.resolve(planned.getWorkoutId(), planned.getDurationMinutes()).orElseThrow().getType());
+	}
+
+	private static PlanHistory withCurrentWeek(LocalDate thisMonday, LocalDate today,
+			Map<LocalDate, PlanHistory.Week> weeks, PlanHistory.Week currentWeek) {
+		return new PlanHistory(thisMonday, weeks, null, 0, today, currentWeek);
+	}
+
+	@Test
+	void aMuchHarderWeekMeansNoGrowthAndOneHardSessionLess() {
+		LocalDate thisMonday = START.plusWeeks(2);
+		var plain = byWeek(GENERATOR.generate(athlete(), START, Map.of()));
+		long plainHard = plain.get(thisMonday).stream().filter(PlanHistoryTest::isHard).count();
+		assertThat(plainHard).isGreaterThanOrEqualTo(2);
+
+		// die Woche davor: Minuten wie geplant, aber 40 % mehr Belastung (zu hart gefahren)
+		var weeks = Map.of(thisMonday.minusWeeks(1), new PlanHistory.Week(minutes(plain.get(thisMonday.minusWeeks(1))),
+				minutes(plain.get(thisMonday.minusWeeks(1))), 0, 300, 420));
+		var adapted = byWeek(GENERATOR.generate(athlete(), START, Map.of(),
+				withCurrentWeek(thisMonday, thisMonday, weeks, new PlanHistory.Week(0, 0, 0, 0, 0))));
+
+		assertThat(adapted.get(thisMonday).stream().filter(PlanHistoryTest::isHard).count()).isEqualTo(plainHard - 1);
+		assertThat(minutes(adapted.get(thisMonday))).isLessThanOrEqualTo(minutes(plain.get(thisMonday)));
+	}
+
+	@Test
+	void aSlightlyHarderWeekChangesNothing() {
+		LocalDate thisMonday = START.plusWeeks(2);
+		var plain = byWeek(GENERATOR.generate(athlete(), START, Map.of()));
+		var weeks = Map.of(thisMonday.minusWeeks(1), new PlanHistory.Week(minutes(plain.get(thisMonday.minusWeeks(1))),
+				minutes(plain.get(thisMonday.minusWeeks(1))), 0, 300, 340));
+		var adapted = byWeek(GENERATOR.generate(athlete(), START, Map.of(),
+				withCurrentWeek(thisMonday, thisMonday, weeks, new PlanHistory.Week(0, 0, 0, 0, 0))));
+
+		assertThat(adapted.get(thisMonday).stream().filter(PlanHistoryTest::isHard).count())
+				.isEqualTo(plain.get(thisMonday).stream().filter(PlanHistoryTest::isHard).count());
+	}
+
+	@Test
+	void theRunningWeekIsOnlyPlannedFromTodayOn() {
+		LocalDate thisMonday = START.plusWeeks(1);
+		LocalDate today = thisMonday.plusDays(3); // Donnerstag
+		var adapted = byWeek(GENERATOR.generate(athlete(), START, Map.of(),
+				withCurrentWeek(thisMonday, today, Map.of(), new PlanHistory.Week(500, 200, 0, 300, 120))));
+
+		assertThat(adapted.get(thisMonday)).isNotEmpty().allMatch(planned -> !planned.getDate().isBefore(today));
+	}
+
+	@Test
+	void whenTheWholeWeeksLoadIsAlreadyRiddenTheRestStaysEasy() {
+		LocalDate thisMonday = START.plusWeeks(1);
+		LocalDate today = thisMonday.plusDays(2); // Mittwoch
+		var plain = byWeek(GENERATOR.generate(athlete(), START, Map.of()));
+		assertThat(plain.get(thisMonday).stream().filter(p -> !p.getDate().isBefore(today)).anyMatch(PlanHistoryTest::isHard))
+				.as("ohne Anpassung stehen noch harte Einheiten an").isTrue();
+
+		// schon 320 TSS gefahren bei 300 geplant (z. B. viel Zusätzliches)
+		var adapted = byWeek(GENERATOR.generate(athlete(), START, Map.of(),
+				withCurrentWeek(thisMonday, today, Map.of(), new PlanHistory.Week(500, 480, 0, 300, 320))));
+
+		assertThat(adapted.get(thisMonday)).isNotEmpty().noneMatch(PlanHistoryTest::isHard);
+	}
+
+	@Test
+	void whatIsAlreadyRiddenThisWeekReducesTheRestOfTheWeek() {
+		LocalDate thisMonday = START.plusWeeks(2);
+		LocalDate today = thisMonday; // Wochenbeginn: gefahren wurde nur ein Zusatztraining
+		var plain = byWeek(GENERATOR.generate(athlete(), START, Map.of()));
+		var weeks = Map.of(thisMonday.minusWeeks(1), new PlanHistory.Week(minutes(plain.get(thisMonday.minusWeeks(1))),
+				minutes(plain.get(thisMonday.minusWeeks(1))), 0, 300, 300));
+
+		var untouched = byWeek(GENERATOR.generate(athlete(), START, Map.of(),
+				withCurrentWeek(thisMonday, today, weeks, new PlanHistory.Week(500, 0, 0, 300, 0))));
+		var withExtra = byWeek(GENERATOR.generate(athlete(), START, Map.of(),
+				withCurrentWeek(thisMonday, today, weeks, new PlanHistory.Week(500, 300, 0, 300, 200))));
+
+		assertThat(minutes(withExtra.get(thisMonday))).isLessThan(minutes(untouched.get(thisMonday)));
+	}
 }

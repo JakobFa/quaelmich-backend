@@ -23,7 +23,8 @@ import io.github.jakobfa.webtechproject.repository.PlannedWorkoutRepository;
 class PlannedWorkoutServiceTest {
 
 	private final PlannedWorkoutRepository repository = mock(PlannedWorkoutRepository.class);
-	private final PlannedWorkoutService service = new PlannedWorkoutService(repository);
+	private final PlannedWorkoutService service = new PlannedWorkoutService(repository,
+			mock(TrainingPlanService.class));
 
 	/** Geplantes Workout im Plan des Nutzers mit der ID 1 */
 	private static PlannedWorkout ownedByUserOne() {
