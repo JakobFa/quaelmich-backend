@@ -493,6 +493,9 @@ public class TrainingPlanService {
 	public Optional<TrainingPlan> currentPlan(Long athleteId) {
 		return planRepository.findByAthleteId(athleteId).map(plan -> {
 			adaptOncePerWeek(plan);
+			// Auch beim Öffnen abgleichen (nicht nur nach einer neuen Fahrt): ändert sich die Rechnung oder wurde
+			// zwischendurch etwas gefahren, passt sich der Plan an. Passiert nichts Neues, passiert hier nichts.
+			adaptToActuals(athleteId);
 			if (!plan.getAthlete().hasEventGoal()) {
 				LocalDate lastPlanned = plan.getWorkouts().stream().map(PlannedWorkout::getDate)
 						.max(LocalDate::compareTo).orElse(LocalDate.now(clock));
