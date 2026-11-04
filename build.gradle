@@ -75,6 +75,17 @@ tasks.register('fuzzSimulation', JavaExec) {
 	}
 }
 
+// Bewertet einen Satz Stellschrauben (PlanParameters) mit dem Leistungsmodell an festen Zufallsfahrern
+tasks.register('evaluatePlan', JavaExec) {
+	description = 'Bewertet Stellschrauben: [-Pparams="loadWeeksPerBlock=4,recoveryVolume=0.5"] [-Priders=1000] [-PfirstSeed=1]'
+	classpath = sourceSets.test.runtimeClasspath
+	mainClass = 'io.github.jakobfa.webtechproject.service.ParameterEvaluation'
+	doFirst {
+		args = [project.findProperty('params') ?: '', project.findProperty('riders') ?: '',
+				project.findProperty('firstSeed') ?: '', layout.buildDirectory.file('plan-evaluation.md').get().asFile.path]
+	}
+}
+
 // Persönliche Simulation aus einem Daten-Export; nur lokal, Ergebnis nicht einchecken
 tasks.register('exportSimulation', JavaExec) {
 	description = 'Simuliert einen echten Nutzer aus seinem Export: -PexportFile=... -Pctl=96 -Patl=55 [-Pfrom=2026-11-03]'

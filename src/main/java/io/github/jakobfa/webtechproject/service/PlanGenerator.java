@@ -52,7 +52,7 @@ public class PlanGenerator {
 
 	/** Umfang in Woche 1 und Steigerung pro Belastungswoche */
 	static final double START_VOLUME = 0.7;
-	static final double VOLUME_STEP = 0.05;
+	static final double VOLUME_STEP = PlanParameters.DEFAULT.volumeStep();
 	/** Wer nur wenig Zeit hat (bis zu dieser Wochenzeit), nutzt sie von Anfang an besser aus */
 	static final double SCARCE_HOURS = 8;
 	static final double SCARCE_TIME_BONUS = 0.1;
@@ -443,7 +443,7 @@ public class PlanGenerator {
 							|| (recent != null && recent < PlanHistory.MIN_RECENT_FULFILMENT));
 			// nur, wo der Block schon größtenteils gefahren ist (laufende und nächste Woche); weiter vorn zählt der Plan
 			boolean nearNow = !monday.isAfter(history.thisMonday().plusWeeks(1));
-			boolean rested = nearNow && loadWeeksBefore(phases, weekIndex) < MAX_LOAD_WEEKS_WITHOUT_RECOVERY
+			boolean rested = nearNow && loadWeeksBefore(phases, weekIndex) < p().maxLoadWeeksWithoutRecovery()
 					&& !builtUp(daily, recoveryDays, dataStart, monday);
 			// zwei Erholungswochen hintereinander nie (z. B. wenn die vorige vorgezogen wurde) – außer die vorige wurde
 			// gar nicht ruhig gefahren (z. B. lag sie im Urlaub mit viel Fahren)
@@ -454,8 +454,8 @@ public class PlanGenerator {
 			// zu viele Belastungswochen am Stück würden
 			int taper = labels.indexOf(Phase.TAPER);
 			// (die Woche direkt vor dem Tapering darf keine Erholung sein, daher ein Block plus eine Woche)
-			boolean lastChance = taper > weekIndex && taper - weekIndex <= LOAD_WEEKS_PER_BLOCK + 1
-					&& loadWeeksBefore(phases, weekIndex) + taper - weekIndex > MAX_LOAD_WEEKS_WITHOUT_RECOVERY;
+			boolean lastChance = taper > weekIndex && taper - weekIndex <= p().loadWeeksPerBlock() + 1
+					&& loadWeeksBefore(phases, weekIndex) + taper - weekIndex > p().maxLoadWeeksWithoutRecovery();
 			if ((weak || rested) && lastChance && !afterRecovery) {
 				weak = false;
 				rested = false;
@@ -502,16 +502,16 @@ public class PlanGenerator {
 	/** So viele Tage vor einer Erholungswoche zählen als der Block, dessen Ermüdung sie abbauen soll */
 	static final int LOAD_BLOCK_DAYS = 21;
 	/** Unter so viel vom Schnitt davor gelten die letzten 3 Wochen als ruhig (kein Aufbau von Ermüdung) */
-	static final double RESTED_BLOCK_RATIO = 0.9;
+	static final double RESTED_BLOCK_RATIO = PlanParameters.DEFAULT.restedBlockRatio();
 	/** Wegen zu wenig Gefahrenem wird die Erholung nur bis zu so vielen Belastungswochen am Stück aufgeschoben */
 	static final int MAX_LOAD_WEEKS_AFTER_WEAK = 4;
 	/** Spätestens nach so vielen Belastungswochen am Stück kommt die Erholungswoche, auch ohne Anstieg */
-	static final int MAX_LOAD_WEEKS_WITHOUT_RECOVERY = 6;
+	static final int MAX_LOAD_WEEKS_WITHOUT_RECOVERY = PlanParameters.DEFAULT.maxLoadWeeksWithoutRecovery();
 	/** Akute Spitze: die letzten 14 Tage gegen den Schnitt der 4 Wochen davor */
 	static final int SPIKE_DAYS = 14;
 	/** Ab so viel mehr als vorher (und mindestens SPIKE_MIN_EXTRA_MINUTES pro Woche) ist es eine Spitze */
-	static final double SPIKE_RATIO = 1.35;
-	static final int SPIKE_MIN_EXTRA_MINUTES = 90;
+	static final double SPIKE_RATIO = PlanParameters.DEFAULT.spikeRatio();
+	static final int SPIKE_MIN_EXTRA_MINUTES = PlanParameters.DEFAULT.spikeMinExtraMinutes();
 	/** Frühere Erholungswoche erst nach so vielen Belastungswochen und nicht in den letzten Wochen vor dem Event */
 	static final int MIN_LOAD_WEEKS_BEFORE_EARLY_RECOVERY = 2;
 	static final int MIN_WEEKS_BEFORE_EVENT_FOR_EARLY_RECOVERY = 4;
@@ -549,7 +549,7 @@ public class PlanGenerator {
 		if (recent == null || before == null || before <= 0) {
 			return true;
 		}
-		return recent >= before * RESTED_BLOCK_RATIO;
+		return recent >= before * p().restedBlockRatio();
 	}
 
 	/**
@@ -565,7 +565,7 @@ public class PlanGenerator {
 		if (recent == null || before == null || before <= 0) {
 			return false;
 		}
-		return recent >= before * SPIKE_RATIO && recent - before >= SPIKE_MIN_EXTRA_MINUTES;
+		return recent >= before * p().spikeRatio() && recent - before >= p().spikeMinExtraMinutes();
 	}
 
 	/**
@@ -579,16 +579,16 @@ public class PlanGenerator {
 		Double before = weeklyAverage(daily, recoveryDays, dataStart, monday, LOAD_BLOCK_DAYS + 1, LOAD_HISTORY_DAYS,
 				LOAD_BLOCK_DAYS * 2 / 3);
 		if (before == null || before <= 0) {
-			return LOAD_WEEKS_PER_BLOCK;
+			return p().loadWeeksPerBlock();
 		}
-		for (int week = 1; week < LOAD_WEEKS_PER_BLOCK; week++) {
+		for (int week = 1; week < p().loadWeeksPerBlock(); week++) {
 			Double minutes = weeklyAverage(daily, java.util.Set.of(), dataStart, monday, 7 * (week - 1) + 1, 7 * week,
 					7);
-			if (minutes != null && minutes <= before * RECOVERY_ACUTE_RATIO) {
+			if (minutes != null && minutes <= before * p().recoveryAcuteRatio()) {
 				return week;
 			}
 		}
-		return LOAD_WEEKS_PER_BLOCK;
+		return p().loadWeeksPerBlock();
 	}
 
 	private static LocalDate dataStartOf(PlanHistory history) {
@@ -600,12 +600,12 @@ public class PlanGenerator {
 	 * MAX_LOAD_WEEKS_WITHOUT_RECOVERY Belastungswochen am Stück – auch nicht mit dem neuen Block.
 	 */
 	private static void restartAfterSkip(List<Phase> phases, List<Phase> labels, int weekIndex, int loaded) {
-		int atLeast = loadWeeksBefore(phases, weekIndex) + 1 + LOAD_WEEKS_PER_BLOCK - MAX_LOAD_WEEKS_WITHOUT_RECOVERY;
-		restartBlocks(phases, labels, weekIndex, Math.min(LOAD_WEEKS_PER_BLOCK, Math.max(loaded, atLeast)));
+		int atLeast = loadWeeksBefore(phases, weekIndex) + 1 + p().loadWeeksPerBlock() - p().maxLoadWeeksWithoutRecovery();
+		restartBlocks(phases, labels, weekIndex, Math.min(p().loadWeeksPerBlock(), Math.max(loaded, atLeast)));
 	}
 
 	/** So viele Belastungswochen, dann eine Erholungswoche (wie in phasesFor und OPEN_CYCLE) */
-	static final int LOAD_WEEKS_PER_BLOCK = 3;
+	static final int LOAD_WEEKS_PER_BLOCK = PlanParameters.DEFAULT.loadWeeksPerBlock();
 
 	/**
 	 * Setzt die Erholungswochen nach weekIndex neu: Weicht die Wirklichkeit vom Rhythmus ab (Erholungswoche entfallen
@@ -623,7 +623,7 @@ public class PlanGenerator {
 		int loaded = loadedAtIndex;
 		for (int i = weekIndex + 1; i < end; i++) {
 			boolean lastBeforeTaper = taper && i == end - 1;
-			if (loaded >= LOAD_WEEKS_PER_BLOCK && !lastBeforeTaper) {
+			if (loaded >= p().loadWeeksPerBlock() && !lastBeforeTaper) {
 				phases.set(i, Phase.RECOVERY);
 				loaded = 0;
 			} else {
@@ -711,9 +711,9 @@ public class PlanGenerator {
 	}
 
 	/** Akut (7 Tage) zu chronisch (Schnitt der 28 Tage davor): ca. +7 bis 10 % pro Woche, wenn es stetig steigt */
-	static final double ACUTE_CHRONIC_RATIO = 1.18;
+	static final double ACUTE_CHRONIC_RATIO = PlanParameters.DEFAULT.acuteChronicRatio();
 	/** Erholungswochen: so viel vom Schnitt der letzten 28 Tage */
-	static final double RECOVERY_ACUTE_RATIO = 0.75;
+	static final double RECOVERY_ACUTE_RATIO = PlanParameters.DEFAULT.recoveryAcuteRatio();
 	/** Zu hart gefahren: kein Zuwachs über den Schnitt hinaus */
 	static final double OVERREACHED_ACUTE_RATIO = 1.0;
 	/** Auch mit wenig Daten darf die nächste Woche mindestens so viel über dem Schnitt liegen */
@@ -758,7 +758,7 @@ public class PlanGenerator {
 	 * Spitze hochgerechnet. Nach Krankheit oder Verletzung gilt es nicht (dafür gibt es den Wiedereinstieg).
 	 */
 	static final int MEMORY_WEEKS = 8;
-	static final double MEMORY_WEEKLY_DECAY = 0.95;
+	static final double MEMORY_WEEKLY_DECAY = PlanParameters.DEFAULT.memoryWeeklyDecay();
 	static final int MEMORY_MIN_DAYS = 21;
 
 	/** Schnitt pro Woche aus den bis zu 28 Tagen vor end (ohne Erholungstage, ohne Tage vor dataStart) */
@@ -784,7 +784,7 @@ public class PlanGenerator {
 		for (int k = 1; k <= MEMORY_WEEKS; k++) {
 			Double average = windowAverage(daily, recoveryDays, dataStart, monday.minusWeeks(k), MEMORY_MIN_DAYS);
 			if (average != null) {
-				best = Math.max(best, average * Math.pow(MEMORY_WEEKLY_DECAY, k));
+				best = Math.max(best, average * Math.pow(p().memoryWeeklyDecay(), k));
 			}
 		}
 		return best;
@@ -837,8 +837,8 @@ public class PlanGenerator {
 			return null;
 		}
 		int countedDays = countedDays(recoveryDays, dataStart, monday);
-		double ratio = phase == Phase.RECOVERY ? RECOVERY_ACUTE_RATIO
-				: overreached ? OVERREACHED_ACUTE_RATIO : Math.min(ACUTE_CHRONIC_RATIO, Math.max(steadyGrowthRatio(countedDays / 7.0), EARLY_MIN_RATIO));
+		double ratio = phase == Phase.RECOVERY ? p().recoveryAcuteRatio()
+				: overreached ? OVERREACHED_ACUTE_RATIO : Math.min(p().acuteChronicRatio(), Math.max(steadyGrowthRatio(countedDays / 7.0), EARLY_MIN_RATIO));
 		// Belastungswochen dürfen mindestens eine halbe Stunde über den Schnitt (sonst bremst der Prozentsatz bei kleinen
 		// Umfängen); Erholungswochen bleiben unter dem Schnitt
 		double cap = phase == Phase.RECOVERY ? weeklyAverage * ratio
@@ -911,7 +911,7 @@ public class PlanGenerator {
 		int loaded = 0;
 		for (int i = 0; i < loadSpan; i++) {
 			boolean lastBeforeTaper = i == loadSpan - 1;
-			if (loaded == 3 && !lastBeforeTaper) {
+			if (loaded == p().loadWeeksPerBlock() && !lastBeforeTaper) {
 				phases.set(i, Phase.RECOVERY);
 				loaded = 0;
 			} else {
@@ -923,7 +923,7 @@ public class PlanGenerator {
 
 	/** Grundlage, Aufbau, Spitze und Tapering je Woche – ohne Erholungswochen, am Eventdatum ausgerichtet */
 	static List<Phase> labelsFor(int weeks) {
-		int taper = weeks >= 3 ? 2 : 1;
+		int taper = weeks >= 3 ? Math.min(p().taperWeeks(), weeks - 1) : 1;
 		int peak = Math.min(weeks >= 16 ? 3 : weeks >= 6 ? 2 : 1, weeks - taper);
 		int rest = weeks - taper - peak;
 		int build = (int) Math.round(rest * 0.4);
@@ -945,6 +945,11 @@ public class PlanGenerator {
 			}
 		}
 		return labels;
+	}
+
+	/** Die Stellschrauben für diesen Lauf (in der App immer PlanParameters.DEFAULT) */
+	private static PlanParameters p() {
+		return PlanParameters.current();
 	}
 
 	static boolean isLoadPhase(Phase phase) {
@@ -1028,12 +1033,12 @@ public class PlanGenerator {
 	}
 
 	static double volumeFactor(Phase phase, int loadWeek, double startVolume) {
-		double ramp = Math.min(1.0, startVolume + VOLUME_STEP * loadWeek);
+		double ramp = Math.min(1.0, startVolume + p().volumeStep() * loadWeek);
 		return switch (phase) {
-			case RECOVERY -> 0.6 * ramp; // Erholung: deutlich weniger als die Wochen davor
+			case RECOVERY -> p().recoveryVolume() * ramp; // Erholung: deutlich weniger als die Wochen davor
 			case TAPER -> 0.6;
 			// Spitze: weiter steigern statt sprunghaft auf 100 % – sonst +30 % von einer Woche zur nächsten
-			case PEAK -> Math.min(1.0, ramp + VOLUME_STEP);
+			case PEAK -> Math.min(1.0, ramp + p().volumeStep());
 			default -> ramp;
 		};
 	}
@@ -1064,7 +1069,7 @@ public class PlanGenerator {
 		double target = eventMinutes * (from + (to - from) * progress);
 		target = Math.clamp(target, MIN_LONG_RIDE, MAX_LONG_RIDE);
 		return switch (phase) {
-			case RECOVERY -> (int) (target * 0.6);
+			case RECOVERY -> (int) (target * p().recoveryVolume());
 			case TAPER -> (int) (target * 0.5);
 			default -> (int) target;
 		};

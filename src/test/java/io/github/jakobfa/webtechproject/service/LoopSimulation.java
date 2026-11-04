@@ -59,8 +59,14 @@ final class LoopSimulation {
 			double ctl, double ctlRamp, double minTsb) {
 	}
 
+	/**
+	 * @param tssByDay  gefahrene Belastung je Tag, mit der Vorgeschichte (für das Leistungsmodell)
+	 * @param targetDay der Tag, auf den es ankommt: der Event-Tag, sonst der letzte simulierte Tag
+	 * @param firstDay  der erste Plantag
+	 */
 	record Result(String profile, String type, List<Week> weeks, List<String> hard, List<String> warnings,
-			double eventDayTsb, int recoveryWeeks, int maxLoadWeeksInRow) {
+			double eventDayTsb, int recoveryWeeks, int maxLoadWeeksInRow, Map<LocalDate, Integer> tssByDay,
+			LocalDate firstDay, LocalDate targetDay) {
 
 		String key() {
 			return profile + " | " + type;
@@ -271,7 +277,9 @@ final class LoopSimulation {
 		checkEventDay(athlete, eventDayTsb, warnings);
 		checkType(type, result, start, warnings);
 		int recoveries = (int) phaseList.stream().filter(phase -> phase == Phase.RECOVERY).count();
-		return new Result(profile.name(), type.name(), result, hard, warnings, eventDayTsb, recoveries, maxInRow);
+		LocalDate targetDay = eventDate != null ? eventDate : start.plusWeeks(weeks).minusDays(1);
+		return new Result(profile.name(), type.name(), result, hard, warnings, eventDayTsb, recoveries, maxInRow,
+				new TreeMap<>(actualTssByDay), start, targetDay);
 	}
 
 	/**
