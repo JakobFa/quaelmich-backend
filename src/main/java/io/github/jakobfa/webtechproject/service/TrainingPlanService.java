@@ -416,17 +416,20 @@ public class TrainingPlanService {
 
 		java.util.Set<LocalDate> recoveryDays = history.recoveryDays();
 		LocalDate dataStart = history.dataStart() == null ? plan.getStartDate() : history.dataStart();
+		boolean memory = PlanGenerator.memoryAllowed(history, history.thisMonday());
 		Double baseline = PlanGenerator.baselineWeeklyMinutes(history.dailyMinutes(), recoveryDays, dataStart,
-				history.thisMonday());
+				history.thisMonday(), false);
 		Map<String, Object> load = new java.util.LinkedHashMap<>();
 		load.put("datenAbTag", dataStart.toString());
 		load.put("schnittMinutenProWoche28Tage", baseline == null ? null : Math.round(baseline));
+		load.put("gedaechtnisMinutenProWoche", memory ? Math.round(PlanGenerator.memoryWeeklyMinutes(
+				history.dailyMinutes(), recoveryDays, dataStart, history.thisMonday())) : null);
 		var loadCap = PlanGenerator.rollingCap(history.dailyMinutes(), recoveryDays, dataStart, history.thisMonday(),
-				io.github.jakobfa.webtechproject.model.Phase.BASE, false);
+				io.github.jakobfa.webtechproject.model.Phase.BASE, false, memory);
 		var recoveryCap = PlanGenerator.rollingCap(history.dailyMinutes(), recoveryDays, dataStart,
-				history.thisMonday(), io.github.jakobfa.webtechproject.model.Phase.RECOVERY, false);
+				history.thisMonday(), io.github.jakobfa.webtechproject.model.Phase.RECOVERY, false, memory);
 		var overreachedCap = PlanGenerator.rollingCap(history.dailyMinutes(), recoveryDays, dataStart,
-				history.thisMonday(), io.github.jakobfa.webtechproject.model.Phase.BASE, true);
+				history.thisMonday(), io.github.jakobfa.webtechproject.model.Phase.BASE, true, memory);
 		load.put("grenzeBelastungswocheMinuten7Tage", loadCap == null ? null : loadCap.weeklyCapMinutes());
 		load.put("grenzeErholungswocheMinuten7Tage", recoveryCap == null ? null : recoveryCap.weeklyCapMinutes());
 		load.put("grenzeNachZuHarterVorwocheMinuten7Tage", overreachedCap == null ? null

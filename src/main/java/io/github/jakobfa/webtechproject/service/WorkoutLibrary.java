@@ -51,6 +51,15 @@ public class WorkoutLibrary {
 					"Eine Stunde Tempo in drei Blöcken – viel Umfang knapp unter der Schwelle.",
 					steps(warmup(), repeat(3, steady(INTERVAL, min(20), 85), steady(RECOVERY, min(5), 55)),
 							cooldown())),
+			// ab hier: länger statt härter – mehr Zeit im Bereich, damit die Steigerung über Monate trägt
+			new Workout(78L, "Tempo 3 × 25", WorkoutType.TEMPO,
+					"75 Minuten Tempo in drei langen Blöcken – muskuläre Ausdauer für lange Tage.",
+					steps(warmup(), repeat(3, steady(INTERVAL, min(25), 85), steady(RECOVERY, min(5), 55)),
+							cooldown())),
+			new Workout(79L, "Tempo 2 × 45", WorkoutType.TEMPO,
+					"Zwei Dreiviertelstunden knapp unter der Schwelle – stundenlang gleichmäßig drücken.",
+					steps(warmup(), repeat(2, steady(INTERVAL, min(45), 84), steady(RECOVERY, min(5), 55)),
+							cooldown())),
 
 			// ---------- Sweet Spot ----------
 			new Workout(14L, "Sweet Spot 3 × 10", WorkoutType.SWEET_SPOT,
@@ -69,6 +78,14 @@ public class WorkoutLibrary {
 					"45 Minuten Sweet Spot – die umfangreichste Variante, die Brücke zum Schwellentraining.",
 					steps(warmup(), repeat(3, steady(INTERVAL, min(15), 90), steady(RECOVERY, min(5), 55)),
 							cooldown())),
+			new Workout(80L, "Sweet Spot 3 × 20", WorkoutType.SWEET_SPOT,
+					"Eine Stunde Sweet Spot in drei Blöcken – mehr Zeit im Bereich statt mehr Watt.",
+					steps(warmup(), repeat(3, steady(INTERVAL, min(20), 90), steady(RECOVERY, min(5), 55)),
+							cooldown())),
+			new Workout(81L, "Sweet Spot 2 × 40", WorkoutType.SWEET_SPOT,
+					"Zwei lange Blöcke am unteren Sweet Spot – die längste Variante, für erfahrene Fahrer.",
+					steps(warmup(), repeat(2, steady(INTERVAL, min(40), 88), steady(RECOVERY, min(5), 55)),
+							cooldown())),
 
 			// ---------- Schwelle ----------
 			new Workout(18L, "Schwelle 2 × 15", WorkoutType.THRESHOLD,
@@ -86,6 +103,14 @@ public class WorkoutLibrary {
 			new Workout(19L, "Schwelle 3 × 15", WorkoutType.THRESHOLD,
 					"45 Minuten an der FTP – die Königsdisziplin des Schwellentrainings.",
 					steps(warmup(), repeat(3, steady(INTERVAL, min(15), 98), steady(RECOVERY, min(6), 55)),
+							cooldown())),
+			new Workout(82L, "Schwelle 3 × 18", WorkoutType.THRESHOLD,
+					"54 Minuten an der FTP – länger durchhalten statt höher treten.",
+					steps(warmup(), repeat(3, steady(INTERVAL, min(18), 97), steady(RECOVERY, min(6), 55)),
+							cooldown())),
+			new Workout(83L, "Schwelle 2 × 30", WorkoutType.THRESHOLD,
+					"Zwei halbe Stunden knapp an der FTP – die längste Schwellen-Einheit.",
+					steps(warmup(), repeat(2, steady(INTERVAL, min(30), 95), steady(RECOVERY, min(8), 55)),
 							cooldown())),
 
 			// ---------- Over-Unders ----------
