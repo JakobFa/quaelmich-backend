@@ -625,4 +625,128 @@ class PlanGeneratorTest {
 		assertThat(phaseOfWeek(spiked, load)).isEqualTo(Phase.RECOVERY);
 		assertThat(phaseOfWeek(spiked, recovery)).isNotEqualTo(Phase.RECOVERY);
 	}
+
+	// ---------- Rhythmus nach einer entfallenen Erholungswoche ----------
+
+	/** Minuten je Tag aus Wochenwerten: weekly[0] = Woche direkt vor monday, weekly[1] die davor usw. (6 Wochen) */
+	private static Map<LocalDate, Integer> weeksBefore(LocalDate monday, int... weekly) {
+		Map<LocalDate, Integer> daily = new java.util.HashMap<>();
+		for (int back = 1; back <= 42; back++) {
+			daily.put(monday.minusDays(back), weekly[(back - 1) / 7] / 7);
+		}
+		return daily;
+	}
+
+	@Test
+	void theNewBlockCountsFromTheLastWeekThatWasAsQuietAsARecoveryWeek() {
+		LocalDate monday = LocalDate.of(2026, 11, 9);
+		LocalDate start = monday.minusDays(42);
+		// vorher 3 Wochen à 16 h (960 min)
+		assertThat(PlanGenerator.weeksSinceRecoveryLikeWeek(weeksBefore(monday, 400, 900, 900, 960, 960, 960),
+				Set.of(), start, monday)).as("letzte Woche so ruhig wie Erholung: neuer Block beginnt jetzt").isEqualTo(1);
+		assertThat(PlanGenerator.weeksSinceRecoveryLikeWeek(weeksBefore(monday, 900, 400, 600, 960, 960, 960),
+				Set.of(), start, monday)).as("vor 2 Wochen").isEqualTo(2);
+		assertThat(PlanGenerator.weeksSinceRecoveryLikeWeek(weeksBefore(monday, 820, 820, 820, 960, 960, 960),
+				Set.of(), start, monday)).as("nur etwas weniger: Erholung nur aufgeschoben").isEqualTo(3);
+		assertThat(PlanGenerator.weeksSinceRecoveryLikeWeek(weeksBefore(monday, 400, 900, 900, 960, 960, 960),
+				Set.of(), monday.minusDays(14), monday)).as("ohne Daten davor").isEqualTo(3);
+		// kleine Umfänge: gleiche Logik (3 h vorher, eine Woche mit 2 h)
+		assertThat(PlanGenerator.weeksSinceRecoveryLikeWeek(weeksBefore(monday, 120, 180, 180, 180, 180, 180),
+				Set.of(), start, monday)).isEqualTo(1);
+	}
+
+	@Test
+	void restartingKeepsThePhasesAlignedToTheEvent() {
+		List<Phase> labels = PlanGenerator.labelsFor(30);
+		List<Phase> phases = PlanGenerator.phasesFor(30);
+		int skipped = phases.indexOf(Phase.RECOVERY);
+		phases.set(skipped, labels.get(skipped));
+		PlanGenerator.restartBlocks(phases, labels, skipped, 1);
+
+		assertThat(phases.get(skipped + 3)).isEqualTo(Phase.RECOVERY);
+		assertThat(phases.subList(skipped + 1, skipped + 3)).doesNotContain(Phase.RECOVERY);
+		for (int i = 0; i < phases.size(); i++) {
+			if (phases.get(i) != Phase.RECOVERY) {
+				assertThat(phases.get(i)).as("Woche %d", i).isEqualTo(labels.get(i));
+			}
+		}
+		int taper = labels.indexOf(Phase.TAPER);
+		assertThat(phases.get(taper - 1)).as("letzte Woche vor dem Tapering bleibt Belastung").isNotEqualTo(Phase.RECOVERY);
+		assertThat(phases.subList(taper, phases.size())).containsOnly(Phase.TAPER);
+		// nie mehr als 3 Belastungswochen am Stück (außer direkt vor dem Tapering)
+		int loaded = 0;
+		for (int i = skipped; i < taper - 1; i++) {
+			loaded = phases.get(i) == Phase.RECOVERY ? 0 : loaded + 1;
+			assertThat(loaded).isLessThanOrEqualTo(3);
+		}
+	}
+
+	@Test
+	void restartingWorksForPlansWithoutEvent() {
+		List<Phase> phases = PlanGenerator.openPhases(16);
+		List<Phase> labels = PlanGenerator.openLabels(phases);
+		phases.set(3, labels.get(3));
+		PlanGenerator.restartBlocks(phases, labels, 3, 2);
+		assertThat(phases.get(5)).isEqualTo(Phase.RECOVERY);
+		assertThat(phases.get(7)).isNotEqualTo(Phase.RECOVERY);
+		assertThat(phases.get(9)).isEqualTo(Phase.RECOVERY);
+	}
+
+	/** Verlauf mit gespeicherten Wochen (stored) und Minuten je Tag wie in weeksBefore */
+	private static PlanHistory historyAt(LocalDate thisMonday, Set<LocalDate> stored, int... weekly) {
+		Map<LocalDate, PlanHistory.Week> weeks = new java.util.HashMap<>();
+		stored.forEach(monday -> weeks.put(monday, new PlanHistory.Week(600, 600, 0)));
+		return new PlanHistory(thisMonday, weeks, null, 0, thisMonday, new PlanHistory.Week(0, 0, 0),
+				weeksBefore(thisMonday, weekly), thisMonday.minusDays(42));
+	}
+
+	@Test
+	void afterAQuietWeekTheRecoveryComesAfterAFullBlock() {
+		Athlete athlete = ultraRider();
+		var plain = generator.generate(athlete, MONDAY);
+		LocalDate recovery = plain.stream().filter(p -> p.getPhase() == Phase.RECOVERY)
+				.map(p -> p.getDate().with(DayOfWeek.MONDAY)).min(LocalDate::compareTo).orElseThrow();
+
+		// vor 2 Wochen eine Woche so ruhig wie Erholung, letzte Woche wieder viel: noch 2 Belastungswochen, dann Erholung
+		var adapted = generator.generateSeason(athlete, MONDAY, Map.of(), List.of(), null,
+				historyAt(recovery, Set.of(), 900, 400, 600, 960, 960, 960));
+		assertThat(phaseOfWeek(adapted, recovery)).isNotEqualTo(Phase.RECOVERY);
+		assertThat(phaseOfWeek(adapted, recovery.plusWeeks(1))).isNotEqualTo(Phase.RECOVERY);
+		assertThat(phaseOfWeek(adapted, recovery.plusWeeks(2))).isEqualTo(Phase.RECOVERY);
+		assertThat(phaseOfWeek(adapted, recovery.plusWeeks(4))).as("die alte Stelle zählt nicht mehr")
+				.isNotEqualTo(Phase.RECOVERY);
+	}
+
+	@Test
+	void slightlyLessJustPostponesTheRecoveryByAWeek() {
+		Athlete athlete = athlete(Level.HOBBY, MONDAY.plusWeeks(24).plusDays(5));
+		var plain = generator.generate(athlete, MONDAY);
+		LocalDate recovery = plain.stream().filter(p -> p.getPhase() == Phase.RECOVERY)
+				.map(p -> p.getDate().with(DayOfWeek.MONDAY)).min(LocalDate::compareTo).orElseThrow();
+
+		// 3 Wochen mit 85 % der Wochen davor: keine Erholung nötig, aber auch keine Woche so ruhig wie eine
+		var adapted = generator.generateSeason(athlete, MONDAY, Map.of(), List.of(), null,
+				historyAt(recovery, Set.of(), 410, 410, 410, 480, 480, 480));
+		assertThat(phaseOfWeek(adapted, recovery)).isNotEqualTo(Phase.RECOVERY);
+		assertThat(phaseOfWeek(adapted, recovery.plusWeeks(1))).isEqualTo(Phase.RECOVERY);
+	}
+
+	@Test
+	void aSkippedRecoveryWeekStaysSkippedOnceItIsOver() {
+		Athlete athlete = ultraRider();
+		var plain = generator.generate(athlete, MONDAY);
+		LocalDate recovery = plain.stream().filter(p -> p.getPhase() == Phase.RECOVERY)
+				.map(p -> p.getDate().with(DayOfWeek.MONDAY)).min(LocalDate::compareTo).orElseThrow();
+		var decided = generator.generateSeason(athlete, MONDAY, Map.of(), List.of(), null,
+				historyAt(recovery, Set.of(), 900, 400, 600, 960, 960, 960));
+
+		// eine Woche später: die Woche ist gespeichert, aber ohne Erholung (sie ist ja entfallen)
+		LocalDate next = recovery.plusWeeks(1);
+		var later = generator.generateSeason(athlete, MONDAY, Map.of(), List.of(), null,
+				historyAt(next, Set.of(recovery), 900, 900, 400, 600, 960, 960));
+		for (int w = 1; w <= 6; w++) {
+			assertThat(phaseOfWeek(later, recovery.plusWeeks(w))).as("Woche +%d", w)
+					.isEqualTo(phaseOfWeek(decided, recovery.plusWeeks(w)));
+		}
+	}
 }
