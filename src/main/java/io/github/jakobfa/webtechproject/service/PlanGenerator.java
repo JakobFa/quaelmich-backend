@@ -847,6 +847,8 @@ public class PlanGenerator {
 
 		List<PlannedWorkout> week = new ArrayList<>();
 		List<LocalDate> hardDays = new ArrayList<>();
+		// Tage, die frei bleiben: vor dem FTP-Test braucht es einen Pausentag, sonst misst er Müdigkeit statt FTP
+		java.util.Set<LocalDate> restDays = new java.util.HashSet<>();
 
 		// Abwechslung: je Trainingsart jede Woche das nächste Workout derselben Stufe (zweimal dieselbe Art in
 		// einer Woche: zwei verschiedene)
@@ -867,20 +869,27 @@ public class PlanGenerator {
 			for (Workout workout : options) {
 				// der Test braucht gut eine Stunde: notfalls auch direkt neben der langen Ausfahrt –
 				// nicht ideal frisch, aber besser als gar kein Test
-				List<LocalDate> possibleDays = workout.getType() == WorkoutType.FTP_TEST
+				boolean ftpTest = workout.getType() == WorkoutType.FTP_TEST;
+				List<LocalDate> possibleDays = ftpTest
 						? java.util.stream.Stream.concat(candidates.stream(),
 								days.stream().filter(day -> !day.equals(firstLong) && !day.equals(partner)
 										&& !candidates.contains(day)))
+								.filter(candidate -> hasRestDayBefore(candidate, days, availability, firstLong, partner))
+								// zuerst Tage, an denen der Vortag ohnehin frei ist
+								.sorted(Comparator.comparing((LocalDate candidate) -> days.contains(candidate.minusDays(1))))
 								.toList()
 						: candidates;
 				var day = possibleDays.stream()
-						.filter(candidate -> !hardDays.contains(candidate))
+						.filter(candidate -> !hardDays.contains(candidate) && !restDays.contains(candidate))
 						.filter(candidate -> hardDays.stream()
 								.noneMatch(hard -> Math.abs(ChronoUnit.DAYS.between(hard, candidate)) == 1))
 						.filter(candidate -> fitsInto(workout, availableMinutes(availability, candidate)))
 						.findFirst();
 				if (day.isPresent()) {
 					hardDays.add(day.get());
+					if (ftpTest) {
+						restDays.add(day.get().minusDays(1)); // der Tag davor bleibt frei (falls er ein Trainingstag wäre)
+					}
 					int available = availableMinutes(availability, day.get());
 					// etwas zu lang: Aufwärmen und Ausfahren kürzen statt eine leichtere Stufe zu nehmen
 					Integer length = workout.getDurationInMinutes() > available ? available : null;
@@ -893,7 +902,7 @@ public class PlanGenerator {
 		// Minuten der lockeren Tage und der langen Ausfahrt erst festlegen, dann für den Wochendeckel kürzen
 		java.util.Map<LocalDate, Integer> flexible = new java.util.TreeMap<>();
 		for (LocalDate day : days) {
-			if (hardDays.contains(day)) {
+			if (hardDays.contains(day) || restDays.contains(day)) {
 				continue;
 			}
 			int available = availableMinutes(availability, day);
@@ -1009,6 +1018,20 @@ public class PlanGenerator {
 	}
 
 	/** Passt das Workout in die Zeit – notfalls mit gekürztem Rahmen (die Intervalle bleiben gleich)? */
+	/**
+	 * Hat der Tag vor dem FTP-Test Pause? Entweder ist er ohnehin frei (kein Trainingstag, auch am Wochenwechsel: dann
+	 * darf er keine Zeit haben), oder er lässt sich freihalten – nur die lange Ausfahrt (und ihr Partner) bleibt.
+	 */
+	private static boolean hasRestDayBefore(LocalDate candidate, List<LocalDate> days, WeeklyAvailability availability,
+			LocalDate longDay, LocalDate partner) {
+		LocalDate before = candidate.minusDays(1);
+		if (!days.contains(before)) {
+			// am Wochenbeginn kennen wir die Woche davor nicht: frei nur, wenn der Vortag keine Zeit hat
+			return !before.getDayOfWeek().equals(DayOfWeek.SUNDAY) || availableMinutes(availability, before) == 0;
+		}
+		return !before.equals(longDay) && !before.equals(partner);
+	}
+
 	private static boolean fitsInto(Workout workout, int availableMinutes) {
 		return workout.getDurationInMinutes() <= availableMinutes
 				|| (WorkoutLibrary.isLengthAdjustable(workout) && WorkoutFitter.minimumMinutes(workout) <= availableMinutes);

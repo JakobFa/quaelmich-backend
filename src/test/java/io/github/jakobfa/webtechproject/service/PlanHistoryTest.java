@@ -212,11 +212,19 @@ class PlanHistoryTest {
 		long plainHard = plain.get(thisMonday).stream().filter(PlanHistoryTest::isHard).count();
 		assertThat(plainHard).isGreaterThanOrEqualTo(2);
 
-		// die Woche davor: Minuten wie geplant, aber 40 % mehr Belastung (zu hart gefahren)
+		// die Wochen davor wie geplant gefahren; die letzte Woche aber 40 % mehr Belastung (zu hart)
+		Map<LocalDate, Integer> daily = new TreeMap<>();
+		plain.forEach((monday, week) -> week.forEach(planned -> {
+			if (planned.getDate().isBefore(thisMonday)) {
+				daily.merge(planned.getDate(), LIBRARY.resolve(planned.getWorkoutId(), planned.getDurationMinutes())
+						.orElseThrow().getDurationInMinutes(), Integer::sum);
+			}
+		}));
 		var weeks = Map.of(thisMonday.minusWeeks(1), new PlanHistory.Week(minutes(plain.get(thisMonday.minusWeeks(1))),
 				minutes(plain.get(thisMonday.minusWeeks(1))), 0, 300, 420));
-		var adapted = byWeek(GENERATOR.generate(athlete(), START, Map.of(),
-				withCurrentWeek(thisMonday, thisMonday, weeks, new PlanHistory.Week(0, 0, 0, 0, 0))));
+		var history = new PlanHistory(thisMonday, weeks, null, 0, thisMonday, new PlanHistory.Week(0, 0, 0, 0, 0), daily,
+				START);
+		var adapted = byWeek(GENERATOR.generate(athlete(), START, Map.of(), history));
 
 		assertThat(adapted.get(thisMonday).stream().filter(PlanHistoryTest::isHard).count()).isEqualTo(plainHard - 1);
 		assertThat(minutes(adapted.get(thisMonday))).isLessThanOrEqualTo(minutes(plain.get(thisMonday)));
