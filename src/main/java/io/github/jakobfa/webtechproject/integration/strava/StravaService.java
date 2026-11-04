@@ -74,11 +74,14 @@ public class StravaService {
 	private final ExtraRideRepository extraRideRepository;
 	private final Clock clock;
 	private final org.springframework.transaction.support.TransactionTemplate transactions;
+	private final io.github.jakobfa.webtechproject.mail.DeletionNotice deletionNotice;
 
 	public StravaService(StravaConnectionRepository repository, AppUserRepository userRepository,
 			StravaClient client, StravaProperties properties, SecretCipher cipher, AthleteService athleteService,
 			PlannedWorkoutRepository plannedWorkoutRepository, ExtraRideRepository extraRideRepository, Clock clock,
-			org.springframework.transaction.support.TransactionTemplate transactions) {
+			org.springframework.transaction.support.TransactionTemplate transactions,
+			io.github.jakobfa.webtechproject.mail.DeletionNotice deletionNotice) {
+		this.deletionNotice = deletionNotice;
 		this.repository = repository;
 		this.userRepository = userRepository;
 		this.client = client;
@@ -327,13 +330,19 @@ public class StravaService {
 	/** Trennt die Verbindung (auch bei Strava) und löscht alle von Strava übernommenen Fahrten. */
 	@Transactional
 	public void disconnect(Long userId) {
+		disconnect(userId, true);
+	}
+
+	/** Wie {@link #disconnect(Long)}; beim Löschen des Kontos schickt dieses selbst die eine Bestätigung */
+	@Transactional
+	public void disconnect(Long userId, boolean notify) {
 		repository.findByOwnerId(userId).ifPresent(connection -> {
 			try {
 				client.deauthorize(cipher.decrypt(connection.getEncryptedAccessToken()));
 			} catch (RestClientException e) {
 				log.info("Strava-Zugriff für Nutzer {} konnte nicht entzogen werden: {}", userId, e.getMessage());
 			}
-			removeConnectionAndData(userId, connection);
+			removeConnectionAndData(userId, connection, notify);
 		});
 	}
 
@@ -507,7 +516,7 @@ public class StravaService {
 		} catch (HttpClientErrorException.BadRequest | HttpClientErrorException.Unauthorized e) {
 			// Zugriff wurde in den Strava-Einstellungen entzogen → Verbindung und Strava-Daten löschen
 			log.info("Strava-Zugriff von Nutzer {} wurde entzogen – Verbindung wird entfernt", userId);
-			removeConnectionAndData(userId, connection);
+			removeConnectionAndData(userId, connection, true);
 			return null;
 		}
 	}
@@ -518,8 +527,12 @@ public class StravaService {
 		connection.setExpiresAt(Instant.ofEpochSecond(tokens.expiresAt()));
 	}
 
-	private void removeConnectionAndData(Long userId, StravaConnection connection) {
+	private void removeConnectionAndData(Long userId, StravaConnection connection, boolean notify) {
 		repository.delete(connection);
+		if (notify) {
+			// schriftliche Bestätigung der Löschung (API Policy §2.5)
+			userRepository.findById(userId).ifPresent(user -> deletionNotice.stravaDataDeleted(user.getEmail()));
+		}
 		athleteService.findByOwner(userId).ifPresent(athlete -> {
 			plannedWorkoutRepository
 					.findByPlanAthleteIdAndActivityIdStartingWith(athlete.getId(), RecordedActivity.STRAVA_PREFIX)
