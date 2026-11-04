@@ -422,6 +422,9 @@ public class PlanGenerator {
 				overreached = previous != null && previous.overreached() && !ftpTest;
 			}
 			if (currentWeek) {
+				// Harte Einheiten, die diese Woche schon gefahren wurden, zählen mit – sonst gäbe es dieselbe harte
+				// Einheit gleich noch einmal (am Tag danach)
+				hardWorkouts = withoutDoneHard(hardWorkouts, history.doneHard().types());
 				var done = history.currentWeek();
 				// Schon so viel gefahren wie die ganze Woche vorsieht: der Rest der Woche bleibt locker
 				if (done.plannedTss() >= PlanHistory.MIN_PLANNED_TSS_FOR_RATIO && done.actualTss() >= done.plannedTss()
@@ -432,13 +435,17 @@ public class PlanGenerator {
 			// Gleitendes Zeitfenster: höchstens so viel in 7 Tagen, wie der Schnitt der letzten 28 Tage hergibt
 			RollingCap rolling = isPastVirtualWeek(history, monday) ? null
 					: rollingCap(daily, recoveryDays, dataStart, monday, phase, overreached);
+			if (rolling != null) {
+				rolling = new RollingCap(rolling.daily(), rolling.weeklyCapMinutes(), history.fixedMinutes());
+			}
 
 			WeekPlan week = new WeekPlan(phase, weekIndex, step,
 					volumeFactor(phase, loadWeek, startVolume(athlete.getLevel(), weeklyHours)),
 					longRideMinutes(profile, phase, loadWeek, loadWeeksTotal),
 					useTempoLongRide(profile, phase, loadWeek),
 					hardWorkouts, rolling,
-					backToBack(athlete.getLevel(), profile, phase, loadWeek));
+					backToBack(athlete.getLevel(), profile, phase, loadWeek),
+					currentWeek ? history.doneHard().days() : java.util.Set.of());
 			List<PlannedWorkout> planned = planWeek(availability, trainingDays, week);
 			if (overreached) {
 				// nicht alles Gewünschte passt in die Tage: eine weniger als tatsächlich eingeplant wurde
@@ -446,7 +453,8 @@ public class PlanGenerator {
 				if (placed > 1) {
 					week = new WeekPlan(week.phase(), week.weekIndex(), week.step(), week.volume(),
 							week.longRideMinutes(), week.tempoLongRide(),
-							hardWorkouts.subList(0, (int) placed - 1), week.rolling(), week.backToBack());
+							hardWorkouts.subList(0, (int) placed - 1), week.rolling(), week.backToBack(),
+							week.doneHardDays());
 					planned = planWeek(availability, trainingDays, week);
 				}
 			}
@@ -458,8 +466,11 @@ public class PlanGenerator {
 			for (PlannedWorkout workout : planned) {
 				if (history.isEmpty() || !workout.getDate().isBefore(history.today() == null ? history.thisMonday()
 						: history.today())) {
-					daily.merge(workout.getDate(), library.resolve(workout.getWorkoutId(), workout.getDurationMinutes())
-							.orElseThrow().getDurationInMinutes(), Integer::sum);
+					// feststehende Einheiten (selbst getauscht/angepasst) zählen mit ihren echten Minuten
+					if (!history.fixedMinutes().containsKey(workout.getDate())) {
+						daily.merge(workout.getDate(), library.resolve(workout.getWorkoutId(), workout.getDurationMinutes())
+								.orElseThrow().getDurationInMinutes(), Integer::sum);
+					}
 				}
 			}
 			boolean testMissed = ftpTest
@@ -508,14 +519,15 @@ public class PlanGenerator {
 
 	/** Was in einer normalen Woche geplant wird */
 	record WeekPlan(Phase phase, int weekIndex, int step, double volume, int longRideMinutes,
-			boolean tempoLongRide, List<WorkoutType> hardWorkouts, RollingCap rolling, boolean backToBack) {
+			boolean tempoLongRide, List<WorkoutType> hardWorkouts, RollingCap rolling, boolean backToBack,
+			java.util.Set<LocalDate> doneHardDays) {
 	}
 
 	/**
 	 * Obergrenze für jedes 7-Tage-Fenster: daily = Minuten je Tag bisher (vergangen und schon geplant),
 	 * weeklyCapMinutes = so viel darf in 7 aufeinanderfolgenden Tagen höchstens zusammenkommen.
 	 */
-	record RollingCap(Map<LocalDate, Integer> daily, int weeklyCapMinutes) {
+	record RollingCap(Map<LocalDate, Integer> daily, int weeklyCapMinutes, Map<LocalDate, Integer> fixed) {
 	}
 
 	/** Akut (7 Tage) zu chronisch (Schnitt der 28 Tage davor): ca. +7 bis 10 % pro Woche, wenn es stetig steigt */
@@ -600,7 +612,18 @@ public class PlanGenerator {
 		// Umfängen); Erholungswochen bleiben unter dem Schnitt
 		double cap = phase == Phase.RECOVERY ? weeklyAverage * ratio
 				: Math.max(weeklyAverage * ratio, weeklyAverage + MIN_WEEKLY_GROWTH_MINUTES);
-		return new RollingCap(daily, (int) cap);
+		return new RollingCap(daily, (int) cap, Map.of());
+	}
+
+	/** Die harten Einheiten der Woche ohne die, die schon gefahren wurden (je gefahrene Einheit fällt eine weg) */
+	static List<WorkoutType> withoutDoneHard(List<WorkoutType> hardWorkouts, List<WorkoutType> doneTypes) {
+		List<WorkoutType> remaining = new ArrayList<>(hardWorkouts);
+		for (WorkoutType done : doneTypes) {
+			if (!remaining.remove(done) && !remaining.isEmpty()) {
+				remaining.remove(remaining.size() - 1);
+			}
+		}
+		return remaining;
 	}
 
 	private boolean isHardWorkout(PlannedWorkout planned) {
@@ -964,7 +987,8 @@ public class PlanGenerator {
 				.toList();
 
 		List<PlannedWorkout> week = new ArrayList<>();
-		List<LocalDate> hardDays = new ArrayList<>();
+		// schon gefahrene harte Tage dieser Woche: sie belegen ihren Tag, der Tag danach bleibt locker
+		List<LocalDate> hardDays = new ArrayList<>(plan.doneHardDays());
 		// Tage, die frei bleiben: vor dem FTP-Test braucht es einen Pausentag, sonst misst er Müdigkeit statt FTP
 		java.util.Set<LocalDate> restDays = new java.util.HashSet<>();
 
@@ -1049,7 +1073,8 @@ public class PlanGenerator {
 				hardByDay.merge(hard.getDate(), library.resolve(hard.getWorkoutId(), hard.getDurationMinutes())
 						.orElseThrow().getDurationInMinutes(), Integer::sum);
 			}
-			fitRollingWindow(flexible, longDay, hardByDay, plan.rolling().daily(), plan.rolling().weeklyCapMinutes());
+			fitRollingWindow(flexible, longDay, hardByDay, plan.rolling().daily(), plan.rolling().fixed(),
+					plan.rolling().weeklyCapMinutes());
 		}
 
 		// ein lockerer Tag pro Woche bekommt Einlagen (Antritte oder Tempo), damit nicht jeder Tag gleich aussieht
@@ -1089,17 +1114,19 @@ public class PlanGenerator {
 	 * geplant und werden nicht mehr verändert.
 	 */
 	private static void fitRollingWindow(java.util.Map<LocalDate, Integer> flexible, LocalDate longDay,
-			java.util.Map<LocalDate, Integer> hardByDay, java.util.Map<LocalDate, Integer> before, int cap) {
+			java.util.Map<LocalDate, Integer> hardByDay, java.util.Map<LocalDate, Integer> before,
+			java.util.Map<LocalDate, Integer> fixed, int cap) {
 		java.util.Map<LocalDate, Integer> original = new java.util.HashMap<>(flexible);
 		List<LocalDate> days = java.util.stream.Stream.concat(flexible.keySet().stream(), hardByDay.keySet().stream())
 				.distinct().sorted().toList();
 		for (LocalDate day : days) {
-			int excess = windowMinutes(day, flexible, hardByDay, before) - cap;
+			int excess = windowMinutes(day, flexible, hardByDay, before, fixed) - cap;
 			if (excess <= 0) {
 				continue;
 			}
 			List<LocalDate> candidates = flexible.keySet().stream()
-					.filter(x -> !x.equals(longDay) && !x.isAfter(day) && !x.isBefore(day.minusDays(6)))
+					.filter(x -> !x.equals(longDay) && !fixed.containsKey(x) && !x.isAfter(day)
+							&& !x.isBefore(day.minusDays(6)))
 					.sorted(Comparator.comparing((LocalDate x) -> flexible.get(x)).reversed()).toList();
 			for (LocalDate candidate : candidates) {
 				excess -= cut(flexible, original, candidate, excess);
@@ -1122,11 +1149,14 @@ public class PlanGenerator {
 	}
 
 	private static int windowMinutes(LocalDate day, java.util.Map<LocalDate, Integer> flexible,
-			java.util.Map<LocalDate, Integer> hardByDay, java.util.Map<LocalDate, Integer> before) {
+			java.util.Map<LocalDate, Integer> hardByDay, java.util.Map<LocalDate, Integer> before,
+			java.util.Map<LocalDate, Integer> fixed) {
 		int sum = 0;
 		for (int back = 0; back < 7; back++) {
 			LocalDate x = day.minusDays(back);
-			if (flexible.containsKey(x) || hardByDay.containsKey(x)) {
+			if (fixed.containsKey(x)) {
+				sum += fixed.get(x);
+			} else if (flexible.containsKey(x) || hardByDay.containsKey(x)) {
 				sum += flexible.getOrDefault(x, 0) + hardByDay.getOrDefault(x, 0);
 			} else {
 				sum += before.getOrDefault(x, 0);

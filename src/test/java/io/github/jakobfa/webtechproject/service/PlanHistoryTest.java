@@ -370,5 +370,58 @@ class PlanHistoryTest {
 
 		assertThat(withForm).isGreaterThanOrEqualTo(withoutForm);
 	}
+
+	@Test
+	void shortFixedWorkoutsDoNotUseUpTheWindowWithTheirGeneratedLength() {
+		LocalDate thisMonday = START.plusWeeks(3);
+		LocalDate today = thisMonday.plusDays(2); // Mittwoch
+		Map<LocalDate, Integer> daily = dailyMinutesBefore(thisMonday, 35, 70); // 490 Minuten pro Woche
+		var generatedLength = new PlanHistory(thisMonday, Map.of(), null, 0, today,
+				new PlanHistory.Week(0, 0, 0, 0, 0), daily, START);
+		// Mittwoch bis Freitag stehen schon fest und sind kurz (selbst getauscht oder angepasst)
+		Map<LocalDate, Integer> fixed = Map.of(today, 36, today.plusDays(1), 36, today.plusDays(2), 36);
+		var withFixed = new PlanHistory(thisMonday, Map.of(), null, 0, today, new PlanHistory.Week(0, 0, 0, 0, 0),
+				daily, START, java.util.Set.of(), fixed);
+
+		int generated = minutes(byWeek(GENERATOR.generate(athlete(), START, Map.of(), generatedLength)).get(thisMonday));
+		int shortFixed = minutes(byWeek(GENERATOR.generate(athlete(), START, Map.of(), withFixed)).get(thisMonday));
+
+		// die kurzen Einheiten lassen mehr Platz für den Rest der Woche (der Wochenendtag wird nicht unnötig gekürzt)
+		assertThat(shortFixed).isGreaterThanOrEqualTo(generated);
+	}
+
+	@Test
+	void aHardWorkoutAlreadyRiddenThisWeekIsNotPlannedAgainTheNextDay() {
+		LocalDate thisMonday = START.plusWeeks(5);
+		LocalDate today = thisMonday.plusDays(2); // Mittwoch; gestern (Dienstag) war eine harte Einheit
+		var plain = byWeek(GENERATOR.generate(athlete(), START, Map.of()));
+		var plainHard = plain.get(thisMonday).stream().filter(PlanHistoryTest::isHard)
+				.map(planned -> LIBRARY.resolve(planned.getWorkoutId(), planned.getDurationMinutes()).orElseThrow().getType())
+				.toList();
+		assertThat(plainHard).hasSizeGreaterThanOrEqualTo(2);
+
+		// Dienstag: die erste harte Einheit der Woche wurde gefahren
+		var doneHard = new PlanHistory.DoneHard(java.util.Set.of(today.minusDays(1)), List.of(plainHard.getFirst()));
+		var history = new PlanHistory(thisMonday, Map.of(), null, 0, today, new PlanHistory.Week(0, 0, 0, 0, 0),
+				dailyMinutesBefore(thisMonday, 35, 60), START, java.util.Set.of(), Map.of(), doneHard);
+		var week = byWeek(GENERATOR.generate(athlete(), START, Map.of(), history)).get(thisMonday);
+
+		long hardLeft = week.stream().filter(PlanHistoryTest::isHard).count();
+		assertThat(hardLeft).isEqualTo(plainHard.size() - 1);
+		// der Tag nach der harten Einheit (heute) ist nicht hart, und die gefahrene Art kommt nicht noch einmal vor
+		assertThat(week.stream().filter(planned -> planned.getDate().equals(today))).noneMatch(PlanHistoryTest::isHard);
+		assertThat(week.stream().filter(PlanHistoryTest::isHard)
+				.map(planned -> LIBRARY.resolve(planned.getWorkoutId(), planned.getDurationMinutes()).orElseThrow().getType()))
+				.doesNotContain(plainHard.getFirst());
+	}
+
+	@Test
+	void doneHardWorkoutsAreRemovedFromTheWeeksList() {
+		var list = List.of(WorkoutType.TEMPO, WorkoutType.VO2MAX);
+		assertThat(PlanGenerator.withoutDoneHard(list, List.of(WorkoutType.TEMPO))).containsExactly(WorkoutType.VO2MAX);
+		// eine andere Art gefahren: es fällt trotzdem eine weg
+		assertThat(PlanGenerator.withoutDoneHard(list, List.of(WorkoutType.THRESHOLD))).hasSize(1);
+		assertThat(PlanGenerator.withoutDoneHard(list, List.of())).isEqualTo(list);
+	}
 }
 
