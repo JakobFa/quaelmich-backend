@@ -13,13 +13,19 @@ import java.util.Map;
  * @param today          heute; die laufende Woche wird nur noch ab hier geplant (null = keine Angabe)
  * @param currentWeek    was in der laufenden Woche schon gefahren wurde (actual*) und was die Woche insgesamt
  *                       vorsieht (planned*); null = keine Angabe
- * @param plannedRestMinutes so viele Minuten waren für den Rest der laufenden Woche (ab heute) schon geplant
+ * @param dailyMinutes   je vergangenem Tag (vor heute) die Minuten, die für die Belastung zählen: das Gefahrene, bei
+ *                       Auslassen ohne Krankheit mindestens das Geplante. Daraus rechnet der Plan mit gleitenden
+ *                       Zeitfenstern statt mit Kalenderwochen.
+ * @param dataStart      ab diesem Tag gibt es Daten (Plan- oder erste Fahrt); davor ist nichts bekannt
+ * @param recoveryDays   vergangene Tage in Erholungswochen: sie zählen nicht für den Schnitt, sonst bremst jede
+ *                       Erholungswoche den Aufbau danach aus
  */
 public record PlanHistory(LocalDate thisMonday, Map<LocalDate, Week> weeks, LocalDate reentryMonday,
-		int reentryWeeks, LocalDate today, Week currentWeek, int plannedRestMinutes) {
+		int reentryWeeks, LocalDate today, Week currentWeek, Map<LocalDate, Integer> dailyMinutes,
+		LocalDate dataStart, java.util.Set<LocalDate> recoveryDays) {
 
 	/** Ohne Wissen über vergangene Wochen: der Plan richtet sich allein nach dem Kalender */
-	public static final PlanHistory NONE = new PlanHistory(null, Map.of(), null, 0, null, null, 0);
+	public static final PlanHistory NONE = new PlanHistory(null, Map.of(), null, 0, null, null, Map.of(), null, java.util.Set.of());
 
 	/** Wurde die Belastungswoche davor zu weniger als diesem Anteil gefahren, entfällt die Erholungswoche */
 	static final double MIN_FULFILMENT = 0.7;
@@ -63,12 +69,18 @@ public record PlanHistory(LocalDate thisMonday, Map<LocalDate, Week> weeks, Loca
 	}
 
 	public PlanHistory(LocalDate thisMonday, Map<LocalDate, Week> weeks, LocalDate reentryMonday, int reentryWeeks) {
-		this(thisMonday, weeks, reentryMonday, reentryWeeks, null, null, 0);
+		this(thisMonday, weeks, reentryMonday, reentryWeeks, null, null, Map.of(), null, java.util.Set.of());
 	}
 
 	public PlanHistory(LocalDate thisMonday, Map<LocalDate, Week> weeks, LocalDate reentryMonday, int reentryWeeks,
 			LocalDate today, Week currentWeek) {
-		this(thisMonday, weeks, reentryMonday, reentryWeeks, today, currentWeek, 0);
+		this(thisMonday, weeks, reentryMonday, reentryWeeks, today, currentWeek, Map.of(), null, java.util.Set.of());
+	}
+
+	public PlanHistory(LocalDate thisMonday, Map<LocalDate, Week> weeks, LocalDate reentryMonday, int reentryWeeks,
+			LocalDate today, Week currentWeek, Map<LocalDate, Integer> dailyMinutes, LocalDate dataStart) {
+		this(thisMonday, weeks, reentryMonday, reentryWeeks, today, currentWeek, dailyMinutes, dataStart,
+				java.util.Set.of());
 	}
 
 	public boolean isEmpty() {

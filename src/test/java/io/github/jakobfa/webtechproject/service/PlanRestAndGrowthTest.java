@@ -122,12 +122,15 @@ class PlanRestAndGrowthTest {
 
 		int before = minutes(weeks.get(MONDAY.plusWeeks(1)));
 		int jump = minutes(weeks.get(MONDAY.plusWeeks(2)));
-		assertThat(jump).isLessThanOrEqualTo(PlanGenerator.weeklyCap(before));
+		double average = (minutes(weeks.get(MONDAY)) + before) / 2.0;
+		// gleitendes Fenster: höchstens das 1,25-Fache des Schnitts der Wochen davor (plus Rundung)
+		assertThat(jump).isLessThanOrEqualTo((int) (average * PlanGenerator.ACUTE_CHRONIC_RATIO)
+				+ PlanGenerator.MIN_WEEKLY_GROWTH_MINUTES + PlanGenerator.MIN_CAPPED_RIDE);
 		assertThat(jump).as("trotzdem nicht weniger als vorher").isGreaterThanOrEqualTo(before);
 	}
 
 	@Test
-	void everyLoadWeekGrowsAtMostByTheCap() {
+	void everyLoadWeekStaysWithinTheAcuteChronicLimit() {
 		Athlete athlete = athlete(hours(1, 2, 0, 2, 2.25, 0, 1));
 		// Zeit springt von Woche zu Woche
 		Map<LocalDate, WeeklyAvailability> overrides = new TreeMap<>();
@@ -138,17 +141,17 @@ class PlanRestAndGrowthTest {
 		Map<LocalDate, List<PlannedWorkout>> weeks = byWeek(generator.generateSeason(athlete, MONDAY, overrides,
 				List.of()));
 
-		double reference = 0;
+		List<Integer> previous = new java.util.ArrayList<>();
 		for (Map.Entry<LocalDate, List<PlannedWorkout>> entry : weeks.entrySet()) {
 			List<PlannedWorkout> week = entry.getValue();
-			if (!isLoadWeek(week) || entry.getKey().equals(MONDAY)) {
-				continue;
-			}
-			if (reference > 0) {
+			if (isLoadWeek(week) && !entry.getKey().equals(MONDAY) && previous.size() >= 1) {
+				double average = previous.stream().skip(Math.max(0, previous.size() - 4)).mapToInt(Integer::intValue)
+						.average().orElse(0);
 				assertThat(minutes(week)).as(entry.getKey().toString())
-						.isLessThanOrEqualTo(PlanGenerator.weeklyCap(reference) + PlanGenerator.MIN_CAPPED_RIDE);
+						.isLessThanOrEqualTo((int) (average * PlanGenerator.ACUTE_CHRONIC_RATIO)
+								+ PlanGenerator.MIN_WEEKLY_GROWTH_MINUTES + 2 * PlanGenerator.MIN_CAPPED_RIDE);
 			}
-			reference = Math.max(minutes(week), reference * PlanGenerator.REFERENCE_DECAY);
+			previous.add(minutes(week));
 		}
 	}
 
@@ -166,19 +169,6 @@ class PlanRestAndGrowthTest {
 				.findFirst().orElseThrow();
 		assertThat(library.resolve(sunday.getWorkoutId(), sunday.getDurationMinutes()).orElseThrow()
 				.getDurationInMinutes()).isEqualTo(longest);
-	}
-
-	@Test
-	void theCapIsTenPercentButAtLeastHalfAnHour() {
-		assertThat(PlanGenerator.weeklyCap(300)).isEqualTo(330);
-		assertThat(PlanGenerator.weeklyCap(100)).isEqualTo(130);
-	}
-
-	@Test
-	void aRecoveryWeekIsLighterThanTheLoadWeekBefore() {
-		assertThat(PlanGenerator.weekCap(Phase.RECOVERY, 600)).isEqualTo(420);
-		assertThat(PlanGenerator.weekCap(Phase.TAPER, 600)).isNull();
-		assertThat(PlanGenerator.weekCap(Phase.BASE, 0)).isNull();
 	}
 
 	@Test

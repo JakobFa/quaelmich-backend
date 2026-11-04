@@ -151,37 +151,6 @@ class PlanHistoryTest {
 	}
 
 	@Test
-	void afterIllnessTheVolumeBuildsOnWhatWasActuallyRidden() {
-		LocalDate thisMonday = START.plusWeeks(6);
-		var plain = byWeek(GENERATOR.generate(athlete(), START, Map.of()));
-		// die Wochen davor: krank, kaum gefahren
-		var weeks = new TreeMap<LocalDate, PlanHistory.Week>();
-		for (int i = 1; i <= 6; i++) {
-			LocalDate monday = START.plusWeeks(6 - i);
-			weeks.put(monday, week(minutes(plain.get(monday)), 0.33, 4));
-		}
-		var adapted = byWeek(GENERATOR.generate(athlete(), START, Map.of(), history(thisMonday, weeks, null, 0)));
-
-		// die laufende Woche darf nicht auf dem hohen Plan-Stand weitermachen
-		assertThat(minutes(adapted.get(thisMonday))).isLessThan(minutes(plain.get(thisMonday)));
-	}
-
-	@Test
-	void withoutIllnessAWeakWeekDoesNotPullThePlanDown() {
-		LocalDate thisMonday = START.plusWeeks(6);
-		var plain = byWeek(GENERATOR.generate(athlete(), START, Map.of()));
-		// zu wenig gefahren, aber nicht krank: Die +10 % gelten nur streng, wenn man sich an den Plan hält
-		var weeks = new TreeMap<LocalDate, PlanHistory.Week>();
-		for (int i = 1; i <= 6; i++) {
-			LocalDate monday = START.plusWeeks(6 - i);
-			weeks.put(monday, week(minutes(plain.get(monday)), 0.33, 0));
-		}
-		var adapted = byWeek(GENERATOR.generate(athlete(), START, Map.of(), history(thisMonday, weeks, null, 0)));
-
-		assertThat(minutes(adapted.get(thisMonday))).isGreaterThanOrEqualTo((int) (minutes(plain.get(thisMonday)) * 0.9));
-	}
-
-	@Test
 	void theRecoveryWeekIsAlsoDroppedWhenTheLastThreeWeeksWereOnlyAbout80Percent() {
 		var plain = byWeek(GENERATOR.generate(athlete(), START, Map.of()));
 		LocalDate recovery = plain.entrySet().stream().filter(entry -> phaseOf(entry.getValue()) == Phase.RECOVERY)
@@ -291,38 +260,107 @@ class PlanHistoryTest {
 		assertThat(adapted.get(thisMonday)).isNotEmpty().noneMatch(PlanHistoryTest::isHard);
 	}
 
-	@Test
-	void whatIsAlreadyRiddenThisWeekReducesTheRestOfTheWeek() {
-		LocalDate thisMonday = START.plusWeeks(2);
-		LocalDate today = thisMonday; // Wochenbeginn: gefahren wurde nur ein Zusatztraining
-		var plain = byWeek(GENERATOR.generate(athlete(), START, Map.of()));
-		var weeks = Map.of(thisMonday.minusWeeks(1), new PlanHistory.Week(minutes(plain.get(thisMonday.minusWeeks(1))),
-				minutes(plain.get(thisMonday.minusWeeks(1))), 0, 300, 300));
 
-		var untouched = byWeek(GENERATOR.generate(athlete(), START, Map.of(),
-				withCurrentWeek(thisMonday, today, weeks, new PlanHistory.Week(500, 0, 0, 300, 0))));
-		var withExtra = byWeek(GENERATOR.generate(athlete(), START, Map.of(),
-				withCurrentWeek(thisMonday, today, weeks, new PlanHistory.Week(500, 300, 0, 300, 200))));
+	/** Vergangene Tage mit gleichbleibenden Minuten (für den gleitenden Deckel) */
+	private static Map<LocalDate, Integer> dailyMinutesBefore(LocalDate day, int days, int minutes) {
+		Map<LocalDate, Integer> daily = new TreeMap<>();
+		for (int back = 1; back <= days; back++) {
+			daily.put(day.minusDays(back), minutes);
+		}
+		return daily;
+	}
 
-		assertThat(minutes(withExtra.get(thisMonday))).isLessThan(minutes(untouched.get(thisMonday)));
+	private static PlanHistory withDaily(LocalDate thisMonday, LocalDate today, Map<LocalDate, Integer> daily) {
+		return new PlanHistory(thisMonday, Map.of(), null, 0, today, new PlanHistory.Week(0, 0, 0, 0, 0), daily, START);
 	}
 
 	@Test
-	void anExtendedRideEarlyInTheWeekDoesNotEmptyTheRestOfTheWeek() {
-		LocalDate thisMonday = START.plusWeeks(2);
-		LocalDate today = thisMonday.plusDays(2);
+	void afterIllnessTheVolumeBuildsOnWhatWasActuallyRidden() {
+		LocalDate thisMonday = START.plusWeeks(6);
 		var plain = byWeek(GENERATOR.generate(athlete(), START, Map.of()));
-		var weeks = Map.of(thisMonday.minusWeeks(1), new PlanHistory.Week(minutes(plain.get(thisMonday.minusWeeks(1))),
-				minutes(plain.get(thisMonday.minusWeeks(1))), 0, 300, 300));
-		// Montag und Dienstag deutlich länger gefahren als geplant; für den Rest waren 300 Minuten geplant
-		var strict = new PlanHistory(thisMonday, weeks, null, 0, today, new PlanHistory.Week(500, 330, 0, 250, 200), 0);
-		var withPlannedRest = new PlanHistory(thisMonday, weeks, null, 0, today,
-				new PlanHistory.Week(500, 330, 0, 250, 200), 300);
+		// die letzten Wochen kaum gefahren (krank): 20 Minuten pro Tag
+		var adapted = byWeek(GENERATOR.generate(athlete(), START, Map.of(),
+				withDaily(thisMonday, thisMonday, dailyMinutesBefore(thisMonday, 42, 20))));
 
-		int strictMinutes = minutes(byWeek(GENERATOR.generate(athlete(), START, Map.of(), strict)).get(thisMonday));
-		int lenientMinutes = minutes(byWeek(GENERATOR.generate(athlete(), START, Map.of(), withPlannedRest)).get(thisMonday));
+		assertThat(minutes(adapted.get(thisMonday))).isLessThan(minutes(plain.get(thisMonday)));
+	}
 
-		assertThat(lenientMinutes).isGreaterThan(strictMinutes);
-		assertThat(lenientMinutes).isGreaterThanOrEqualTo(270);
+	@Test
+	void whenThePlanWasFollowedTheWeekIsNotReduced() {
+		LocalDate thisMonday = START.plusWeeks(6);
+		var plain = byWeek(GENERATOR.generate(athlete(), START, Map.of()));
+		Map<LocalDate, Integer> daily = new TreeMap<>();
+		plain.values().forEach(week -> week.forEach(planned -> {
+			if (planned.getDate().isBefore(thisMonday)) {
+				daily.merge(planned.getDate(), LIBRARY.resolve(planned.getWorkoutId(), planned.getDurationMinutes())
+						.orElseThrow().getDurationInMinutes(), Integer::sum);
+			}
+		}));
+		var adapted = byWeek(GENERATOR.generate(athlete(), START, Map.of(), withDaily(thisMonday, thisMonday, daily)));
+
+		assertThat(minutes(adapted.get(thisMonday))).isGreaterThanOrEqualTo((int) (minutes(plain.get(thisMonday)) * 0.9));
+	}
+
+	@Test
+	void whatIsAlreadyRiddenInTheLast7DaysReducesTheRestOfTheWindow() {
+		LocalDate thisMonday = START.plusWeeks(3);
+		LocalDate today = thisMonday.plusDays(2); // Mittwoch
+		Map<LocalDate, Integer> calm = dailyMinutesBefore(thisMonday, 35, 50); // 350 Minuten pro Woche
+		Map<LocalDate, Integer> withBigMonday = new TreeMap<>(calm);
+		withBigMonday.put(thisMonday, 270);
+		withBigMonday.put(thisMonday.plusDays(1), 70);
+
+		int restCalm = minutes(byWeek(GENERATOR.generate(athlete(), START, Map.of(), withDaily(thisMonday, today, calm)))
+				.get(thisMonday));
+		int restBusy = minutes(byWeek(GENERATOR.generate(athlete(), START, Map.of(),
+				withDaily(thisMonday, today, withBigMonday))).get(thisMonday));
+
+		assertThat(restBusy).isLessThan(restCalm);
+	}
+
+	@Test
+	void theRollingLimitIsHigherForLoadThanForRecoveryAndMissingForTaperOrNoData() {
+		Map<LocalDate, Integer> daily = dailyMinutesBefore(START, 28, 60); // 420 Minuten pro Woche
+		LocalDate dataStart = START.minusDays(28);
+
+		var load = PlanGenerator.rollingCap(daily, java.util.Set.of(), dataStart, START, Phase.BASE, false);
+		var recovery = PlanGenerator.rollingCap(daily, java.util.Set.of(), dataStart, START, Phase.RECOVERY, false);
+		var overreached = PlanGenerator.rollingCap(daily, java.util.Set.of(), dataStart, START, Phase.BASE, true);
+
+		assertThat(load.weeklyCapMinutes()).isEqualTo(495); // 420 * 1,18
+		assertThat(recovery.weeklyCapMinutes()).isEqualTo(315); // 420 * 0,75
+		assertThat(overreached.weeklyCapMinutes()).isEqualTo(450); // kein Zuwachs, aber mindestens +30 min
+		assertThat(PlanGenerator.rollingCap(daily, java.util.Set.of(), dataStart, START, Phase.TAPER, false)).isNull();
+		assertThat(PlanGenerator.rollingCap(Map.of(), java.util.Set.of(), START.minusDays(1), START, Phase.BASE, false)).isNull();
+	}
+
+	@Test
+	void aShortStartWeekIsExtrapolatedNotTreatedAsAWeakWeek() {
+		Map<LocalDate, Integer> daily = Map.of(START.minusDays(1), 60, START.minusDays(2), 60, START.minusDays(3), 60);
+		var cap = PlanGenerator.rollingCap(daily, java.util.Set.of(), START.minusDays(3), START, Phase.BASE, false);
+		// mit erst gut einer halben Woche Daten ist der erlaubte Zuwachs klein (ca. +7 %), nicht der volle
+		assertThat(cap.weeklyCapMinutes()).isBetween(420 + 30, 495);
+	}
+
+	@Test
+	void theAllowedGrowthIsSmallWithLittleDataAndReachesTheFullRatioAfterAboutThreeWeeks() {
+		assertThat(PlanGenerator.steadyGrowthRatio(1)).isBetween(1.09, 1.11);
+		assertThat(PlanGenerator.steadyGrowthRatio(2)).isBetween(1.14, 1.17);
+		assertThat(PlanGenerator.steadyGrowthRatio(4)).isGreaterThan(PlanGenerator.ACUTE_CHRONIC_RATIO);
+	}
+
+	@Test
+	void ridesBeforeThePlanStartAreKnownToThePlan() {
+		LocalDate thisMonday = START.plusWeeks(1);
+		Map<LocalDate, Integer> before = dailyMinutesBefore(START, 42, 120); // 14 Stunden pro Woche vor dem Plan
+		var high = new PlanHistory(thisMonday, Map.of(), null, 0, thisMonday, new PlanHistory.Week(0, 0, 0, 0, 0),
+				before, START.minusDays(42));
+		var low = withDaily(thisMonday, thisMonday, Map.of());
+
+		int withForm = minutes(byWeek(GENERATOR.generate(athlete(), START, Map.of(), high)).get(thisMonday));
+		int withoutForm = minutes(byWeek(GENERATOR.generate(athlete(), START, Map.of(), low)).get(thisMonday));
+
+		assertThat(withForm).isGreaterThanOrEqualTo(withoutForm);
 	}
 }
+
