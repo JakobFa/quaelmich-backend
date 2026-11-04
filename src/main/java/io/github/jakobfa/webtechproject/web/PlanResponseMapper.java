@@ -60,7 +60,7 @@ public class PlanResponseMapper {
 								athlete.getLevel()),
 				// Kopie, damit die Antwort nicht an der Hibernate-Collection hängt
 				new java.util.TreeMap<>(plan.getWeekAvailability()),
-				raceEvents.findByAthleteIdOrderByDate(athlete.getId()), athlete.getTrainingGoal());
+				raceEvents.findByAthleteIdOrderByDate(athlete.getId()), athlete.getTrainingGoal(), plan.getSickSince());
 	}
 
 	public static ExtraRideResponse toResponse(ExtraRide ride) {

@@ -16,6 +16,7 @@ import org.springframework.transaction.annotation.Transactional;
 import io.github.jakobfa.webtechproject.model.Event;
 import io.github.jakobfa.webtechproject.model.PlannedWorkout;
 import io.github.jakobfa.webtechproject.model.RaceEvent;
+import io.github.jakobfa.webtechproject.model.SkipReason;
 import io.github.jakobfa.webtechproject.model.WeeklyAvailability;
 import io.github.jakobfa.webtechproject.model.TrainingPlan;
 import io.github.jakobfa.webtechproject.repository.AthleteRepository;
@@ -29,10 +30,12 @@ public class TrainingPlanService {
 	private final TrainingPlanRepository planRepository;
 	private final PlanGenerator planGenerator;
 	private final RaceEventRepository raceEvents;
+	private final WorkoutLibrary library;
 	private final Clock clock;
 
 	public TrainingPlanService(AthleteRepository athleteRepository, TrainingPlanRepository planRepository,
-			PlanGenerator planGenerator, RaceEventRepository raceEvents, Clock clock) {
+			PlanGenerator planGenerator, RaceEventRepository raceEvents, WorkoutLibrary library, Clock clock) {
+		this.library = library;
 		this.raceEvents = raceEvents;
 		this.athleteRepository = athleteRepository;
 		this.planRepository = planRepository;
@@ -97,11 +100,68 @@ public class TrainingPlanService {
 		Set<LocalDate> keptDays = plan.getWorkouts().stream().map(PlannedWorkout::getDate)
 				.collect(Collectors.toSet());
 		planGenerator.generateSeason(plan.getAthlete(), plan.getStartDate(), plan.getWeekAvailability(),
-				moreEventsOf(plan.getAthlete().getId()), horizon()).stream()
+				moreEventsOf(plan.getAthlete().getId()), horizon(), historyOf(plan)).stream()
 				.filter(planned -> inRange(planned.getDate(), from, to))
 				.filter(planned -> !keptDays.contains(planned.getDate()))
 				.forEach(plan::addWorkout);
+		holdWhileSick(plan);
 		plan.sortByDate();
+	}
+
+	/** Solange jemand krank ist, bleibt alles ab dem ersten Krankheitstag ausgesetzt – auch neu geplante Tage */
+	private static void holdWhileSick(TrainingPlan plan) {
+		if (plan.getSickSince() == null) {
+			return;
+		}
+		plan.getWorkouts().stream()
+				.filter(planned -> !planned.getDate().isBefore(plan.getSickSince()))
+				.filter(planned -> !planned.isCompleted() && planned.getActivityId() == null)
+				.forEach(planned -> planned.setSkipReason(SkipReason.SICK));
+	}
+
+	/**
+	 * Was in den vergangenen Wochen wirklich gefahren wurde (gegenüber dem Plan), dazu der lockere Wiedereinstieg
+	 * nach Krankheit. Der Generator richtet den Plan danach aus.
+	 */
+	PlanHistory historyOf(TrainingPlan plan) {
+		LocalDate thisMonday = LocalDate.now(clock).with(TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY));
+		Map<LocalDate, List<PlannedWorkout>> byWeek = plan.getWorkouts().stream()
+				.filter(planned -> planned.getDate().isBefore(thisMonday))
+				.collect(Collectors.groupingBy(
+						planned -> planned.getDate().with(TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY))));
+		Map<LocalDate, PlanHistory.Week> weeks = new java.util.TreeMap<>();
+		byWeek.forEach((monday, workouts) -> {
+			int planned = 0;
+			int actual = 0;
+			int sickDays = 0;
+			for (PlannedWorkout workout : workouts) {
+				int minutes = library.resolve(workout.getWorkoutId(), workout.getDurationMinutes()).orElseThrow()
+						.getDurationInMinutes();
+				planned += minutes;
+				if (workout.getSkipReason() != null) {
+					sickDays += workout.getSkipReason().needsGentleReturn() ? 1 : 0;
+				} else if (workout.getActivityId() != null) {
+					actual += workout.getActualDurationMinutes() != null ? workout.getActualDurationMinutes() : minutes;
+				} else if (workout.isCompleted()) {
+					actual += minutes;
+				}
+			}
+			weeks.put(monday, new PlanHistory.Week(planned, actual, sickDays));
+		});
+		LocalDate reentry = plan.getReentryWeeks() > 0 && plan.getReentryMonday() != null
+				&& plan.getReentryMonday().plusWeeks(plan.getReentryWeeks()).isAfter(thisMonday)
+						? plan.getReentryMonday() : null;
+		return new PlanHistory(thisMonday, weeks, reentry, reentry == null ? 0 : plan.getReentryWeeks());
+	}
+
+	/**
+	 * Plant alles Offene ab heute neu, ausgerichtet an dem, was bisher gefahren wurde (z. B. nach Krankheit).
+	 * Erledigtes und Rückmeldungen bleiben.
+	 */
+	@Transactional
+	public void replanFromToday(TrainingPlan plan) {
+		replan(plan, LocalDate.now(clock), LocalDate.MAX);
+		planRepository.save(plan);
 	}
 
 	/** weitere Events (zusätzlich zum ersten im Profil), als Event für den Generator */
@@ -137,6 +197,7 @@ public class TrainingPlanService {
 	@Transactional
 	public Optional<TrainingPlan> currentPlan(Long athleteId) {
 		return planRepository.findByAthleteId(athleteId).map(plan -> {
+			adaptOncePerWeek(plan);
 			if (!plan.getAthlete().hasEventGoal()) {
 				LocalDate lastPlanned = plan.getWorkouts().stream().map(PlannedWorkout::getDate)
 						.max(LocalDate::compareTo).orElse(LocalDate.now(clock));
@@ -148,6 +209,25 @@ public class TrainingPlanService {
 			plan.getWorkouts().size(); // Workouts innerhalb der Transaktion laden
 			return plan;
 		});
+	}
+
+	/**
+	 * Einmal pro Woche (beim ersten Öffnen): War die letzte Woche deutlich schwächer als geplant oder läuft ein
+	 * Wiedereinstieg, wird der Rest des Plans an die gefahrenen Werte angepasst.
+	 */
+	private void adaptOncePerWeek(TrainingPlan plan) {
+		LocalDate thisMonday = LocalDate.now(clock).with(TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY));
+		if (thisMonday.equals(plan.getLastAdaptedMonday())) {
+			return;
+		}
+		plan.setLastAdaptedMonday(thisMonday);
+		PlanHistory history = historyOf(plan);
+		var lastWeek = history.before(thisMonday);
+		boolean weak = lastWeek != null && lastWeek.fulfilment() < PlanHistory.MIN_FULFILMENT;
+		if (weak || history.reentryMonday() != null) {
+			replan(plan, LocalDate.now(clock), LocalDate.MAX);
+		}
+		planRepository.save(plan);
 	}
 
 	@Transactional(readOnly = true)
