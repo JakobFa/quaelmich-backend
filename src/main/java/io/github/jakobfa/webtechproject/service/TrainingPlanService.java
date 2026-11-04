@@ -161,9 +161,7 @@ public class TrainingPlanService {
 		Map<LocalDate, List<ExtraRide>> ridesByWeek = extraRides
 				.findByAthleteIdAndDateGreaterThanEqualOrderByDate(plan.getAthlete().getId(),
 						plan.getStartDate().with(TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY)))
-				.stream().filter(ride -> ride.getDate() != null
-						&& (ride.getSport() == null || ride.getSport() == Sport.RIDE))
-				.filter(ride -> !ride.getDate().isAfter(today))
+				.stream().filter(ride -> ride.getDate() != null && !ride.getDate().isAfter(today))
 				.collect(Collectors.groupingBy(
 						ride -> ride.getDate().with(TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY))));
 
@@ -221,11 +219,33 @@ public class TrainingPlanService {
 			}
 		}
 		for (ExtraRide ride : rides) {
-			actualMinutes += ride.getDurationMinutes() == null ? 0 : ride.getDurationMinutes();
+			// auch Laufen, Schwimmen, Kraft usw. belasten: Die gemessene Belastung zählt voll, der Umfang (Radminuten)
+			// je nach Sportart anteilig
+			double weight = volumeWeight(ride.getSport());
+			actualMinutes += ride.getDurationMinutes() == null ? 0 : (int) Math.round(ride.getDurationMinutes() * weight);
 			actualTss += ride.getTss() != null ? ride.getTss()
-					: ride.getDurationMinutes() == null ? 0 : estimateTss(ride.getDurationMinutes());
+					: ride.getDurationMinutes() == null ? 0
+							: (int) Math.round(estimateTss(ride.getDurationMinutes()) * weight);
 		}
 		return new PlanHistory.Week(plannedMinutes, actualMinutes, sickDays, plannedTss, actualTss);
+	}
+
+	/**
+	 * Wie viel einer Minute der Sportart auf den Umfang (Radminuten) zählt. Laufen belastet fast wie Radfahren (und
+	 * mehr für die Beine), Schwimmen etwas weniger, Gehen und Kraft deutlich weniger. Ohne Angabe: Radfahren.
+	 */
+	static double volumeWeight(Sport sport) {
+		if (sport == null) {
+			return 1.0;
+		}
+		return switch (sport) {
+			case RIDE -> 1.0;
+			case RUN -> 0.7;
+			case SWIM -> 0.6;
+			case HIKE -> 0.5;
+			case OTHER -> 0.4;
+			case WALK, STRENGTH -> 0.3;
+		};
 	}
 
 	/** Ohne gemessene Belastung: ruhige Schätzung aus der Dauer (wie bei den Erfahrungspunkten) */
