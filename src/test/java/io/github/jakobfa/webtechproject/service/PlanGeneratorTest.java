@@ -798,4 +798,91 @@ class PlanGeneratorTest {
 				historyAt(recovery, Set.of(), 300, 200, 300, 500, 500, 500));
 		assertThat(phaseOfWeek(adapted, recovery)).isEqualTo(Phase.RECOVERY);
 	}
+
+	// ---------- Belastung (TSS) und regelmäßige Zusatzfahrten ----------
+
+	@Test
+	void aRegularExtraRideIsExpectedOnItsWeekday() {
+		LocalDate monday = LocalDate.of(2026, 11, 9);
+		Map<LocalDate, Integer> commute = new java.util.HashMap<>();
+		for (int w = 1; w <= 4; w++) {
+			commute.put(monday.minusWeeks(w), w == 2 ? 40 : 70);
+		}
+		assertThat(PlanGenerator.expectedExtra(commute, monday, monday)).as("zweitkleinster von 40, 70, 70, 70")
+				.isEqualTo(70);
+		commute.remove(monday.minusWeeks(4));
+		assertThat(PlanGenerator.expectedExtra(commute, monday, monday)).as("eine Woche ohne: vorsichtig 40")
+				.isEqualTo(40);
+		assertThat(PlanGenerator.expectedExtra(commute, monday.plusDays(1), monday)).as("dienstags nie").isZero();
+		commute.remove(monday.minusWeeks(1));
+		commute.remove(monday.minusWeeks(3));
+		assertThat(PlanGenerator.expectedExtra(commute, monday, monday)).as("nur 2 von 4 Wochen").isZero();
+	}
+
+	/** Verlauf mit gleichmäßig 600 min/Woche, Belastung tssPerWeek und Pendeln an Werktagen (commute min/Tag) */
+	private static PlanHistory loadHistory(LocalDate thisMonday, int tssPerWeek, int commute) {
+		Map<LocalDate, Integer> minutes = weeksBefore(thisMonday, 600, 600, 600, 600, 600, 600);
+		Map<LocalDate, Integer> tss = new java.util.HashMap<>();
+		Map<LocalDate, Integer> extraMinutes = new java.util.HashMap<>();
+		Map<LocalDate, Integer> extraTss = new java.util.HashMap<>();
+		for (int back = 1; back <= 42; back++) {
+			LocalDate day = thisMonday.minusDays(back);
+			tss.put(day, tssPerWeek / 7);
+			if (commute > 0 && day.getDayOfWeek().getValue() <= 5) {
+				extraMinutes.put(day, commute);
+				extraTss.put(day, commute / 2);
+			}
+		}
+		return new PlanHistory(thisMonday, Map.of(), null, 0, thisMonday, new PlanHistory.Week(0, 0, 0), minutes,
+				thisMonday.minusDays(42)).withLoad(new PlanHistory.Load(tss, extraMinutes, extraTss));
+	}
+
+	private int plannedMinutes(List<PlannedWorkout> plan, LocalDate monday) {
+		return plan.stream().filter(p -> !p.getDate().isBefore(monday) && p.getDate().isBefore(monday.plusWeeks(1)))
+				.mapToInt(p -> workoutOf(p).getDurationInMinutes()).sum();
+	}
+
+	private int plannedTss(List<PlannedWorkout> plan, LocalDate monday) {
+		return plan.stream().filter(p -> !p.getDate().isBefore(monday) && p.getDate().isBefore(monday.plusWeeks(1)))
+				.mapToInt(p -> workoutOf(p).getTss()).sum();
+	}
+
+	@Test
+	void withoutLoadDataNothingChanges() {
+		Athlete athlete = ultraRider();
+		LocalDate monday = MONDAY.plusWeeks(1);
+		var withoutLoad = new PlanHistory(monday, Map.of(), null, 0, monday, new PlanHistory.Week(0, 0, 0),
+				weeksBefore(monday, 600, 600, 600, 600, 600, 600), monday.minusDays(42));
+		var empty = withoutLoad.withLoad(PlanHistory.Load.NONE);
+		assertThat(generator.generateSeason(athlete, MONDAY, Map.of(), List.of(), null, withoutLoad))
+				.usingRecursiveFieldByFieldElementComparator()
+				.isEqualTo(generator.generateSeason(athlete, MONDAY, Map.of(), List.of(), null, empty));
+	}
+
+	@Test
+	void aRegularCommuteGetsRoomInThePlan() {
+		Athlete athlete = ultraRider();
+		LocalDate monday = MONDAY.plusWeeks(1);
+		var plain = generator.generateSeason(athlete, MONDAY, Map.of(), List.of(), null, loadHistory(monday, 2000, 0));
+		var commuting = generator.generateSeason(athlete, MONDAY, Map.of(), List.of(), null, loadHistory(monday, 2000, 70));
+		assertThat(plannedMinutes(commuting, monday)).isLessThan(plannedMinutes(plain, monday));
+		// Plan plus Pendeln nicht über das, was der Plan ohne Pendeln vorsähe (plus die Viertelstunden-Rundung)
+		assertThat(plannedMinutes(commuting, monday) + 5 * 70).isLessThanOrEqualTo(plannedMinutes(plain, monday) + 60);
+		long minimumRides = commuting.stream()
+				.filter(p -> !p.getDate().isBefore(monday) && p.getDate().isBefore(monday.plusWeeks(1)))
+				.filter(p -> workoutOf(p).getDurationInMinutes() <= PlanGenerator.MIN_CAPPED_RIDE).count();
+		assertThat(minimumRides).as("nicht jeden Tag dieselbe kurze Grundlage").isLessThanOrEqualTo(2);
+	}
+
+	@Test
+	void aLowLoadHistoryLimitsTheLoadOfTheNextWeek() {
+		Athlete athlete = ultraRider();
+		LocalDate monday = MONDAY.plusWeeks(1);
+		// gleiche Minuten, aber sehr locker gefahren (wenig TSS): die nächste Woche wird nicht viel härter
+		var easy = generator.generateSeason(athlete, MONDAY, Map.of(), List.of(), null, loadHistory(monday, 250, 0));
+		var normal = generator.generateSeason(athlete, MONDAY, Map.of(), List.of(), null, loadHistory(monday, 2000, 0));
+		assertThat(plannedTss(easy, monday)).isLessThan(plannedTss(normal, monday));
+		assertThat(PlanGenerator.rollingTssCap(Map.of(), Set.of(), monday.minusDays(42), monday, Phase.BASE, false,
+				true)).as("ohne Daten keine Grenze").isEqualTo(Integer.MAX_VALUE);
+	}
 }
