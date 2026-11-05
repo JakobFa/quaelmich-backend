@@ -1,0 +1,1 @@
+loadWeeksPerBlock=3,volumeStep=0.05,recoveryVolume=0.6,recoveryAcuteRatio=0.75,acuteChronicRatio=1.18,restedBlockRatio=0.9,spikeRatio=1.35,spikeMinExtraMinutes=90,maxLoadWeeksWithoutRecovery=6,memoryWeeklyDecay=0.95,taperWeeks=2
