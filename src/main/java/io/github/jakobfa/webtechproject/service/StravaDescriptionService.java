@@ -49,9 +49,12 @@ public class StravaDescriptionService {
 				.ifPresent(planned -> {
 					long activityId = stravaId(planned.getActivityId());
 					boolean confirmed = isConfirmedTraining(planned);
-					String block = confirmed ? blockFor(planned, userId) : null;
+					RampTest.Result rampTest = confirmed ? rampTestOf(planned, userId) : null;
+					String block = confirmed ? blockFor(planned, userId, rampTest) : null;
 					String title = confirmed ? library.resolve(planned.getWorkoutId(), planned.getDurationMinutes())
-							.map(Workout::getTitle).orElse(null) : null;
+							.map(Workout::getTitle)
+							.map(name -> rampTest == null ? name : StravaDescription.rampTestTitle(name, rampTest))
+							.orElse(null) : null;
 					edit(userId, activityId, block, title);
 				});
 	}
@@ -81,7 +84,15 @@ public class StravaDescriptionService {
 		return planned.isCompleted() && Boolean.TRUE.equals(planned.getActivityConfirmed());
 	}
 
-	private String blockFor(PlannedWorkout planned, Long userId) {
+	/** Beim FTP-Test: das Ergebnis aus den Sekundenwerten der Fahrt (leer, wenn keine Rampe erkennbar ist) */
+	private RampTest.Result rampTestOf(PlannedWorkout planned, Long userId) {
+		boolean ftpTest = library.resolve(planned.getWorkoutId(), planned.getDurationMinutes())
+				.map(workout -> workout.getType() == io.github.jakobfa.webtechproject.model.WorkoutType.FTP_TEST)
+				.orElse(false);
+		return ftpTest ? intervalAccuracy.rampTestOf(planned.getActivityId(), userId).orElse(null) : null;
+	}
+
+	private String blockFor(PlannedWorkout planned, Long userId, RampTest.Result rampTest) {
 		Workout workout = library.resolve(planned.getWorkoutId(), planned.getDurationMinutes()).orElseThrow();
 		Athlete athlete = planned.getPlan().getAthlete();
 		int week = (int) (ChronoUnit.DAYS.between(planned.getPlan().getStartDate(), planned.getDate()) / 7) + 1;
@@ -89,7 +100,7 @@ public class StravaDescriptionService {
 		return StravaDescription.block(new StravaDescription.Content(workout, planned.getPhase(), Math.max(week, 1),
 				athlete.isHeartRateMode(), planned.getActualDurationMinutes(), planned.getActualTss(),
 				accuracy.map(IntervalAccuracy.Result::score).orElse(null),
-				accuracy.map(IntervalAccuracy.Result::uncertain).orElse(false), planned.getRating()));
+				accuracy.map(IntervalAccuracy.Result::uncertain).orElse(false), planned.getRating(), rampTest));
 	}
 
 	private static long stravaId(String activityId) {

@@ -337,8 +337,6 @@ public class TrainingPlanService {
 				actual.merge(workout.getDate(), resolved.getTss(), Integer::sum);
 			}
 		}
-		Map<LocalDate, Integer> extraMinutes = new java.util.HashMap<>();
-		Map<LocalDate, Integer> extraTss = new java.util.HashMap<>();
 		for (ExtraRide ride : rides) {
 			if (ride.getDate() == null || !ride.getDate().isBefore(today)) {
 				continue;
@@ -346,10 +344,6 @@ public class TrainingPlanService {
 			int tss = ride.getTss() != null ? ride.getTss()
 					: ride.getDurationMinutes() == null ? 0 : estimateTss(ride.getDurationMinutes());
 			actual.merge(ride.getDate(), tss, Integer::sum);
-			extraTss.merge(ride.getDate(), tss, Integer::sum);
-			if ((ride.getSport() == null || ride.getSport() == Sport.RIDE) && ride.getDurationMinutes() != null) {
-				extraMinutes.merge(ride.getDate(), ride.getDurationMinutes(), Integer::sum);
-			}
 		}
 		Map<LocalDate, Integer> dailyTss = new java.util.HashMap<>();
 		Set<LocalDate> days = new java.util.HashSet<>(actual.keySet());
@@ -359,7 +353,7 @@ public class TrainingPlanService {
 			int floor = (int) Math.min(planned.getOrDefault(day, 0) * SKIPPED_SHARE, MAX_SKIPPED_FLOOR_TSS);
 			dailyTss.put(day, excused.contains(day) ? done : Math.max(done, floor));
 		}
-		return new PlanHistory.Load(dailyTss, extraMinutes, extraTss);
+		return new PlanHistory.Load(dailyTss);
 	}
 
 	/**

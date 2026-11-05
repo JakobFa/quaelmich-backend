@@ -23,8 +23,8 @@ import java.util.Map;
  *                       zu den harten Einheiten der Woche, und der Tag danach bleibt locker
  * @param recoveryDays   vergangene Tage in Erholungswochen: sie zählen nicht für den Schnitt, sonst bremst jede
  *                       Erholungswoche den Aufbau danach aus
- * @param load           Belastung (TSS) je vergangenem Tag und die Zusatzfahrten (außerhalb des Plans) – für die
- *                       Obergrenze der Belastung und um Platz für regelmäßige Zusatzfahrten (z. B. Pendeln) zu lassen
+ * @param load           Belastung (TSS) je vergangenem Tag, auch aus Zusatzfahrten (z. B. Pendeln) – für die
+ *                       Obergrenze der Belastung
  */
 public record PlanHistory(LocalDate thisMonday, Map<LocalDate, Week> weeks, LocalDate reentryMonday,
 		int reentryWeeks, LocalDate today, Week currentWeek, Map<LocalDate, Integer> dailyMinutes,
@@ -37,11 +37,11 @@ public record PlanHistory(LocalDate thisMonday, Map<LocalDate, Week> weeks, Loca
 
 	/**
 	 * Belastung je vergangenem Tag (alle Fahrten und Sportarten, bei Auslassen ohne Krankheit mindestens ein Teil des
-	 * Geplanten – wie bei den Minuten) und die Zusatzfahrten außerhalb des Plans (Minuten nur Rad, TSS alle Sportarten).
+	 * Geplanten – wie bei den Minuten). Zusatzfahrten zählen, sobald sie eingetragen sind; für künftige wird nichts
+	 * freigehalten.
 	 */
-	public record Load(Map<LocalDate, Integer> dailyTss, Map<LocalDate, Integer> extraMinutes,
-			Map<LocalDate, Integer> extraTss) {
-		public static final Load NONE = new Load(Map.of(), Map.of(), Map.of());
+	public record Load(Map<LocalDate, Integer> dailyTss) {
+		public static final Load NONE = new Load(Map.of());
 	}
 
 	public PlanHistory(LocalDate thisMonday, Map<LocalDate, Week> weeks, LocalDate reentryMonday, int reentryWeeks,

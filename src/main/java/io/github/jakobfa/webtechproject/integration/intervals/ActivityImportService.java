@@ -66,14 +66,17 @@ public class ActivityImportService {
 	private final WorkoutLibrary library;
 	private final IntervalAccuracyService intervalAccuracy;
 	private final TrainingPlanService planService;
+	private final io.github.jakobfa.webtechproject.service.StravaDescriptionService stravaDescription;
 	private final Clock clock;
 
 	public ActivityImportService(IntervalsConnectionService connectionService, IntervalsIcuClient client,
 			StravaService stravaService, AthleteService athleteService,
 			PlannedWorkoutRepository plannedWorkoutRepository, ExtraRideRepository extraRideRepository,
 			PlanAdaptationService adaptation, WorkoutLibrary library, IntervalAccuracyService intervalAccuracy,
-			TrainingPlanService planService, Clock clock) {
+			TrainingPlanService planService,
+			io.github.jakobfa.webtechproject.service.StravaDescriptionService stravaDescription, Clock clock) {
 		this.planService = planService;
+		this.stravaDescription = stravaDescription;
 		this.intervalAccuracy = intervalAccuracy;
 		this.connectionService = connectionService;
 		this.client = client;
@@ -145,6 +148,7 @@ public class ActivityImportService {
 
 		int matched = 0;
 		int adjusted = 0;
+		List<Long> confirmedFromPlayer = new ArrayList<>();
 		for (PlannedWorkout planned : window) {
 			String linkedId = planned.getActivityId();
 			// nur lösen, wenn die Quelle der Fahrt gerade geantwortet hat – sonst wäre die Fahrt kurz unsichtbar
@@ -157,6 +161,27 @@ public class ActivityImportService {
 				planned.clearActivity();
 				planned.setCompleted(false);
 				continue;
+			}
+			// im Player gefahren: die Fahrt zu dieser Startzeit war das Training – ohne Nachfrage
+			if (planned.getPlayerStartedAt() != null && !Boolean.TRUE.equals(planned.getActivityConfirmed())) {
+				RecordedActivity fromPlayer = playerRide(ridesPerDay.getOrDefault(planned.getDate(), List.of()),
+						planned);
+				if (fromPlayer != null) {
+					apply(planned, fromPlayer);
+					planned.setActivityConfirmed(true);
+					matched++;
+					Workout workout = library.resolve(planned.getWorkoutId(), planned.getDurationMinutes())
+							.orElseThrow();
+					if (workout.getType() == WorkoutType.FTP_TEST) {
+						intervalAccuracy.rampTestOf(fromPlayer.id(), userId).ifPresent(result -> FtpSuggestions
+								.fromRampTest(athlete.get(), result, planned.getDate()));
+					}
+					if (adaptation.adaptAfter(planned, window).isPresent()) {
+						adjusted++;
+					}
+					confirmedFromPlayer.add(planned.getId());
+					continue;
+				}
 			}
 			// vom Nutzer bestätigt ("Ja, das war's" oder selbst zugeordnet) → Zuordnung bleibt
 			if (linkedId != null && planned.getActivityConfirmed() != null) {
@@ -263,6 +288,21 @@ public class ActivityImportService {
 
 		// neue Fahrten verändern, was gefahren wurde: der Rest des Plans richtet sich danach
 		planService.adaptToActuals(athleteId);
+		// Strava-Beschreibung erst nach dem Speichern schreiben (läuft im Hintergrund und liest neu)
+		if (!confirmedFromPlayer.isEmpty()) {
+			Runnable describe = () -> confirmedFromPlayer.forEach(id -> stravaDescription.refresh(userId, id));
+			if (org.springframework.transaction.support.TransactionSynchronizationManager.isSynchronizationActive()) {
+				org.springframework.transaction.support.TransactionSynchronizationManager.registerSynchronization(
+						new org.springframework.transaction.support.TransactionSynchronization() {
+							@Override
+							public void afterCommit() {
+								describe.run();
+							}
+						});
+			} else {
+				describe.run();
+			}
+		}
 		return Optional.of(new ImportResult(rides.size(), matched, extra, adjusted));
 	}
 
@@ -426,6 +466,21 @@ public class ActivityImportService {
 		extraRide.setTssFromHeartRate(ride.tssFromHeartRate());
 		extraRide.setTssFromDuration(ride.tssFromDuration());
 		extraRide.setSport(ride.sport());
+	}
+
+	/** So weit darf der Start der Fahrt vom Start im Player abweichen (Gerät, Upload, Uhrzeit) */
+	static final java.time.Duration PLAYER_START_TOLERANCE = java.time.Duration.ofMinutes(15);
+
+	/** Die Fahrt des Tages, die zum Start im Player passt (die nächstgelegene), sonst null */
+	private RecordedActivity playerRide(List<RecordedActivity> rides, PlannedWorkout planned) {
+		java.time.LocalDateTime start = java.time.LocalDateTime.ofInstant(planned.getPlayerStartedAt(),
+				clock.getZone());
+		return rides.stream().filter(ride -> !ride.id().equals(planned.getRejectedActivityId()))
+				.filter(ride -> ride.start() != null)
+				.filter(ride -> java.time.Duration.between(start, ride.start()).abs()
+						.compareTo(PLAYER_START_TOLERANCE) <= 0)
+				.min(Comparator.comparing(ride -> java.time.Duration.between(start, ride.start()).abs()))
+				.orElse(null);
 	}
 
 	static void apply(PlannedWorkout planned, RecordedActivity ride) {
