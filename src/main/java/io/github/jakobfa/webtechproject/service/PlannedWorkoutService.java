@@ -41,6 +41,22 @@ public class PlannedWorkoutService {
 	}
 
 	/**
+	 * Im Player gefahren: gilt sofort als erledigt. Die Fahrt dazu (Upload zu Strava oder später über intervals.icu)
+	 * wird beim nächsten Abgleich über die Startzeit zugeordnet und ist dann ohne Nachfrage bestätigt.
+	 */
+	@Transactional
+	public Optional<PlannedWorkout> riddenInPlayer(Long id, Long userId, java.time.Instant startedAt) {
+		return findOwned(id, userId).map(planned -> {
+			planned.setCompleted(true);
+			planned.setSkipReason(null);
+			planned.setPlayerStartedAt(startedAt);
+			PlannedWorkout saved = repository.save(planned);
+			adaptToActuals(saved);
+			return saved;
+		});
+	}
+
+	/**
 	 * Bestätigt oder verwirft die automatisch erkannte Fahrt.
 	 * "Nein" heißt: anderes Training – das geplante Workout gilt dann als nicht absolviert.
 	 * Die Fahrt bleibt gespeichert, denn die Belastung war trotzdem da.

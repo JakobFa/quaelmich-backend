@@ -75,6 +75,12 @@ public class PlannedWorkout {
 	/** Vom Nutzer bestätigt, dass die erkannte Fahrt das geplante Training war (null = noch nicht gefragt) */
 	private Boolean activityConfirmed;
 
+	/**
+	 * Im Player von quaelmich gefahren (Start der Aufzeichnung): Dann ist klar, dass es dieses Training war – die
+	 * Fahrt, die zu dieser Zeit bei Strava oder intervals.icu ankommt, wird ohne Nachfrage zugeordnet und bestätigt.
+	 */
+	private java.time.Instant playerStartedAt;
+
 	/** Fahrt, die der Nutzer für dieses Workout abgelehnt hat ("anderes Training") – wird nie wieder zugeordnet */
 	private String rejectedActivityId;
 

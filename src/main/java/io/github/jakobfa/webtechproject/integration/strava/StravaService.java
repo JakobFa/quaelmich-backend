@@ -296,7 +296,8 @@ public class StravaService {
 
 	/**
 	 * Wie {@link #editDescription}, setzt zusätzlich den Titel – aber nur, wenn die Fahrt noch den Standardnamen
-	 * von Strava trägt ("Radfahrt am Abend"). Selbst vergebene Titel bleiben immer stehen. title null = nicht ändern.
+	 * von Strava trägt ("Radfahrt am Abend") oder der neue Titel den bisherigen nur ergänzt ("Rampentest" →
+	 * "Rampentest · FTP 305 W"). Selbst vergebene Titel bleiben sonst stehen. title null = nicht ändern.
 	 */
 	@Transactional
 	public void editActivity(Long userId, long stravaActivityId,
@@ -318,7 +319,9 @@ public class StravaService {
 			String updated = edit.apply(current, activity.isCommute());
 			String newDescription = updated != null && !updated.equals(current) ? updated : null;
 			String newTitle = title != null && !title.equals(activity.name())
-					&& StravaActivityNames.isDefault(activity.name()) && updated != null ? title : null;
+					&& (StravaActivityNames.isDefault(activity.name())
+							|| activity.name() != null && !activity.name().isBlank() && title.startsWith(activity.name()))
+					&& updated != null ? title : null;
 			if (newDescription != null || newTitle != null) {
 				client.updateActivity(accessToken, stravaActivityId, newDescription, newTitle);
 			}

@@ -51,6 +51,22 @@ class PlannedWorkoutServiceTest {
 	}
 
 	@Test
+	void aRideInThePlayerTicksOffAndRemembersTheStart() {
+		PlannedWorkout planned = ownedByUserOne();
+		planned.setSkipReason(io.github.jakobfa.webtechproject.model.SkipReason.NO_TIME);
+		when(repository.findById(1L)).thenReturn(Optional.of(planned));
+		when(repository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
+		java.time.Instant start = java.time.Instant.parse("2026-11-05T17:02:00Z");
+
+		PlannedWorkout result = service.riddenInPlayer(1L, 1L, start).orElseThrow();
+
+		assertThat(result.isCompleted()).isTrue();
+		assertThat(result.getSkipReason()).isNull();
+		assertThat(result.getPlayerStartedAt()).isEqualTo(start);
+		assertThat(service.riddenInPlayer(1L, 2L, start)).as("fremdes Workout").isEmpty();
+	}
+
+	@Test
 	void dropsRatingWhenNotCompleted() {
 		PlannedWorkout planned = ownedByUserOne();
 		planned.setCompleted(true);

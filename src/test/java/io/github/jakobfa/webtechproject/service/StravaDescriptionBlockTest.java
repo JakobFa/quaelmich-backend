@@ -47,6 +47,17 @@ class StravaDescriptionBlockTest {
 	}
 
 	@Test
+	void anFtpTestShowsTheNewFtpRightAtTheTop() {
+		var content = new StravaDescription.Content(SWEET_SPOT, Phase.BUILD, 6, false, 30, 40, null, false, null,
+				new RampTest.Result(407, 305));
+
+		assertThat(StravaDescription.block(content).lines().limit(2)).containsExactly("── quaelmich ──",
+				"Neue FTP: 305 W (75 % der besten Minute, 407 W)");
+		assertThat(StravaDescription.rampTestTitle("Rampentest", new RampTest.Result(407, 305)))
+				.isEqualTo("Rampentest · FTP 305 W");
+	}
+
+	@Test
 	void heartRateModeShowsZonesAndLeavesOutMissingValues() {
 		String block = StravaDescription.block(content(true, null, null));
 

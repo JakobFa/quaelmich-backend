@@ -52,9 +52,12 @@ class ActivityImportServiceTest {
 	private final StravaService strava = mock(StravaService.class);
 	private final WorkoutLibrary library = new WorkoutLibrary();
 	private final IntervalAccuracyService intervalAccuracy = mock(IntervalAccuracyService.class);
+	private final io.github.jakobfa.webtechproject.service.StravaDescriptionService descriptions = mock(
+			io.github.jakobfa.webtechproject.service.StravaDescriptionService.class);
 	private final ActivityImportService service = new ActivityImportService(connectionService, client,
 			strava, athleteService, repository, extraRides, new PlanAdaptationService(library), library,
-			intervalAccuracy, mock(io.github.jakobfa.webtechproject.service.TrainingPlanService.class), CLOCK);
+			intervalAccuracy, mock(io.github.jakobfa.webtechproject.service.TrainingPlanService.class), descriptions,
+			CLOCK);
 
 	@BeforeEach
 	void connectedUserWithProfile() {
@@ -105,6 +108,39 @@ class ActivityImportServiceTest {
 		assertThat(yesterday.getActualDistanceKm()).isEqualTo(37.5);
 		assertThat(yesterday.getActualTss()).isEqualTo(70);
 		assertThat(yesterday.getRating()).as("Bewertung bleibt beim Nutzer").isEqualTo(6);
+	}
+
+	@Test
+	void aRideFromThePlayerIsLinkedByItsStartAndConfirmedWithoutAsking() {
+		PlannedWorkout today = planned(TODAY);
+		today.setCompleted(true);
+		today.setPlayerStartedAt(Instant.parse(TODAY + "T16:58:00Z")); // Fahrt startet 17:00 (Uhr in UTC)
+		givenPlan(today);
+		// passt nach Dauer gar nicht zum Workout (abgebrochen) und eine zweite, längere Fahrt am Abend
+		when(client.listActivities(any(), any(), any())).thenReturn(List.of(indoorRide("player", TODAY, 25, 20),
+				new IntervalsActivity("abends", TODAY + "T19:30:00", "VirtualRide", 4800, 40000.0, 65, "WAHOO",
+						true, 200, null, true)));
+
+		var result = service.importRecent(1L).orElseThrow();
+
+		assertThat(result.matched()).isEqualTo(1);
+		assertThat(today.getActivityId()).isEqualTo("player");
+		assertThat(today.getActivityConfirmed()).as("ohne Nachfrage").isTrue();
+		assertThat(today.isCompleted()).isTrue();
+		verify(descriptions).refresh(1L, today.getId());
+	}
+
+	@Test
+	void aPlayerRideFarFromTheRecordedStartIsNotTaken() {
+		PlannedWorkout today = planned(TODAY);
+		today.setPlayerStartedAt(Instant.parse(TODAY + "T12:00:00Z"));
+		givenPlan(today);
+		when(client.listActivities(any(), any(), any())).thenReturn(List.of(indoorRide("später", TODAY, 25, 20)));
+
+		service.importRecent(1L);
+
+		assertThat(today.getActivityConfirmed()).isNotEqualTo(Boolean.TRUE);
+		verify(descriptions, never()).refresh(any(), any());
 	}
 
 	@Test
