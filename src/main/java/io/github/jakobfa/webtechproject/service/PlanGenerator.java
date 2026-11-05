@@ -276,6 +276,8 @@ public class PlanGenerator {
 		// Minuten je Tag: Vergangenes aus dem, was gefahren wurde, dazu das, was dieser Plan schon vorsieht. Daraus
 		// rechnen die gleitenden Zeitfenster (7 Tage gegen den Schnitt der 28 Tage davor) – nicht die Kalenderwoche.
 		Map<LocalDate, Integer> daily = new java.util.HashMap<>(history.dailyMinutes());
+		// dasselbe für die Belastung (TSS) – die Obergrenze der Belastung gilt, wo es gefahrene Werte gibt
+		Map<LocalDate, Integer> dailyTss = new java.util.HashMap<>(history.load().dailyTss());
 		LocalDate dataStart = history.dataStart() != null && history.dataStart().isBefore(startDate)
 				? history.dataStart() : startDate;
 		// Tage in Erholungswochen zählen nicht für den Schnitt
@@ -355,8 +357,31 @@ public class PlanGenerator {
 			// Gleitendes Zeitfenster: höchstens so viel in 7 Tagen, wie der Schnitt der letzten 28 Tage hergibt
 			RollingCap rolling = isPastVirtualWeek(history, monday) ? null
 					: rollingCap(daily, recoveryDays, dataStart, monday, phase, overreached, memoryAllowed(history, monday));
+			// Platz für regelmäßige Zusatzfahrten (ab heute)
+			Map<LocalDate, Integer> reservedMinutes = new java.util.HashMap<>();
+			Map<LocalDate, Integer> reservedTss = new java.util.HashMap<>();
+			LocalDate firstPlanned = history.isEmpty() ? monday
+					: history.today() == null ? history.thisMonday() : history.today();
+			for (LocalDate day = monday; day.isBefore(monday.plusWeeks(1)); day = day.plusDays(1)) {
+				if (!history.isEmpty() && !day.isBefore(firstPlanned)) {
+					int extraMinutes = expectedExtra(history.load().extraMinutes(), day, history.thisMonday());
+					int extraTss = expectedExtra(history.load().extraTss(), day, history.thisMonday());
+					if (extraMinutes > 0) {
+						reservedMinutes.put(day, extraMinutes);
+					}
+					if (extraTss > 0) {
+						reservedTss.put(day, extraTss);
+					}
+				}
+			}
 			if (rolling != null) {
-				rolling = new RollingCap(rolling.daily(), rolling.weeklyCapMinutes(), history.fixedMinutes());
+				// Obergrenze der Belastung nur, wo sie auf gefahrenen Werten beruht (laufende und nächste Woche)
+				boolean tssKnown = !history.load().dailyTss().isEmpty()
+						&& !monday.isAfter(history.thisMonday().plusWeeks(1));
+				int tssCap = tssKnown ? rollingTssCap(dailyTss, recoveryDays, dataStart, monday, phase, overreached,
+						memoryAllowed(history, monday)) : Integer.MAX_VALUE;
+				rolling = new RollingCap(rolling.daily(), rolling.weeklyCapMinutes(), history.fixedMinutes(), dailyTss,
+						tssCap, reservedMinutes, reservedTss);
 			}
 
 			WeekPlan week = new WeekPlan(phase, weekIndex, step,
@@ -389,11 +414,16 @@ public class PlanGenerator {
 						: history.today())) {
 					// feststehende Einheiten (selbst getauscht/angepasst) zählen mit ihren echten Minuten
 					if (!history.fixedMinutes().containsKey(workout.getDate())) {
-						daily.merge(workout.getDate(), library.resolve(workout.getWorkoutId(), workout.getDurationMinutes())
-								.orElseThrow().getDurationInMinutes(), Integer::sum);
+						Workout resolved = library.resolve(workout.getWorkoutId(), workout.getDurationMinutes())
+								.orElseThrow();
+						daily.merge(workout.getDate(), resolved.getDurationInMinutes(), Integer::sum);
+						dailyTss.merge(workout.getDate(), resolved.getTss(), Integer::sum);
 					}
 				}
 			}
+			// erwartete Zusatzfahrten zählen für die Fenster der nächsten Wochen mit
+			reservedMinutes.forEach((day, minutes) -> daily.merge(day, minutes, Integer::sum));
+			reservedTss.forEach((day, tss) -> dailyTss.merge(day, tss, Integer::sum));
 			boolean testMissed = ftpTest
 					&& planned.stream().noneMatch(workout -> workout.getWorkoutId() == WorkoutLibrary.FTP_TEST);
 			// offen bleibt er, bis er eingeplant werden konnte (in Erholungswochen wird nicht getestet)
@@ -705,9 +735,73 @@ public class PlanGenerator {
 
 	/**
 	 * Obergrenze für jedes 7-Tage-Fenster: daily = Minuten je Tag bisher (vergangen und schon geplant),
-	 * weeklyCapMinutes = so viel darf in 7 aufeinanderfolgenden Tagen höchstens zusammenkommen.
+	 * weeklyCapMinutes = so viel darf in 7 aufeinanderfolgenden Tagen höchstens zusammenkommen. Dazu dasselbe für die
+	 * Belastung (dailyTss, weeklyCapTss; Integer.MAX_VALUE = keine Grenze) und was für regelmäßige Zusatzfahrten
+	 * freigehalten wird (reserved*: zählt in die Fenster, wird nie gekürzt).
 	 */
-	record RollingCap(Map<LocalDate, Integer> daily, int weeklyCapMinutes, Map<LocalDate, Integer> fixed) {
+	record RollingCap(Map<LocalDate, Integer> daily, int weeklyCapMinutes, Map<LocalDate, Integer> fixed,
+			Map<LocalDate, Integer> dailyTss, int weeklyCapTss, Map<LocalDate, Integer> reservedMinutes,
+			Map<LocalDate, Integer> reservedTss) {
+
+		RollingCap(Map<LocalDate, Integer> daily, int weeklyCapMinutes, Map<LocalDate, Integer> fixed) {
+			this(daily, weeklyCapMinutes, fixed, Map.of(), Integer.MAX_VALUE, Map.of(), Map.of());
+		}
+	}
+
+	/** Belastungswoche: mindestens so viel TSS über dem Schnitt (wie MIN_WEEKLY_GROWTH_MINUTES bei den Minuten) */
+	static final int MIN_WEEKLY_GROWTH_TSS = 25;
+	/** Feststehende Einheiten ohne bekannte Belastung: so viel TSS je Minute (gemischtes Training) */
+	static final double FIXED_TSS_PER_MINUTE = 0.75;
+	/** Höchstens so viele lockere Fahrten pro Woche, die die Grenzen auf das Minimum gekürzt haben */
+	static final int MAX_MINIMUM_RIDES = 2;
+	/** Ab so viel regelmäßiger Zusatzfahrt an einem Tag ersetzt sie eine kurze lockere Fahrt */
+	static final int EXTRA_REPLACES_EASY_MINUTES = 30;
+	/** Regelmäßige Zusatzfahrt: an mindestens so vielen der letzten Wochen am selben Wochentag */
+	static final int EXTRA_LOOKBACK_WEEKS = 4;
+	static final int EXTRA_MIN_WEEKS = 3;
+
+	/**
+	 * Die Obergrenze der Belastung (TSS) in 7 Tagen – wie rollingCap für die Minuten, aus der gefahrenen Belastung.
+	 * Integer.MAX_VALUE, wenn es keine gibt (zu wenig Daten, Tapering).
+	 */
+	static int rollingTssCap(Map<LocalDate, Integer> dailyTss, java.util.Set<LocalDate> recoveryDays,
+			LocalDate dataStart, LocalDate monday, Phase phase, boolean overreached, boolean withMemory) {
+		if (!isLoadPhase(phase) && phase != Phase.RECOVERY) {
+			return Integer.MAX_VALUE;
+		}
+		Double weekly = baselineWeeklyMinutes(dailyTss, recoveryDays, dataStart, monday, withMemory);
+		if (weekly == null || weekly <= 0) {
+			return Integer.MAX_VALUE;
+		}
+		int countedDays = countedDays(recoveryDays, dataStart, monday);
+		double ratio = phase == Phase.RECOVERY ? p().recoveryAcuteRatio()
+				: overreached ? OVERREACHED_ACUTE_RATIO
+						: Math.min(p().acuteChronicRatio(), Math.max(steadyGrowthRatio(countedDays / 7.0), EARLY_MIN_RATIO));
+		double cap = phase == Phase.RECOVERY ? weekly * ratio : Math.max(weekly * ratio, weekly + MIN_WEEKLY_GROWTH_TSS);
+		return (int) cap;
+	}
+
+	/**
+	 * Was an einem kommenden Tag für regelmäßige Zusatzfahrten (z. B. Pendeln) frei bleiben soll: Gab es am selben
+	 * Wochentag in mindestens 3 der letzten 4 Wochen eine Zusatzfahrt, der zweitkleinste dieser 4 Werte (vorsichtig:
+	 * eher etwas weniger als üblich). Sonst 0.
+	 */
+	static int expectedExtra(Map<LocalDate, Integer> extras, LocalDate day, LocalDate thisMonday) {
+		if (extras.isEmpty() || thisMonday == null) {
+			return 0;
+		}
+		LocalDate thisWeeks = thisMonday.with(java.time.temporal.TemporalAdjusters.nextOrSame(day.getDayOfWeek()));
+		int[] values = new int[EXTRA_LOOKBACK_WEEKS];
+		int regular = 0;
+		for (int k = 1; k <= EXTRA_LOOKBACK_WEEKS; k++) {
+			values[k - 1] = extras.getOrDefault(thisWeeks.minusWeeks(k), 0);
+			regular += values[k - 1] > 0 ? 1 : 0;
+		}
+		if (regular < EXTRA_MIN_WEEKS) {
+			return 0;
+		}
+		java.util.Arrays.sort(values);
+		return values[1];
 	}
 
 	/** Akut (7 Tage) zu chronisch (Schnitt der 28 Tage davor): ca. +7 bis 10 % pro Woche, wenn es stetig steigt */
@@ -1360,13 +1454,62 @@ public class PlanGenerator {
 			}
 		}
 		if (plan.rolling() != null) {
+			java.util.Map<LocalDate, Integer> beforeCaps = new java.util.HashMap<>(flexible);
 			java.util.Map<LocalDate, Integer> hardByDay = new java.util.HashMap<>();
 			for (PlannedWorkout hard : week) {
 				hardByDay.merge(hard.getDate(), library.resolve(hard.getWorkoutId(), hard.getDurationMinutes())
 						.orElseThrow().getDurationInMinutes(), Integer::sum);
 			}
+			plan.rolling().reservedMinutes().forEach((day, minutes) -> hardByDay.merge(day, minutes, Integer::sum));
 			fitRollingWindow(flexible, longDay, hardByDay, plan.rolling().daily(), plan.rolling().fixed(),
 					plan.rolling().weeklyCapMinutes());
+			if (plan.rolling().weeklyCapTss() < Integer.MAX_VALUE) {
+				java.util.Map<LocalDate, Integer> hardTss = new java.util.HashMap<>();
+				for (PlannedWorkout hard : week) {
+					hardTss.merge(hard.getDate(), library.resolve(hard.getWorkoutId(), hard.getDurationMinutes())
+							.orElseThrow().getTss(), Integer::sum);
+				}
+				plan.rolling().reservedTss().forEach((day, tss) -> hardTss.merge(day, tss, Integer::sum));
+				fitRollingTss(flexible, longDay, hardTss, plan.rolling().dailyTss(), plan.rolling().fixed(),
+						plan.rolling().weeklyCapTss());
+			}
+			// Bleibt an einem Tag mit regelmäßiger Zusatzfahrt (z. B. Pendeln) nur noch eine kurze lockere Fahrt übrig,
+			// entfällt sie: Die Zusatzfahrt ist dann die lockere Fahrt des Tages
+			List<LocalDate> dropped = new ArrayList<>(flexible.keySet().stream()
+					.filter(day -> !day.equals(firstLong) && !day.equals(partner))
+					.filter(day -> flexible.get(day) <= MIN_CAPPED_RIDE
+							&& plan.rolling().reservedMinutes().getOrDefault(day, 0) >= EXTRA_REPLACES_EASY_MINUTES)
+					.toList());
+			// Haben die Grenzen viele lockere Tage auf das Minimum gekürzt, bleiben nur zwei davon – lieber weniger
+			// Fahrten als jeden Tag dieselbe kurze Grundlage. Zuerst fallen Tage nach einem großen Umfangstag weg,
+			// dann die späteren.
+			List<LocalDate> cutToMinimum = flexible.keySet().stream()
+					.filter(day -> !day.equals(firstLong) && !day.equals(partner) && !dropped.contains(day))
+					.filter(day -> flexible.get(day) <= MIN_CAPPED_RIDE && beforeCaps.getOrDefault(day, 0) > MIN_CAPPED_RIDE)
+					.sorted(Comparator.comparing((LocalDate day) -> !isAfterBigDay(availability, day))
+							.thenComparing(Comparator.reverseOrder()))
+					.toList();
+			for (int i = 0; i < cutToMinimum.size() - MAX_MINIMUM_RIDES; i++) {
+				dropped.add(cutToMinimum.get(i));
+			}
+			// Die Minuten gehen nicht verloren: Sie kommen auf die übrigen lockeren Tage, soweit dort Zeit ist (sonst
+			// sänke der Umfang Woche für Woche, weil die nächste Obergrenze aus dem Gefahrenen folgt)
+			int freed = 0;
+			for (LocalDate day : dropped) {
+				freed += flexible.remove(day);
+			}
+			List<LocalDate> receivers = flexible.keySet().stream()
+					.sorted(Comparator.comparingInt((LocalDate day) -> flexible.get(day) - availableMinutes(availability, day)))
+					.toList();
+			for (LocalDate day : receivers) {
+				int room = Math.min(availableMinutes(availability, day), beforeCaps.getOrDefault(day, Integer.MAX_VALUE))
+						- flexible.get(day);
+				int add = floorToQuarterHour(Math.min(Math.max(0, room), freed));
+				if (add > 0) {
+					flexible.merge(day, add, Integer::sum);
+					freed -= add;
+				}
+			}
 		}
 		fillHardDays(week, availability, plan, flexible, days.getLast());
 
@@ -1467,10 +1610,25 @@ public class PlanGenerator {
 					hardByDay.merge(other.getDate(), library.resolve(other.getWorkoutId(), other.getDurationMinutes())
 							.orElseThrow().getDurationInMinutes(), Integer::sum);
 				}
+				plan.rolling().reservedMinutes().forEach((day, minutes) -> hardByDay.merge(day, minutes, Integer::sum));
 				int slack = Integer.MAX_VALUE;
 				for (LocalDate end = hard.getDate(); !end.isAfter(lastDay); end = end.plusDays(1)) {
 					slack = Math.min(slack, plan.rolling().weeklyCapMinutes() - windowMinutes(end, flexible, hardByDay,
 							plan.rolling().daily(), plan.rolling().fixed()));
+				}
+				if (plan.rolling().weeklyCapTss() < Integer.MAX_VALUE) {
+					// das Auffüllen ist lockere Grundlage: so viele Minuten, wie die Belastung noch zulässt
+					java.util.Map<LocalDate, Integer> hardTss = new java.util.HashMap<>();
+					for (PlannedWorkout other : week) {
+						hardTss.merge(other.getDate(), library.resolve(other.getWorkoutId(), other.getDurationMinutes())
+								.orElseThrow().getTss(), Integer::sum);
+					}
+					plan.rolling().reservedTss().forEach((day, tss) -> hardTss.merge(day, tss, Integer::sum));
+					for (LocalDate end = hard.getDate(); !end.isAfter(lastDay); end = end.plusDays(1)) {
+						int tssSlack = plan.rolling().weeklyCapTss() - windowTss(end, flexible, hardTss,
+								plan.rolling().dailyTss(), plan.rolling().fixed());
+						slack = Math.min(slack, (int) (tssSlack / easyTssPerMinute()));
+					}
 				}
 				length = Math.min(length, current + Math.max(0, slack));
 			}
@@ -1512,6 +1670,65 @@ public class PlanGenerator {
 		flexible.replaceAll((day, minutes) -> Math.min(minutes, floorToQuarterHour(minutes) < MIN_CAPPED_RIDE
 				? minutes : floorToQuarterHour(minutes)));
 	}
+
+	/**
+	 * Wie fitRollingWindow, aber für die Belastung: Wird ein 7-Tage-Fenster zu belastend, werden die lockeren Tage
+	 * darin gekürzt (zuerst die Nebentage, die lange Ausfahrt zuletzt), um so viele Minuten lockere Fahrt, wie die
+	 * überzählige Belastung ausmacht.
+	 */
+	private static void fitRollingTss(java.util.Map<LocalDate, Integer> flexible, LocalDate longDay,
+			java.util.Map<LocalDate, Integer> hardTss, java.util.Map<LocalDate, Integer> beforeTss,
+			java.util.Map<LocalDate, Integer> fixed, int capTss) {
+		java.util.Map<LocalDate, Integer> original = new java.util.HashMap<>(flexible);
+		List<LocalDate> days = java.util.stream.Stream.concat(flexible.keySet().stream(), hardTss.keySet().stream())
+				.distinct().sorted().toList();
+		double rate = easyTssPerMinute();
+		for (LocalDate day : days) {
+			int excessTss = windowTss(day, flexible, hardTss, beforeTss, fixed) - capTss;
+			if (excessTss <= 0) {
+				continue;
+			}
+			int excess = (int) Math.ceil(excessTss / rate);
+			List<LocalDate> candidates = flexible.keySet().stream()
+					.filter(x -> !x.equals(longDay) && !fixed.containsKey(x) && !x.isAfter(day)
+							&& !x.isBefore(day.minusDays(6)))
+					.sorted(Comparator.comparing((LocalDate x) -> flexible.get(x)).reversed()).toList();
+			for (LocalDate candidate : candidates) {
+				excess -= cut(flexible, original, candidate, excess);
+			}
+			if (excess > 0 && flexible.containsKey(longDay) && !longDay.isAfter(day) && !longDay.isBefore(day.minusDays(6))) {
+				cut(flexible, original, longDay, excess);
+			}
+		}
+		flexible.replaceAll((day, minutes) -> Math.min(minutes, floorToQuarterHour(minutes) < MIN_CAPPED_RIDE
+				? minutes : floorToQuarterHour(minutes)));
+	}
+
+	/** Belastung (TSS) im 7-Tage-Fenster bis day; lockere Tage mit der Belastung lockerer Grundlage */
+	private static int windowTss(LocalDate day, java.util.Map<LocalDate, Integer> flexible,
+			java.util.Map<LocalDate, Integer> hardTss, java.util.Map<LocalDate, Integer> beforeTss,
+			java.util.Map<LocalDate, Integer> fixed) {
+		double sum = 0;
+		double rate = easyTssPerMinute();
+		for (int back = 0; back < 7; back++) {
+			LocalDate x = day.minusDays(back);
+			if (fixed.containsKey(x)) {
+				sum += fixed.get(x) * FIXED_TSS_PER_MINUTE;
+			} else if (flexible.containsKey(x) || hardTss.containsKey(x)) {
+				sum += flexible.getOrDefault(x, 0) * rate + hardTss.getOrDefault(x, 0);
+			} else {
+				sum += beforeTss.getOrDefault(x, 0);
+			}
+		}
+		return (int) Math.round(sum);
+	}
+
+	/** TSS je Minute lockerer Grundlage (aus der Bibliothek, 2 h) */
+	private static double easyTssPerMinute() {
+		return EASY_TSS_PER_MINUTE;
+	}
+
+	private static final double EASY_TSS_PER_MINUTE = WorkoutLibrary.endurance(120).getTss() / 120.0;
 
 	/** Kürzt einen lockeren Tag um höchstens excess, aber nicht unter MIN_CAPPED_RIDE (oder was er ohnehin hatte) */
 	private static int cut(java.util.Map<LocalDate, Integer> flexible, java.util.Map<LocalDate, Integer> original,

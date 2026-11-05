@@ -102,6 +102,22 @@ final class LoopSimulation {
 		}
 		Map<LocalDate, Integer> actualTssByDay = new HashMap<>();
 		actual.forEach((day, minutes) -> actualTssByDay.put(day, (int) (minutes * PRE_HISTORY_TSS_PER_MINUTE)));
+		// Zusatzfahrten außerhalb des Plans (wie ExtraRide in der App): Pendeln auch schon in der Vorgeschichte
+		Map<LocalDate, Integer> extraMinutes = new HashMap<>();
+		Map<LocalDate, Integer> extraTss = new HashMap<>();
+		Map<LocalDate, Integer> floorTss = new HashMap<>();
+		if (type.commuteMinutes() > 0) {
+			for (int back = 1; back <= 42; back++) {
+				LocalDate day = start.minusDays(back);
+				if (day.getDayOfWeek().getValue() <= 5) {
+					// auch in Minuten und Belastung der Vorgeschichte – wie in echten Daten
+					extraMinutes.put(day, type.commuteMinutes());
+					extraTss.put(day, (int) (type.commuteMinutes() * EASY_TSS_PER_MINUTE));
+					actual.merge(day, type.commuteMinutes(), Integer::sum);
+					actualTssByDay.merge(day, (int) (type.commuteMinutes() * EASY_TSS_PER_MINUTE), Integer::sum);
+				}
+			}
+		}
 		// Fitness und Ermüdung entstehen aus der Vorgeschichte (Start auf Level-Niveau, dann 6 Wochen Training)
 		double ctl = PlanSimulation.startFitness(profile.level());
 		double atl = ctl;
@@ -133,8 +149,11 @@ final class LoopSimulation {
 			Map<LocalDate, Integer> daily = new HashMap<>(actual);
 			floor.forEach((day, minutes) -> daily.merge(day, minutes, Math::max));
 			LocalDate dataStart = start.minusDays(42);
+			Map<LocalDate, Integer> dailyTss = new HashMap<>(actualTssByDay);
+			floorTss.forEach((day, tss) -> dailyTss.merge(day, tss, Math::max));
 			PlanHistory history = new PlanHistory(monday, pastWeeks, reentryMonday, reentryWeeks, monday,
-					new PlanHistory.Week(0, 0, 0, 0, 0), daily, dataStart, recoveryDays, Map.of());
+					new PlanHistory.Week(0, 0, 0, 0, 0), daily, dataStart, recoveryDays, Map.of())
+					.withLoad(new PlanHistory.Load(dailyTss, new HashMap<>(extraMinutes), new HashMap<>(extraTss)));
 			List<PlannedWorkout> plan = GENERATOR.generateSeason(athlete, start, weekAvailability, List.of(), horizon,
 					history);
 			List<PlannedWorkout> week = new ArrayList<>(plan.stream()
@@ -209,9 +228,13 @@ final class LoopSimulation {
 					if (w == type.raceWeek() && day.getDayOfWeek() == DayOfWeek.SATURDAY) {
 						minutes = RACE_MINUTES;
 						tss = (int) (RACE_MINUTES * RACE_TSS_PER_MINUTE);
+						extraMinutes.merge(day, minutes, Integer::sum);
+						extraTss.merge(day, tss, Integer::sum);
 					} else if (type.isVacation(w)) {
 						minutes = VACATION_MINUTES_PER_DAY;
 						tss = (int) (minutes * EASY_TSS_PER_MINUTE);
+						extraMinutes.merge(day, minutes, Integer::sum);
+						extraTss.merge(day, tss, Integer::sum);
 					} else if (planned != null) {
 						boolean missed = random.nextDouble() < type.missRate()
 								|| weekday && random.nextDouble() < type.weekdayMissRate();
@@ -229,11 +252,14 @@ final class LoopSimulation {
 							ADAPTATION.adaptAfter(planned, upcoming);
 						} else {
 							floor.put(day, (int) Math.min(workout.getDurationInMinutes() * 0.7, 140));
+							floorTss.put(day, (int) Math.min(workout.getTss() * 0.7, 110));
 						}
 					}
 					if (weekday && type.commuteMinutes() > 0 && w != type.travelWeek()) {
 						minutes += type.commuteMinutes();
 						tss += (int) (type.commuteMinutes() * EASY_TSS_PER_MINUTE);
+						extraMinutes.merge(day, type.commuteMinutes(), Integer::sum);
+						extraTss.merge(day, (int) (type.commuteMinutes() * EASY_TSS_PER_MINUTE), Integer::sum);
 					}
 				}
 				actual.put(day, minutes);
@@ -295,8 +321,9 @@ final class LoopSimulation {
 			Phase phase = phases.get(i);
 			LocalDate monday = start.plusWeeks(i);
 			boolean load = phase == Phase.BASE || phase == Phase.BUILD || phase == Phase.PEAK;
-			if (load && i >= 3) {
-				double before = weeks.subList(i - 3, i).stream().mapToInt(Week::actualMinutes).average().orElse(0);
+			if (load && i >= 1) {
+				double before = weeks.subList(Math.max(0, i - 3), i).stream().mapToInt(Week::actualMinutes).average()
+						.orElse(0);
 				load = weeks.get(i).actualMinutes() > before * 0.75;
 			}
 			if (load) {
