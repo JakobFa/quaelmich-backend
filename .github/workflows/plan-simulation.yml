@@ -13,6 +13,11 @@ on:
 permissions:
   contents: write
 
+# nicht gleichzeitig mit der Plan-Optimierung auf plan-reports schreiben
+concurrency:
+  group: plan-reports
+  cancel-in-progress: false
+
 jobs:
   simulate:
     runs-on: ubuntu-latest
