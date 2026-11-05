@@ -255,7 +255,7 @@ public class TrainingPlanService {
 				.map(PlannedWorkout::getDate).collect(Collectors.toSet());
 		return new PlanHistory(thisMonday, weeks, reentry, reentry == null ? 0 : plan.getReentryWeeks(), today,
 				currentWeek, daily, dataStart, recoveryDays, fixed,
-				new PlanHistory.DoneHard(hardDays, hardTypes, ftpTestDays));
+				new PlanHistory.DoneHard(hardDays, hardTypes, ftpTestDays)).withLoad(loadOf(plan, allRides, today));
 	}
 
 	/**
@@ -305,6 +305,60 @@ public class TrainingPlanService {
 			result.put(day, excused.contains(day) ? done : Math.max(done, floor));
 		}
 		return result;
+	}
+
+	/** Ausgelassene Einheiten zählen bei der Belastung höchstens mit so viel TSS (wie bei den Minuten 2:20 h) */
+	static final int MAX_SKIPPED_FLOOR_TSS = 110;
+
+	/**
+	 * Belastung (TSS) je vergangenem Tag – wie dailyMinutes, aber mit der Trainingslast: gefahrene Einheiten mit ihrem
+	 * TSS (geschätzt, wenn er fehlt), Zusatzfahrten aller Sportarten, ausgelassene ohne Krankheit zu 70 % des
+	 * Geplanten. Dazu die Zusatzfahrten außerhalb des Plans je Tag (Minuten nur Rad, TSS alle Sportarten).
+	 */
+	private PlanHistory.Load loadOf(TrainingPlan plan, List<ExtraRide> rides, LocalDate today) {
+		Map<LocalDate, Integer> actual = new java.util.HashMap<>();
+		Map<LocalDate, Integer> planned = new java.util.HashMap<>();
+		Set<LocalDate> excused = new java.util.HashSet<>();
+		for (PlannedWorkout workout : plan.getWorkouts()) {
+			if (!workout.getDate().isBefore(today)) {
+				continue;
+			}
+			var resolved = library.resolve(workout.getWorkoutId(), workout.getDurationMinutes()).orElseThrow();
+			planned.merge(workout.getDate(), resolved.getTss(), Integer::sum);
+			if (workout.getSkipReason() == SkipReason.SICK || workout.getSkipReason() == SkipReason.INJURED
+					|| workout.getSkipReason() == SkipReason.PAUSE) {
+				excused.add(workout.getDate());
+			} else if (workout.getSkipReason() == null && workout.getActivityId() != null) {
+				actual.merge(workout.getDate(), workout.getActualTss() != null ? workout.getActualTss()
+						: workout.getActualDurationMinutes() != null ? estimateTss(workout.getActualDurationMinutes())
+								: resolved.getTss(), Integer::sum);
+			} else if (workout.getSkipReason() == null && workout.isCompleted()) {
+				actual.merge(workout.getDate(), resolved.getTss(), Integer::sum);
+			}
+		}
+		Map<LocalDate, Integer> extraMinutes = new java.util.HashMap<>();
+		Map<LocalDate, Integer> extraTss = new java.util.HashMap<>();
+		for (ExtraRide ride : rides) {
+			if (ride.getDate() == null || !ride.getDate().isBefore(today)) {
+				continue;
+			}
+			int tss = ride.getTss() != null ? ride.getTss()
+					: ride.getDurationMinutes() == null ? 0 : estimateTss(ride.getDurationMinutes());
+			actual.merge(ride.getDate(), tss, Integer::sum);
+			extraTss.merge(ride.getDate(), tss, Integer::sum);
+			if ((ride.getSport() == null || ride.getSport() == Sport.RIDE) && ride.getDurationMinutes() != null) {
+				extraMinutes.merge(ride.getDate(), ride.getDurationMinutes(), Integer::sum);
+			}
+		}
+		Map<LocalDate, Integer> dailyTss = new java.util.HashMap<>();
+		Set<LocalDate> days = new java.util.HashSet<>(actual.keySet());
+		days.addAll(planned.keySet());
+		for (LocalDate day : days) {
+			int done = actual.getOrDefault(day, 0);
+			int floor = (int) Math.min(planned.getOrDefault(day, 0) * SKIPPED_SHARE, MAX_SKIPPED_FLOOR_TSS);
+			dailyTss.put(day, excused.contains(day) ? done : Math.max(done, floor));
+		}
+		return new PlanHistory.Load(dailyTss, extraMinutes, extraTss);
 	}
 
 	/**
