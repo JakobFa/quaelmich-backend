@@ -6,28 +6,7 @@ Jeder Fahrer (19 Profile) wird mit jedem Typ (10) kombiniert. Jeden Montag rechn
 
 ## Änderungen gegenüber der Vornacht
 
-- Leistung, 19 h, Ultra 900 km | planmäßig: hart 0 → 0, Warnungen 5 → 4
-- Leistung, 9 h, Gravel vorne, kurzfristig | planmäßig: hart 0 → 0, Warnungen 1 → 0
-- Leistung, 15 h, Ultra auf Zeit | Übererfüller (+25 %): hart 0 → 0, Warnungen 13 → 15
-- Leistung, 19 h, Ultra 900 km | Übererfüller (+25 %): hart 0 → 0, Warnungen 18 → 16
-- Leistung, 9 h, Gravel vorne, kurzfristig | Übererfüller (+25 %): hart 0 → 0, Warnungen 1 → 0
-- Ambitioniert, 8 h, Straßenrennen | Wochenend-Fahrer (unter der Woche oft nicht): hart 0 → 0, Warnungen 11 → 8
-- Hobby, 6 h, Gran Fondo | Urlaub mit viel Fahren (Woche 6–7): hart 0 → 0, Warnungen 4 → 3
-- Leistung, 19 h, Ultra 900 km | Rennen mittendrin (Woche 8, 10 h): hart 0 → 0, Warnungen 6 → 5
-- Leistung, 9 h, Gravel vorne, kurzfristig | Rennen mittendrin (Woche 8, 10 h): hart 0 → 0, Warnungen 1 → 0
-- Hobby, 7 h, Zeitfahren | Start nach Off-Season: hart 0 → 0, Warnungen 3 → 4
-- Hobby, 5 h, nur am Wochenende, Bikepacking | Start nach Off-Season: hart 0 → 0, Warnungen 3 → 4
-- Einsteigerin, 3 h, erste 100 km | Lange Krankheit (Woche 7, 12 Tage): hart 0 → 0, Warnungen 2 → 0
-- Hobby, 7 h, Zeitfahren | Lange Krankheit (Woche 7, 12 Tage): hart 0 → 0, Warnungen 2 → 3
-- Leistung, 19 h, Ultra 900 km | Reisewoche ohne Zeit (Woche 5): hart 0 → 0, Warnungen 10 → 9
-- Leistung, 9 h, Gravel vorne, kurzfristig | Reisewoche ohne Zeit (Woche 5): hart 0 → 0, Warnungen 1 → 0
-- Einsteigerin, 3 h, erste 100 km | Schichtdienst (Zeit wechselt wöchentlich): hart 0 → 0, Warnungen 5 → 4
-- Hobby, 6 h, Gran Fondo | Schichtdienst (Zeit wechselt wöchentlich): hart 0 → 0, Warnungen 4 → 5
-- Hobby, 7 h, Zeitfahren | Schichtdienst (Zeit wechselt wöchentlich): hart 0 → 0, Warnungen 3 → 4
-- Hobby, 5 h, nur am Wochenende, Bikepacking | Schichtdienst (Zeit wechselt wöchentlich): hart 0 → 0, Warnungen 6 → 7
-- Ambitioniert, 8 h, FTP steigern | Schichtdienst (Zeit wechselt wöchentlich): hart 0 → 0, Warnungen 4 → 3
-- Einsteiger, 3 h, fit bleiben | Schichtdienst (Zeit wechselt wöchentlich): hart 0 → 0, Warnungen 4 → 3
-- Ambitioniert, 6 h, fit bleiben | Schichtdienst (Zeit wechselt wöchentlich): hart 0 → 0, Warnungen 13 → 14
+Keine.
 
 ## Je Fahrer-Typ
 
@@ -1694,22 +1673,23 @@ Jeder Fahrer (19 Profile) wird mit jedem Typ (10) kombiniert. Jeden Montag rechn
 
 ## Zufallssuche (Kurzfassung – ganze Liste in fuzz-latest.md)
 
-76800 zufällige Fahrer in 1503 s (Startwert-Basis 20761 = 2026-11-04). 4 (0.0 %) mit harten Befunden, 64580 (84.1 %) mit Warnungen, 15 Arten von Befunden.
+70000 zufällige Fahrer in 1505 s (Startwert-Basis 20762 = 2026-11-05). 10 (0.0 %) mit harten Befunden, 58789 (84.0 %) mit Warnungen, 16 Arten von Befunden.
 
 | Art | Fahrer | Anteil | Vorkommen | kürzestes Beispiel |
 |---|---|---|---|---|
-| HART: Frische bis # TSB gefallen | 4 | 0.0 % | 5 | Startwert 20761115496: Woche ab 2027-02-22: Frische bis -63 TSB gefallen (Grenze -60) |
-| geplant # TSS, #-mal so viel wie zuletzt gefahren | 40213 | 52.4 % | 209289 | Startwert 20761089877: Woche ab 2026-11-16: geplant 120 TSS, 1.7-mal so viel wie zuletzt gefahren (69/Woche) |
-| Frische bis # TSB gefallen | 33262 | 43.3 % | 94450 | Startwert 20761062750: Woche ab 2026-11-09: Frische bis -38 TSB gefallen (Warnung ab -35, selbst verursacht) |
-| # × … – eintönig | 21337 | 27.8 % | 100971 | Startwert 20761063302: Woche ab 2026-11-09: 5 × "Lockeres Ausrollen 30 min" – eintönig |
-| # Belastungswochen am Stück | 15661 | 20.4 % | 17140 | Startwert 20761063004: Woche ab 2026-11-30: 5 Belastungswochen am Stück |
-| harte Einheit am Tag nach # min geplant | 3609 | 4.7 % | 22355 | Startwert 20761066579: 2026-11-09: harte Einheit (Schwelle 3 × 10) am Tag nach 195 min geplant |
-| nach dem Rennen keine Entlastung in den # Wochen danach | 3159 | 4.1 % | 3159 | Startwert 20761064104: nach dem Rennen (Woche ab 2026-11-09) keine Entlastung in den 2 Wochen danach |
-| Fitness steigt um # CTL | 2446 | 3.2 % | 4632 | Startwert 20761084865: Woche ab 2026-11-16: Fitness steigt um 8.4 CTL (Grenze 8) |
-| nach dem Urlaub keine Entlastung in den # Wochen danach | 2392 | 3.1 % | 2392 | Startwert 20761071486: nach dem Urlaub (Woche ab 2026-11-09) keine Entlastung in den 2 Wochen danach |
-| Event-Tag: Frische # TSB passt nicht zum Ziel COMPETE | 2213 | 2.9 % | 2213 | Startwert 20761063307: Event-Tag: Frische -16 TSB passt nicht zum Ziel COMPETE |
-| Event-Tag: Frische # TSB passt nicht zum Ziel GOOD_TIME | 2161 | 2.8 % | 2161 | Startwert 20761062564: Event-Tag: Frische -22 TSB passt nicht zum Ziel GOOD_TIME |
-| nach # Tagen Krankheit # min geplant, mehr als davor | 1755 | 2.3 % | 1755 | Startwert 20761088529: Woche ab 2026-11-30: nach 7 Tagen Krankheit 647 min geplant, mehr als davor (507) |
-| Event-Tag: Frische # TSB passt nicht zum Ziel FINISH | 529 | 0.7 % | 529 | Startwert 20761062524: Event-Tag: Frische -21 TSB passt nicht zum Ziel FINISH |
-| Erholungswoche direkt vor dem Tapering | 491 | 0.6 % | 491 | Startwert 20761064450: Woche ab 2026-11-16: Erholungswoche direkt vor dem Tapering |
-| zwei Erholungswochen hintereinander, obwohl die erste ruhig gefahren wurde | 127 | 0.2 % | 128 | Startwert 20761066502: Woche ab 2026-11-30: zwei Erholungswochen hintereinander, obwohl die erste ruhig gefahren wurde |
+| HART: Frische bis # TSB gefallen | 9 | 0.0 % | 11 | Startwert 20762121244: Woche ab 2027-01-04: Frische bis -61 TSB gefallen (Grenze -60) |
+| HART: # Belastungswochen am Stück | 1 | 0.0 % | 1 | Startwert 20762091174: Woche ab 2026-12-14: 7 Belastungswochen am Stück |
+| geplant # TSS, #-mal so viel wie zuletzt gefahren | 36339 | 51.9 % | 189002 | Startwert 20762069593: Woche ab 2026-11-16: geplant 78 TSS, 1.5-mal so viel wie zuletzt gefahren (51/Woche) |
+| Frische bis # TSB gefallen | 30192 | 43.1 % | 85633 | Startwert 20762062302: Woche ab 2026-11-09: Frische bis -35 TSB gefallen (Warnung ab -35, selbst verursacht) |
+| # × … – eintönig | 19528 | 27.9 % | 92492 | Startwert 20762063640: Woche ab 2026-11-09: 4 × "Lockeres Ausrollen 30 min" – eintönig |
+| # Belastungswochen am Stück | 14265 | 20.4 % | 15542 | Startwert 20762062404: Woche ab 2026-11-30: 5 Belastungswochen am Stück |
+| harte Einheit am Tag nach # min geplant | 3206 | 4.6 % | 20076 | Startwert 20762071287: 2026-11-09: harte Einheit (VO2max 3 × 13 × 30/15) am Tag nach 180 min geplant |
+| nach dem Rennen keine Entlastung in den # Wochen danach | 2867 | 4.1 % | 2867 | Startwert 20762062882: nach dem Rennen (Woche ab 2026-11-09) keine Entlastung in den 2 Wochen danach |
+| Fitness steigt um # CTL | 2203 | 3.1 % | 4271 | Startwert 20762080629: Woche ab 2026-11-16: Fitness steigt um 8.1 CTL (Grenze 8) |
+| nach dem Urlaub keine Entlastung in den # Wochen danach | 2189 | 3.1 % | 2189 | Startwert 20762069148: nach dem Urlaub (Woche ab 2026-11-09) keine Entlastung in den 2 Wochen danach |
+| Event-Tag: Frische # TSB passt nicht zum Ziel COMPETE | 2009 | 2.9 % | 2009 | Startwert 20762062997: Event-Tag: Frische -10 TSB passt nicht zum Ziel COMPETE |
+| Event-Tag: Frische # TSB passt nicht zum Ziel GOOD_TIME | 1990 | 2.8 % | 1990 | Startwert 20762062302: Event-Tag: Frische -25 TSB passt nicht zum Ziel GOOD_TIME |
+| nach # Tagen Krankheit # min geplant, mehr als davor | 1536 | 2.2 % | 1536 | Startwert 20762063802: Woche ab 2026-11-30: nach 7 Tagen Krankheit 143 min geplant, mehr als davor (99) |
+| Event-Tag: Frische # TSB passt nicht zum Ziel FINISH | 523 | 0.7 % | 523 | Startwert 20762064577: Event-Tag: Frische -19 TSB passt nicht zum Ziel FINISH |
+| Erholungswoche direkt vor dem Tapering | 464 | 0.7 % | 464 | Startwert 20762064489: Woche ab 2026-11-16: Erholungswoche direkt vor dem Tapering |
+| zwei Erholungswochen hintereinander, obwohl die erste ruhig gefahren wurde | 100 | 0.1 % | 100 | Startwert 20762099517: Woche ab 2026-12-14: zwei Erholungswochen hintereinander, obwohl die erste ruhig gefahren wurde |

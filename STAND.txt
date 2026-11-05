@@ -1,1 +1,1 @@
-Stand: 2026-11-04 (Commit fa857a6462ad33c35f7af9c3cc6dc8a5602db277 von main)
+Stand: 2026-11-05 (Commit 85621b52f1a13a895fee6ab4c6bbbd9370f9d729 von main)
