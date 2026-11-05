@@ -252,6 +252,23 @@ public class PlannedWorkoutController {
 	public record ActivityConfirmation(boolean matchesPlan) {
 	}
 
+	/** startedAt: Start der Aufzeichnung im Player */
+	public record PlayerRide(@jakarta.validation.constraints.NotNull java.time.Instant startedAt) {
+	}
+
+	/**
+	 * Im Player gefahren: das Workout ist erledigt, die Fahrt dazu wird beim nächsten Abgleich über die Startzeit
+	 * zugeordnet und gilt ohne Nachfrage als bestätigt. 404, wenn das Workout fremd ist.
+	 */
+	@PutMapping(path = "/planned-workouts/{id}/player-ride")
+	public ResponseEntity<PlannedWorkoutResponse> riddenInPlayer(@AuthenticationPrincipal Jwt jwt,
+			@PathVariable Long id, @Valid @RequestBody PlayerRide ride) {
+		Long userId = CurrentUser.id(jwt);
+		return plannedWorkoutService.riddenInPlayer(id, userId, ride.startedAt())
+				.map(planned -> ResponseEntity.ok(mapper.toResponse(planned)))
+				.orElse(ResponseEntity.notFound().build());
+	}
+
 	/**
 	 * "War das das geplante Training?" Ja = bestätigt; Nein = die Fahrt wird zur Zusatzfahrt und das Workout
 	 * ist wieder offen. 404, wenn keine Fahrt verknüpft ist oder das Workout fremd ist.

@@ -44,10 +44,22 @@ public final class StravaDescription {
 
 	/**
 	 * Alles, was im Block steht. heartRateMode: Ziele als Pulszone statt % FTP; accuracyScore null = nicht
-	 * auswertbar; rating null = noch nicht bewertet.
+	 * auswertbar; rating null = noch nicht bewertet; rampTest = Ergebnis eines FTP-Tests (sonst null).
 	 */
 	public record Content(Workout workout, Phase phase, int week, boolean heartRateMode, Integer actualMinutes,
-			Integer actualTss, Integer accuracyScore, boolean accuracyUncertain, Integer rating) {
+			Integer actualTss, Integer accuracyScore, boolean accuracyUncertain, Integer rating,
+			RampTest.Result rampTest) {
+
+		public Content(Workout workout, Phase phase, int week, boolean heartRateMode, Integer actualMinutes,
+				Integer actualTss, Integer accuracyScore, boolean accuracyUncertain, Integer rating) {
+			this(workout, phase, week, heartRateMode, actualMinutes, actualTss, accuracyScore, accuracyUncertain,
+					rating, null);
+		}
+	}
+
+	/** Titel für einen FTP-Test mit Ergebnis, z. B. "Rampentest · FTP 305 W" */
+	public static String rampTestTitle(String workoutTitle, RampTest.Result result) {
+		return workoutTitle + " · FTP " + result.ftp() + " W";
 	}
 
 	private StravaDescription() {
@@ -57,6 +69,11 @@ public final class StravaDescription {
 		Workout workout = content.workout();
 		List<String> lines = new ArrayList<>();
 		lines.add(START);
+		if (content.rampTest() != null) {
+			// das Wichtigste beim Test ganz oben
+			lines.add("Neue FTP: " + content.rampTest().ftp() + " W (75 % der besten Minute, "
+					+ content.rampTest().bestMinuteWatts() + " W)");
+		}
 		String type = TYPE_LABELS.get(workout.getType());
 		lines.add(workout.getTitle().contains(type) ? workout.getTitle() : workout.getTitle() + " (" + type + ")");
 		lines.add(PHASE_LABELS.get(content.phase()) + " · Woche " + content.week());
