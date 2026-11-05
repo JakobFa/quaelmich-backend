@@ -1,0 +1,80 @@
+# Sucht jeden Tag bessere Stellschrauben (PlanParameters) für den Trainingsplan: erfundene, planfolgende
+# Zufallsfahrer, Fitness-Ermüdungs-Modell, Bergsteigen mit Neustarts (gut 4 Stunden). Jeder Lauf macht beim besten
+# Satz bisher weiter (optimization-best.txt), so wird über die Tage weitergesucht. Der Bericht ist ein Vorschlag,
+# keine Änderung – übernommen wird nur nach sportlicher Prüfung per PR. Ablage: optimization-latest.md auf plan-reports.
+name: Plan-Optimierung
+
+on:
+  schedule:
+    - cron: '0 21 * * *' # täglich 21:00 UTC, fertig vor der Freigabe (02:00) und der Plan-Simulation (04:30)
+  workflow_dispatch:
+    inputs:
+      budgetSeconds:
+        description: 'Suchzeit in Sekunden'
+        default: '15000'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: plan-reports
+  cancel-in-progress: false
+
+jobs:
+  optimize:
+    runs-on: ubuntu-latest
+    timeout-minutes: 340
+    steps:
+      - name: Code auschecken (main = live)
+        uses: actions/checkout@v4
+        with:
+          ref: main
+
+      - name: Java 25 einrichten
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 25
+
+      - name: Gradle einrichten (mit Cache)
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Besten Satz bisher holen
+        run: |
+          git fetch -q origin plan-reports || true
+          git show origin/plan-reports:optimization-best.txt > /tmp/optimization-best.txt 2>/dev/null \
+            || rm -f /tmp/optimization-best.txt
+
+      - name: Stellschrauben suchen
+        run: >
+          ./gradlew optimizePlan -PbudgetSeconds=${{ inputs.budgetSeconds || '15000' }} -PtrainRiders=600
+          -PholdoutRiders=2000 $( [ -f /tmp/optimization-best.txt ] && echo -PstartFrom=/tmp/optimization-best.txt )
+
+      - name: Bericht auf den Branch plan-reports schreiben
+        run: |
+          set -e
+          DATE=$(date -u +%F)
+          cp build/plan-optimization.md /tmp/optimization-latest.md
+          cp build/plan-optimization-best.txt /tmp/optimization-best-new.txt
+          LINE="$DATE	$(grep -m1 '^Änderungen:' build/plan-optimization.md | sed 's/^Änderungen: //')	$(grep -m1 '^\*\*Ergebnis' build/plan-optimization.md | sed 's/\*//g')"
+          git config user.name "plan-optimization"
+          git config user.email "actions@users.noreply.github.com"
+          for attempt in 1 2 3; do
+            git fetch origin plan-reports
+            git checkout -q -B plan-reports origin/plan-reports
+            cp /tmp/optimization-latest.md optimization-latest.md
+            cp /tmp/optimization-best-new.txt optimization-best.txt
+            echo "$LINE" >> optimization-history.tsv
+            git add optimization-latest.md optimization-best.txt optimization-history.tsv
+            git commit -q -m "Plan-Optimierung $DATE" || { echo "keine Änderung"; break; }
+            git push origin plan-reports && break
+            git reset -q --hard origin/plan-reports
+          done
+
+      - name: Bericht hochladen
+        uses: actions/upload-artifact@v4
+        with:
+          name: plan-optimization
+          path: |
+            build/plan-optimization.md
+            build/plan-optimization-best.txt
