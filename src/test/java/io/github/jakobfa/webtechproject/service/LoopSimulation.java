@@ -102,17 +102,13 @@ final class LoopSimulation {
 		}
 		Map<LocalDate, Integer> actualTssByDay = new HashMap<>();
 		actual.forEach((day, minutes) -> actualTssByDay.put(day, (int) (minutes * PRE_HISTORY_TSS_PER_MINUTE)));
-		// Zusatzfahrten außerhalb des Plans (wie ExtraRide in der App): Pendeln auch schon in der Vorgeschichte
-		Map<LocalDate, Integer> extraMinutes = new HashMap<>();
-		Map<LocalDate, Integer> extraTss = new HashMap<>();
+		// Pendeln (außerhalb des Plans, wie ExtraRide in der App) auch schon in der Vorgeschichte
 		Map<LocalDate, Integer> floorTss = new HashMap<>();
 		if (type.commuteMinutes() > 0) {
 			for (int back = 1; back <= 42; back++) {
 				LocalDate day = start.minusDays(back);
 				if (day.getDayOfWeek().getValue() <= 5) {
 					// auch in Minuten und Belastung der Vorgeschichte – wie in echten Daten
-					extraMinutes.put(day, type.commuteMinutes());
-					extraTss.put(day, (int) (type.commuteMinutes() * EASY_TSS_PER_MINUTE));
 					actual.merge(day, type.commuteMinutes(), Integer::sum);
 					actualTssByDay.merge(day, (int) (type.commuteMinutes() * EASY_TSS_PER_MINUTE), Integer::sum);
 				}
@@ -153,7 +149,7 @@ final class LoopSimulation {
 			floorTss.forEach((day, tss) -> dailyTss.merge(day, tss, Math::max));
 			PlanHistory history = new PlanHistory(monday, pastWeeks, reentryMonday, reentryWeeks, monday,
 					new PlanHistory.Week(0, 0, 0, 0, 0), daily, dataStart, recoveryDays, Map.of())
-					.withLoad(new PlanHistory.Load(dailyTss, new HashMap<>(extraMinutes), new HashMap<>(extraTss)));
+					.withLoad(new PlanHistory.Load(dailyTss));
 			List<PlannedWorkout> plan = GENERATOR.generateSeason(athlete, start, weekAvailability, List.of(), horizon,
 					history);
 			List<PlannedWorkout> week = new ArrayList<>(plan.stream()
@@ -228,13 +224,9 @@ final class LoopSimulation {
 					if (w == type.raceWeek() && day.getDayOfWeek() == DayOfWeek.SATURDAY) {
 						minutes = RACE_MINUTES;
 						tss = (int) (RACE_MINUTES * RACE_TSS_PER_MINUTE);
-						extraMinutes.merge(day, minutes, Integer::sum);
-						extraTss.merge(day, tss, Integer::sum);
 					} else if (type.isVacation(w)) {
 						minutes = VACATION_MINUTES_PER_DAY;
 						tss = (int) (minutes * EASY_TSS_PER_MINUTE);
-						extraMinutes.merge(day, minutes, Integer::sum);
-						extraTss.merge(day, tss, Integer::sum);
 					} else if (planned != null) {
 						boolean missed = random.nextDouble() < type.missRate()
 								|| weekday && random.nextDouble() < type.weekdayMissRate();
@@ -258,8 +250,6 @@ final class LoopSimulation {
 					if (weekday && type.commuteMinutes() > 0 && w != type.travelWeek()) {
 						minutes += type.commuteMinutes();
 						tss += (int) (type.commuteMinutes() * EASY_TSS_PER_MINUTE);
-						extraMinutes.merge(day, type.commuteMinutes(), Integer::sum);
-						extraTss.merge(day, (int) (type.commuteMinutes() * EASY_TSS_PER_MINUTE), Integer::sum);
 					}
 				}
 				actual.put(day, minutes);
