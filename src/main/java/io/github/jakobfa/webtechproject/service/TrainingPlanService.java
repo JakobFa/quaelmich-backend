@@ -248,9 +248,10 @@ public class TrainingPlanService {
 				}
 			}
 		}
-		// schon feststehende FTP-Tests ab heute (selbst gewählt): der Tag davor bleibt frei
+		// schon feststehende FTP-Tests ab gestern (selbst gewählt oder gefahren): der Tag davor bleibt frei, der Tag
+		// danach ohne Einlagen
 		java.util.Set<LocalDate> ftpTestDays = plan.getWorkouts().stream()
-				.filter(workout -> !workout.getDate().isBefore(today) && isKept(workout)
+				.filter(workout -> !workout.getDate().isBefore(today.minusDays(1)) && isKept(workout)
 						&& workout.getSkipReason() == null && workout.getWorkoutId() != null
 						&& workout.getWorkoutId() == WorkoutLibrary.FTP_TEST)
 				.map(PlannedWorkout::getDate).collect(Collectors.toSet());
@@ -427,7 +428,7 @@ public class TrainingPlanService {
 				return;
 			}
 			PlanHistory history = historyOf(plan);
-			Integer fingerprint = java.util.Objects.hash(history.weeks(), history.currentWeek(), history.dailyMinutes(), history.fixedMinutes(),
+			Integer fingerprint = java.util.Objects.hash(PlanGenerator.RULES_VERSION, history.weeks(), history.currentWeek(), history.dailyMinutes(), history.fixedMinutes(),
 					history.doneHard(),
 					history.reentryMonday(), history.reentryWeeks());
 			if (fingerprint.equals(plan.getActualsFingerprint())) {

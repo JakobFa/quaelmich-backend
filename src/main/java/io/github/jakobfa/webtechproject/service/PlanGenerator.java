@@ -90,6 +90,12 @@ public class PlanGenerator {
 	static final double FEW_HOURS = 6;
 	static final double MANY_HOURS = 10;
 
+	/**
+	 * Erhöhen, wenn sich die Regeln des Plans ändern: Bestehende Pläne werden sonst erst bei der nächsten neuen Fahrt
+	 * neu gerechnet, weil der Abgleich nur auf neue Daten schaut.
+	 */
+	public static final int RULES_VERSION = 2;
+
 	/** Frühestens so viele Wochen nach dem letzten FTP-Test kommt der nächste */
 	static final int FTP_TEST_EVERY_WEEKS = 6;
 
@@ -400,12 +406,14 @@ public class PlanGenerator {
 				trainingDays = trainingDays.stream().filter(day -> !day.isBefore(history.today())).toList();
 			}
 			// Laufende Woche: Waren die Tage davor alle Trainingstage, muss unter den restlichen ein Ruhetag sein –
-			// sonst gäbe es in dieser Woche gar keinen
+			// sonst gäbe es in dieser Woche gar keinen. Eine kurze Fahrt (z. B. zur Arbeit) macht aus einem Ruhetag
+			// keinen Trainingstag.
 			int trainedBefore = 0;
 			java.util.Set<LocalDate> fixedDays = java.util.Set.of();
 			if (currentWeek) {
 				for (LocalDate day = monday; day.isBefore(history.today()); day = day.plusDays(1)) {
-					if (history.dailyMinutes().getOrDefault(day, 0) > 0) {
+					if (history.dailyMinutes().getOrDefault(day, 0) >= MIN_CAPPED_RIDE
+							|| history.doneHard().days().contains(day)) {
 						trainedBefore++;
 					}
 				}
