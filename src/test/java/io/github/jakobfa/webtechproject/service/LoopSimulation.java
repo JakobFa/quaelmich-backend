@@ -37,6 +37,9 @@ final class LoopSimulation {
 	static final double WARN_WEEKLY_CTL_RAMP = PlanSimulation.WARN_WEEKLY_CTL_RAMP;
 	static final int WARN_MAX_LOAD_WEEKS = 4;
 	static final double WARN_PLANNED_ACWR = 1.5;
+	/** Zurück auf eine zuletzt schon gefahrene Woche ist kein Lastsprung: Gewarnt wird erst darüber */
+	static final double WARN_ABOVE_BEST_WEEK = 1.1;
+	static final int BEST_WEEK_LOOKBACK = 6;
 	static final int WARN_SAME_WORKOUT_PER_WEEK = 4;
 	static final int BIG_DAY_MINUTES = 180;
 	static final int OPEN_WEEKS = 16;
@@ -183,10 +186,11 @@ final class LoopSimulation {
 				}
 			});
 			double recentActualTss = averageWeeklyTss(actualTssByDay, monday, 4);
+			int bestRecentWeek = bestWeeklyTss(actualTssByDay, monday, BEST_WEEK_LOOKBACK);
 			if (w >= 2 && recentActualTss > 50 && plannedTss > recentActualTss * WARN_PLANNED_ACWR
-					&& !history.isReentryWeek(monday)) {
-				warnings.add("Woche ab %s: geplant %d TSS, %.1f-mal so viel wie zuletzt gefahren (%.0f/Woche)"
-						.formatted(monday, plannedTss, plannedTss / recentActualTss, recentActualTss));
+					&& plannedTss > bestRecentWeek * WARN_ABOVE_BEST_WEEK && !history.isReentryWeek(monday)) {
+				warnings.add("Woche ab %s: geplant %d TSS, %.1f-mal so viel wie zuletzt gefahren (%.0f/Woche, beste Woche %d)"
+						.formatted(monday, plannedTss, plannedTss / recentActualTss, recentActualTss, bestRecentWeek));
 			}
 
 			// Die Woche fahren
@@ -409,6 +413,19 @@ final class LoopSimulation {
 			sum += tssByDay.getOrDefault(monday.minusDays(back), 0);
 		}
 		return sum / (double) weeks;
+	}
+
+	/** Die stärkste der letzten Wochen vor monday */
+	private static int bestWeeklyTss(Map<LocalDate, Integer> tssByDay, LocalDate monday, int weeks) {
+		int best = 0;
+		for (int week = 0; week < weeks; week++) {
+			int sum = 0;
+			for (int back = 1; back <= 7; back++) {
+				sum += tssByDay.getOrDefault(monday.minusDays(week * 7L + back), 0);
+			}
+			best = Math.max(best, sum);
+		}
+		return best;
 	}
 
 	private static Set<LocalDate> sickDays(RiderType type, LocalDate start, int weeks, Random random) {
