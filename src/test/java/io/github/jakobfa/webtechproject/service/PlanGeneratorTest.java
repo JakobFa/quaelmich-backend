@@ -851,6 +851,30 @@ class PlanGeneratorTest {
 		assertThat(plannedMinutes(commuting, monday)).isGreaterThanOrEqualTo(plannedMinutes(plain, monday));
 	}
 
+	@Test
+	void aShortRideOnTheRestDayDoesNotForceAnotherRestDay() {
+		Athlete athlete = ultraRider();
+		athlete.getAvailability().setWednesday(2.0);
+		LocalDate monday = MONDAY.plusWeeks(1);
+		LocalDate friday = monday.plusDays(4);
+
+		assertThat(ridesOn(athlete, monday, friday, 14)).as("kurze Fahrt am Mittwoch: Freitag wird gefahren").isOne();
+		assertThat(ridesOn(athlete, monday, friday, 90)).as("echtes Training am Mittwoch: Freitag ist der Ruhetag")
+				.isZero();
+	}
+
+	private long ridesOn(Athlete athlete, LocalDate monday, LocalDate day, int wednesdayMinutes) {
+		Map<LocalDate, Integer> minutes = new java.util.HashMap<>(weeksBefore(monday, 600, 600, 600, 600, 600, 600));
+		minutes.put(monday, 90);
+		minutes.put(monday.plusDays(1), 90);
+		minutes.put(monday.plusDays(2), wednesdayMinutes);
+		minutes.put(monday.plusDays(3), 90);
+		PlanHistory history = new PlanHistory(monday, Map.of(), null, 0, day, new PlanHistory.Week(600, 300, 0), minutes,
+				monday.minusDays(42));
+		return generator.generateSeason(athlete, MONDAY, Map.of(), List.of(), null, history).stream()
+				.filter(planned -> planned.getDate().equals(day)).count();
+	}
+
 	private long plannedDays(List<PlannedWorkout> plan, LocalDate monday) {
 		return plan.stream().filter(p -> !p.getDate().isBefore(monday) && p.getDate().isBefore(monday.plusWeeks(1)))
 				.map(PlannedWorkout::getDate).distinct().count();
