@@ -272,7 +272,7 @@ Verteilung über den ganzen Plan: 87 % locker, 11 % mittel, 3 % hart
 | 1 | BASE | 13.6 | 644 | 767 / 35 / 13 | 300 min | Di. Sweet Spot 4 × 8 (80), Do. Rampentest (47) |
 | 2 | BASE | 14.1 | 679 | 712 / 132 / 3 | 300 min | Di. Sweet Spot 3 × 12 (67), Do. Tempo mit Antritten 3 × 12 (67) |
 | 3 | BASE | 15.3 | 724 | 829 / 75 / 16 | 300 min | Di. Tempo 3 × 20 (91), Do. VO2max 3 × 8 × 40/20 (91) |
-| 4 | RECOVERY | 7.8 | 336 | 464 / 0 / 0 | 210 min |  |
+| 4 | RECOVERY | 7.5 | 330 | 449 / 0 / 0 | 210 min |  |
 | 5 | BASE | 15.8 | 750 | 832 / 118 / 0 | 300 min | Di. Tempo 3 × 20 (91), Do. Sweet Spot 5 × 8 (94) |
 | 6 | BASE | 16.3 | 785 | 813 / 167 / 0 | 300 min | Di. Kraftausdauer 4 × 8 (97), Do. Tempo 3 × 25 (109) |
 | 7 | BASE | 16.8 | 804 | 908 / 75 / 26 | 300 min | Di. Tempo 3 × 25 (109), Do. VO2max 5 × 5 (109) |
