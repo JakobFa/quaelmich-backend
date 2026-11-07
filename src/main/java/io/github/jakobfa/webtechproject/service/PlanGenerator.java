@@ -94,7 +94,7 @@ public class PlanGenerator {
 	 * Erhöhen, wenn sich die Regeln des Plans ändern: Bestehende Pläne werden sonst erst bei der nächsten neuen Fahrt
 	 * neu gerechnet, weil der Abgleich nur auf neue Daten schaut.
 	 */
-	public static final int RULES_VERSION = 2;
+	public static final int RULES_VERSION = 3;
 
 	/** Frühestens so viele Wochen nach dem letzten FTP-Test kommt der nächste */
 	static final int FTP_TEST_EVERY_WEEKS = 6;
@@ -489,6 +489,9 @@ public class PlanGenerator {
 							week.doneHardDays(), week.focus(), week.ftpTestDays(), week.specialties());
 					planned = planWeek(availability, trainingDays, week);
 				}
+			}
+			if (phase == Phase.RECOVERY) {
+				planned = withinRecoveryLimit(planned, plan, history, monday, week, availability, trainingDays);
 			}
 			plan.addAll(planned);
 			if (phase == Phase.RECOVERY) {
@@ -1855,6 +1858,100 @@ public class PlanGenerator {
 
 	/** Eine progressive lange Ausfahrt braucht mindestens so viel Zeit (eine Stunde Steigerung plus Rahmen) */
 	static final int PROGRESSIVE_LONG_RIDE_MIN_MINUTES = 210;
+
+	/** So viele Belastungswochen vor einer Erholungswoche dienen als Vergleich */
+	static final int RECOVERY_REFERENCE_WEEKS = 3;
+
+	/**
+	 * Eine Erholungswoche soll leichter sein als die Wochen davor. Die kurze Qualitätseinheit und Grundlage statt
+	 * Ausrollen schon ab 45 min sollen sie nicht zu stark abfallen lassen – bei wenig Zeit sind die Belastungswochen
+	 * aber schon auf kurzes Ausrollen gekürzt, und dann wäre die Erholungswoche schwerer. Liegt sie über der Grenze
+	 * (die Belastung der Wochen davor mal recoveryAcuteRatio, und die Obergrenze aus dem Gefahrenen, wo bekannt),
+	 * werden erst die kurzen lockeren Fahrten wieder Ausrollen, dann fällt auch die Qualitätseinheit weg.
+	 */
+	private List<PlannedWorkout> withinRecoveryLimit(List<PlannedWorkout> planned, List<PlannedWorkout> plan,
+			PlanHistory history, LocalDate monday, WeekPlan week, WeeklyAvailability availability,
+			List<LocalDate> trainingDays) {
+		double limit = week.rolling() == null ? Integer.MAX_VALUE : week.rolling().weeklyCapTss();
+		// Vergleich: was in den Belastungswochen davor geplant war – für vergangene Wochen der damalige Plan
+		List<Integer> loads = new ArrayList<>();
+		for (int back = 1; back <= RECOVERY_REFERENCE_WEEKS; back++) {
+			LocalDate start = monday.minusWeeks(back);
+			PlanHistory.Week past = history.weeks().get(start);
+			if (past != null && past.plannedTss() > 0) {
+				if (!history.recoveryDays().contains(start)) {
+					loads.add(past.plannedTss());
+				}
+				continue;
+			}
+			List<PlannedWorkout> generated = plan.stream().filter(p -> !p.getDate().isBefore(start)
+					&& p.getDate().isBefore(start.plusWeeks(1))).toList();
+			if (!generated.isEmpty() && isLoadPhase(generated.getFirst().getPhase())) {
+				loads.add(tssOf(generated));
+			}
+		}
+		java.util.OptionalDouble before = loads.stream().mapToInt(Integer::intValue).average();
+		if (before.isPresent()) {
+			limit = Math.min(limit, before.getAsDouble() * p().recoveryAcuteRatio());
+		}
+		if (tssOf(planned) <= limit) {
+			return planned;
+		}
+		List<PlannedWorkout> lighter = withoutRepeats(shortRidesAsRecovery(planned));
+		if (tssOf(lighter) <= limit) {
+			return lighter;
+		}
+		if (!week.hardWorkouts().isEmpty()) {
+			WeekPlan withoutTouch = new WeekPlan(week.phase(), week.weekIndex(), week.step(), week.volume(),
+					week.longRideMinutes(), week.tempoLongRide(), List.of(), week.rolling(), week.backToBack(),
+					week.doneHardDays(), week.focus(), week.ftpTestDays(), week.specialties());
+			lighter = withoutRepeats(shortRidesAsRecovery(planWeek(availability, trainingDays, withoutTouch)));
+			if (tssOf(lighter) <= limit) {
+				return lighter;
+			}
+		}
+		// sind die Belastungswochen selbst nur kurzes Ausrollen: dann wenigstens kürzer
+		return withoutRepeats(lighter.stream().map(ride -> {
+			Workout workout = library.resolve(ride.getWorkoutId(), ride.getDurationMinutes()).orElseThrow();
+			return workout.getType() == WorkoutType.RECOVERY && workout.getDurationInMinutes() > MIN_RECOVERY_RIDE
+					? new PlannedWorkout(ride.getDate(), WorkoutLibrary.recovery(MIN_RECOVERY_RIDE),
+							MIN_RECOVERY_RIDE, ride.getPhase())
+					: ride;
+		}).toList());
+	}
+
+	/** Kürzeste Ausrollfahrt (wie in easyWorkout) */
+	static final int MIN_RECOVERY_RIDE = 30;
+	/** Höchstens so oft dieselbe lockere Fahrt in einer Erholungswoche, sonst lieber ein freier Tag mehr */
+	static final int MAX_SAME_EASY_RIDES = 3;
+
+	/** Dieselbe Ausrollfahrt öfter als MAX_SAME_EASY_RIDES: die späteren fallen weg (Erholung: ein Tag frei mehr) */
+	private List<PlannedWorkout> withoutRepeats(List<PlannedWorkout> week) {
+		Map<String, Integer> seen = new java.util.HashMap<>();
+		return week.stream().filter(ride -> {
+			Workout workout = library.resolve(ride.getWorkoutId(), ride.getDurationMinutes()).orElseThrow();
+			return workout.getType() != WorkoutType.RECOVERY
+					|| seen.merge(workout.getTitle(), 1, Integer::sum) <= MAX_SAME_EASY_RIDES;
+		}).toList();
+	}
+
+	/** Lockere Fahrten unter einer Stunde (auch mit Antritten) werden Ausrollen, wie in Belastungswochen */
+	private List<PlannedWorkout> shortRidesAsRecovery(List<PlannedWorkout> week) {
+		return week.stream().map(planned -> {
+			Workout workout = library.resolve(planned.getWorkoutId(), planned.getDurationMinutes()).orElseThrow();
+			if (workout.getType() != WorkoutType.ENDURANCE || workout.getDurationInMinutes() >= 60) {
+				return planned;
+			}
+			int minutes = workout.getDurationInMinutes();
+			return new PlannedWorkout(planned.getDate(), WorkoutLibrary.recovery(minutes), minutes,
+					planned.getPhase());
+		}).toList();
+	}
+
+	private int tssOf(List<PlannedWorkout> week) {
+		return week.stream().mapToInt(planned -> library.resolve(planned.getWorkoutId(), planned.getDurationMinutes())
+				.orElseThrow().getTss()).sum();
+	}
 
 	/** Grundlage ab einer Stunde, sonst lockeres Ausrollen (mindestens 30 min, nie mehr als verfügbar) */
 	private PlannedWorkout easyWorkout(LocalDate day, int minutes, int available, Phase phase) {
