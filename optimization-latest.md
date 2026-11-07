@@ -2,22 +2,22 @@
 
 Sucht Stellschrauben, mit denen planfolgende Zufallsfahrer laut Fitness-Ermüdungs-Modell am Ziel-Tag in besserer Form sind – ohne mehr Befunde. **Vorschlag, keine Änderung:** übernehmen nur nach sportlicher Prüfung. Das Modell ist eine Annahme, keine Messung an echten Menschen.
 
-735 Parameter-Sätze bewertet in 254 min (Trainings-Satz 600 Fahrer, Prüf-Satz 2000).
+958 Parameter-Sätze bewertet in 253 min (Trainings-Satz 600 Fahrer, Prüf-Satz 2000).
 
-**Ergebnis: Kein belastbarer Vorteil gegenüber den App-Werten.**
+**Ergebnis: Vorschlag ist auch auf dem Prüf-Satz besser.**
 
-Änderungen: loadWeeksPerBlock 3 → 4, volumeStep 0.05 → 0.06, recoveryVolume 0.6 → 0.8, recoveryAcuteRatio 0.75 → 0.8, acuteChronicRatio 1.18 → 1.14, restedBlockRatio 0.9 → 0.85, spikeRatio 1.35 → 1.45, spikeMinExtraMinutes 90 → 30, maxLoadWeeksWithoutRecovery 6 → 5, memoryWeeklyDecay 0.95 → 0.94, taperWeeks 2 → 3
+Änderungen: loadWeeksPerBlock 3 → 4, volumeStep 0.05 → 0.02, recoveryVolume 0.6 → 0.5, recoveryAcuteRatio 0.75 → 0.9, acuteChronicRatio 1.18 → 1.13, restedBlockRatio 0.9 → 0.75, spikeRatio 1.35 → 1.5, spikeMinExtraMinutes 90 → 30, maxLoadWeeksWithoutRecovery 6 → 5, memoryWeeklyDecay 0.95 → 0.93, taperWeeks 2 → 3
 
 | | App-Werte | Vorschlag |
 |---|---|---|
-| Gesamtwert Trainings-Satz | 10.94 | 16.56 |
-| Gesamtwert Prüf-Satz | 5.91 | 8.71 |
-| Form-Zuwachs im Mittel (Prüf-Satz) | 14.77 | 16.84 |
-| schwächste 10 % (Prüf-Satz) | -12.25 | -11.29 |
-| Überlastung im Mittel (Prüf-Satz) | 0.21 | 0.07 |
-| Warnungen je Fahrer (Prüf-Satz) | 2.52 | 2.41 |
+| Gesamtwert Trainings-Satz | 10.94 | 16.70 |
+| Gesamtwert Prüf-Satz | 5.91 | 8.65 |
+| Form-Zuwachs im Mittel (Prüf-Satz) | 14.77 | 17.21 |
+| schwächste 10 % (Prüf-Satz) | -12.25 | -11.11 |
+| Überlastung im Mittel (Prüf-Satz) | 0.21 | 0.05 |
+| Warnungen je Fahrer (Prüf-Satz) | 2.52 | 2.95 |
 | harte Befunde je Fahrer (alle Zufallsfahrer) | 0.00 | 0.00 |
-| Warnungen je Fahrer (alle Zufallsfahrer) | 5.84 | 5.28 |
+| Warnungen je Fahrer (alle Zufallsfahrer) | 5.84 | 5.94 |
 
 ## Was jede Stellschraube bewirkt (Prüf-Satz, ausgehend von den App-Werten)
 
@@ -37,23 +37,23 @@ Sucht Stellschrauben, mit denen planfolgende Zufallsfahrer laut Fitness-Ermüdun
 
 ## Verlauf der Suche
 
-- 3: 11.66 – restedBlockRatio 0.9 → 1, taperWeeks 2 → 3
-- 7: 11.85 – volumeStep 0.05 → 0.07, restedBlockRatio 0.9 → 1, taperWeeks 2 → 3
-- 9: 12.43 – volumeStep 0.05 → 0.07, recoveryVolume 0.6 → 0.55, restedBlockRatio 0.9 → 1, spikeRatio 1.35 → 1.45, taperWeeks 2 → 3
-- 12: 13.90 – volumeStep 0.05 → 0.07, recoveryVolume 0.6 → 0.55, acuteChronicRatio 1.18 → 1.15, spikeRatio 1.35 → 1.45, taperWeeks 2 → 3
-- 26: 14.07 – volumeStep 0.05 → 0.07, recoveryVolume 0.6 → 0.55, acuteChronicRatio 1.18 → 1.15, spikeRatio 1.35 → 1.45, memoryWeeklyDecay 0.95 → 0.94, taperWeeks 2 → 3
-- 29: 14.20 – volumeStep 0.05 → 0.07, recoveryVolume 0.6 → 0.55, acuteChronicRatio 1.18 → 1.15, spikeRatio 1.35 → 1.45, spikeMinExtraMinutes 90 → 60, memoryWeeklyDecay 0.95 → 0.94, taperWeeks 2 → 3
-- 38: 14.30 – volumeStep 0.05 → 0.07, recoveryVolume 0.6 → 0.55, recoveryAcuteRatio 0.75 → 0.8, acuteChronicRatio 1.18 → 1.15, spikeRatio 1.35 → 1.45, spikeMinExtraMinutes 90 → 45, memoryWeeklyDecay 0.95 → 0.94, taperWeeks 2 → 3
-- 53: 14.45 – volumeStep 0.05 → 0.07, recoveryVolume 0.6 → 0.55, recoveryAcuteRatio 0.75 → 0.8, acuteChronicRatio 1.18 → 1.15, spikeRatio 1.35 → 1.45, spikeMinExtraMinutes 90 → 45, memoryWeeklyDecay 0.95 → 0.92, taperWeeks 2 → 3
-- 64: 14.61 – volumeStep 0.05 → 0.07, recoveryVolume 0.6 → 0.55, recoveryAcuteRatio 0.75 → 0.8, acuteChronicRatio 1.18 → 1.15, restedBlockRatio 0.9 → 0.8, spikeRatio 1.35 → 1.4, spikeMinExtraMinutes 90 → 45, memoryWeeklyDecay 0.95 → 0.92, taperWeeks 2 → 3
-- 71: 14.73 – volumeStep 0.05 → 0.07, recoveryVolume 0.6 → 0.65, recoveryAcuteRatio 0.75 → 0.8, acuteChronicRatio 1.18 → 1.15, restedBlockRatio 0.9 → 0.8, spikeRatio 1.35 → 1.4, spikeMinExtraMinutes 90 → 45, memoryWeeklyDecay 0.95 → 0.92, taperWeeks 2 → 3
-- 83: 14.83 – volumeStep 0.05 → 0.07, recoveryVolume 0.6 → 0.65, recoveryAcuteRatio 0.75 → 0.8, acuteChronicRatio 1.18 → 1.15, restedBlockRatio 0.9 → 0.8, spikeRatio 1.35 → 1.4, spikeMinExtraMinutes 90 → 30, memoryWeeklyDecay 0.95 → 0.92, taperWeeks 2 → 3
-- 84: 15.09 – volumeStep 0.05 → 0.07, recoveryVolume 0.6 → 0.65, recoveryAcuteRatio 0.75 → 0.8, acuteChronicRatio 1.18 → 1.14, restedBlockRatio 0.9 → 0.8, spikeRatio 1.35 → 1.4, spikeMinExtraMinutes 90 → 30, memoryWeeklyDecay 0.95 → 0.92, taperWeeks 2 → 3
-- 101: 15.20 – volumeStep 0.05 → 0.07, recoveryVolume 0.6 → 0.65, recoveryAcuteRatio 0.75 → 0.8, acuteChronicRatio 1.18 → 1.14, restedBlockRatio 0.9 → 0.75, spikeRatio 1.35 → 1.4, spikeMinExtraMinutes 90 → 30, memoryWeeklyDecay 0.95 → 0.92, taperWeeks 2 → 3
-- 117: 15.26 – volumeStep 0.05 → 0.06, recoveryVolume 0.6 → 0.65, recoveryAcuteRatio 0.75 → 0.8, acuteChronicRatio 1.18 → 1.14, restedBlockRatio 0.9 → 0.75, spikeRatio 1.35 → 1.4, spikeMinExtraMinutes 90 → 30, memoryWeeklyDecay 0.95 → 0.92, taperWeeks 2 → 3
-- 146: 15.65 – loadWeeksPerBlock 3 → 4, volumeStep 0.05 → 0.06, recoveryVolume 0.6 → 0.75, recoveryAcuteRatio 0.75 → 0.8, acuteChronicRatio 1.18 → 1.14, restedBlockRatio 0.9 → 0.75, spikeRatio 1.35 → 1.4, spikeMinExtraMinutes 90 → 30, maxLoadWeeksWithoutRecovery 6 → 5, memoryWeeklyDecay 0.95 → 0.92, taperWeeks 2 → 3
-- 159: 15.86 – loadWeeksPerBlock 3 → 4, volumeStep 0.05 → 0.06, recoveryVolume 0.6 → 0.8, recoveryAcuteRatio 0.75 → 0.8, acuteChronicRatio 1.18 → 1.14, restedBlockRatio 0.9 → 0.75, spikeRatio 1.35 → 1.4, spikeMinExtraMinutes 90 → 30, maxLoadWeeksWithoutRecovery 6 → 5, memoryWeeklyDecay 0.95 → 0.92, taperWeeks 2 → 3
-- 175: 15.94 – loadWeeksPerBlock 3 → 4, volumeStep 0.05 → 0.06, recoveryVolume 0.6 → 0.8, recoveryAcuteRatio 0.75 → 0.8, acuteChronicRatio 1.18 → 1.14, restedBlockRatio 0.9 → 0.75, spikeRatio 1.35 → 1.45, spikeMinExtraMinutes 90 → 30, maxLoadWeeksWithoutRecovery 6 → 5, memoryWeeklyDecay 0.95 → 0.92, taperWeeks 2 → 3
-- 180: 16.04 – loadWeeksPerBlock 3 → 4, volumeStep 0.05 → 0.06, recoveryVolume 0.6 → 0.8, recoveryAcuteRatio 0.75 → 0.8, acuteChronicRatio 1.18 → 1.14, restedBlockRatio 0.9 → 0.85, spikeRatio 1.35 → 1.55, spikeMinExtraMinutes 90 → 30, maxLoadWeeksWithoutRecovery 6 → 5, memoryWeeklyDecay 0.95 → 0.92, taperWeeks 2 → 3
-- 183: 16.27 – loadWeeksPerBlock 3 → 4, volumeStep 0.05 → 0.06, recoveryVolume 0.6 → 0.8, recoveryAcuteRatio 0.75 → 0.8, acuteChronicRatio 1.18 → 1.14, restedBlockRatio 0.9 → 0.85, spikeRatio 1.35 → 1.6, spikeMinExtraMinutes 90 → 30, maxLoadWeeksWithoutRecovery 6 → 5, memoryWeeklyDecay 0.95 → 0.94, taperWeeks 2 → 3
-- 220: 16.56 – loadWeeksPerBlock 3 → 4, volumeStep 0.05 → 0.06, recoveryVolume 0.6 → 0.8, recoveryAcuteRatio 0.75 → 0.8, acuteChronicRatio 1.18 → 1.14, restedBlockRatio 0.9 → 0.85, spikeRatio 1.35 → 1.45, spikeMinExtraMinutes 90 → 30, maxLoadWeeksWithoutRecovery 6 → 5, memoryWeeklyDecay 0.95 → 0.94, taperWeeks 2 → 3
+- 2: 11.20 – maxLoadWeeksWithoutRecovery 6 → 7, memoryWeeklyDecay 0.95 → 0.93
+- 6: 11.33 – recoveryVolume 0.6 → 0.5, spikeRatio 1.35 → 1.3, maxLoadWeeksWithoutRecovery 6 → 7, memoryWeeklyDecay 0.95 → 0.93
+- 10: 11.43 – volumeStep 0.05 → 0.07, recoveryVolume 0.6 → 0.5, spikeRatio 1.35 → 1.3, maxLoadWeeksWithoutRecovery 6 → 7, memoryWeeklyDecay 0.95 → 0.93
+- 14: 13.56 – volumeStep 0.05 → 0.07, recoveryVolume 0.6 → 0.5, restedBlockRatio 0.9 → 0.85, spikeRatio 1.35 → 1.3, maxLoadWeeksWithoutRecovery 6 → 7, memoryWeeklyDecay 0.95 → 0.93, taperWeeks 2 → 3
+- 18: 13.78 – volumeStep 0.05 → 0.07, recoveryVolume 0.6 → 0.5, recoveryAcuteRatio 0.75 → 0.8, restedBlockRatio 0.9 → 0.85, spikeRatio 1.35 → 1.3, maxLoadWeeksWithoutRecovery 6 → 7, memoryWeeklyDecay 0.95 → 0.93, taperWeeks 2 → 3
+- 19: 13.84 – volumeStep 0.05 → 0.06, recoveryVolume 0.6 → 0.5, recoveryAcuteRatio 0.75 → 0.8, restedBlockRatio 0.9 → 0.85, spikeRatio 1.35 → 1.3, maxLoadWeeksWithoutRecovery 6 → 7, memoryWeeklyDecay 0.95 → 0.93, taperWeeks 2 → 3
+- 22: 14.12 – volumeStep 0.05 → 0.06, recoveryVolume 0.6 → 0.5, recoveryAcuteRatio 0.75 → 0.8, restedBlockRatio 0.9 → 0.85, spikeRatio 1.35 → 1.3, spikeMinExtraMinutes 90 → 105, maxLoadWeeksWithoutRecovery 6 → 7, memoryWeeklyDecay 0.95 → 0.93, taperWeeks 2 → 3
+- 34: 14.56 – loadWeeksPerBlock 3 → 4, volumeStep 0.05 → 0.06, recoveryVolume 0.6 → 0.5, recoveryAcuteRatio 0.75 → 0.8, restedBlockRatio 0.9 → 0.85, spikeRatio 1.35 → 1.3, spikeMinExtraMinutes 90 → 105, maxLoadWeeksWithoutRecovery 6 → 5, memoryWeeklyDecay 0.95 → 0.93, taperWeeks 2 → 3
+- 41: 15.14 – loadWeeksPerBlock 3 → 4, volumeStep 0.05 → 0.06, recoveryVolume 0.6 → 0.5, recoveryAcuteRatio 0.75 → 0.8, acuteChronicRatio 1.18 → 1.16, restedBlockRatio 0.9 → 0.85, spikeRatio 1.35 → 1.3, spikeMinExtraMinutes 90 → 105, maxLoadWeeksWithoutRecovery 6 → 5, memoryWeeklyDecay 0.95 → 0.93, taperWeeks 2 → 3
+- 43: 15.33 – loadWeeksPerBlock 3 → 4, volumeStep 0.05 → 0.06, recoveryVolume 0.6 → 0.5, recoveryAcuteRatio 0.75 → 0.8, acuteChronicRatio 1.18 → 1.16, restedBlockRatio 0.9 → 0.85, spikeRatio 1.35 → 1.3, spikeMinExtraMinutes 90 → 120, maxLoadWeeksWithoutRecovery 6 → 5, memoryWeeklyDecay 0.95 → 0.93, taperWeeks 2 → 3
+- 53: 15.80 – loadWeeksPerBlock 3 → 4, volumeStep 0.05 → 0.06, recoveryVolume 0.6 → 0.5, recoveryAcuteRatio 0.75 → 0.8, acuteChronicRatio 1.18 → 1.13, restedBlockRatio 0.9 → 0.85, spikeRatio 1.35 → 1.3, spikeMinExtraMinutes 90 → 120, maxLoadWeeksWithoutRecovery 6 → 5, memoryWeeklyDecay 0.95 → 0.93, taperWeeks 2 → 3
+- 60: 15.91 – loadWeeksPerBlock 3 → 4, volumeStep 0.05 → 0.06, recoveryVolume 0.6 → 0.55, recoveryAcuteRatio 0.75 → 0.8, acuteChronicRatio 1.18 → 1.13, restedBlockRatio 0.9 → 0.85, spikeRatio 1.35 → 1.4, spikeMinExtraMinutes 90 → 120, maxLoadWeeksWithoutRecovery 6 → 5, memoryWeeklyDecay 0.95 → 0.93, taperWeeks 2 → 3
+- 81: 15.98 – loadWeeksPerBlock 3 → 4, volumeStep 0.05 → 0.06, recoveryVolume 0.6 → 0.55, recoveryAcuteRatio 0.75 → 0.85, acuteChronicRatio 1.18 → 1.13, restedBlockRatio 0.9 → 0.85, spikeRatio 1.35 → 1.4, spikeMinExtraMinutes 90 → 120, maxLoadWeeksWithoutRecovery 6 → 5, memoryWeeklyDecay 0.95 → 0.93, taperWeeks 2 → 3
+- 97: 16.10 – loadWeeksPerBlock 3 → 4, volumeStep 0.05 → 0.06, recoveryVolume 0.6 → 0.55, recoveryAcuteRatio 0.75 → 0.9, acuteChronicRatio 1.18 → 1.13, restedBlockRatio 0.9 → 0.85, spikeRatio 1.35 → 1.4, spikeMinExtraMinutes 90 → 120, maxLoadWeeksWithoutRecovery 6 → 5, memoryWeeklyDecay 0.95 → 0.93, taperWeeks 2 → 3
+- 139: 16.20 – loadWeeksPerBlock 3 → 4, volumeStep 0.05 → 0.06, recoveryVolume 0.6 → 0.55, recoveryAcuteRatio 0.75 → 0.9, acuteChronicRatio 1.18 → 1.13, restedBlockRatio 0.9 → 0.85, spikeMinExtraMinutes 90 → 45, maxLoadWeeksWithoutRecovery 6 → 5, taperWeeks 2 → 3
+- 145: 16.34 – loadWeeksPerBlock 3 → 4, volumeStep 0.05 → 0.06, recoveryVolume 0.6 → 0.45, recoveryAcuteRatio 0.75 → 0.9, acuteChronicRatio 1.18 → 1.13, restedBlockRatio 0.9 → 0.85, spikeRatio 1.35 → 1.4, spikeMinExtraMinutes 90 → 45, maxLoadWeeksWithoutRecovery 6 → 5, taperWeeks 2 → 3
+- 175: 16.41 – loadWeeksPerBlock 3 → 4, volumeStep 0.05 → 0.04, recoveryVolume 0.6 → 0.45, recoveryAcuteRatio 0.75 → 0.9, acuteChronicRatio 1.18 → 1.13, restedBlockRatio 0.9 → 0.85, spikeRatio 1.35 → 1.55, spikeMinExtraMinutes 90 → 45, maxLoadWeeksWithoutRecovery 6 → 5, taperWeeks 2 → 3
+- 183: 16.54 – loadWeeksPerBlock 3 → 4, volumeStep 0.05 → 0.02, recoveryVolume 0.6 → 0.5, recoveryAcuteRatio 0.75 → 0.9, acuteChronicRatio 1.18 → 1.13, restedBlockRatio 0.9 → 0.75, spikeRatio 1.35 → 1.55, spikeMinExtraMinutes 90 → 45, maxLoadWeeksWithoutRecovery 6 → 5, taperWeeks 2 → 3
+- 185: 16.65 – loadWeeksPerBlock 3 → 4, volumeStep 0.05 → 0.02, recoveryVolume 0.6 → 0.5, recoveryAcuteRatio 0.75 → 0.9, acuteChronicRatio 1.18 → 1.13, restedBlockRatio 0.9 → 0.75, spikeRatio 1.35 → 1.55, spikeMinExtraMinutes 90 → 45, maxLoadWeeksWithoutRecovery 6 → 5, memoryWeeklyDecay 0.95 → 0.93, taperWeeks 2 → 3
+- 679: 16.70 – loadWeeksPerBlock 3 → 4, volumeStep 0.05 → 0.02, recoveryVolume 0.6 → 0.5, recoveryAcuteRatio 0.75 → 0.9, acuteChronicRatio 1.18 → 1.13, restedBlockRatio 0.9 → 0.75, spikeRatio 1.35 → 1.5, spikeMinExtraMinutes 90 → 30, maxLoadWeeksWithoutRecovery 6 → 5, memoryWeeklyDecay 0.95 → 0.93, taperWeeks 2 → 3
