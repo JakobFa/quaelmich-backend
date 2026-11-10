@@ -136,6 +136,64 @@ public class PlanAdaptationService {
 		next.setAdjustmentNote(note);
 	}
 
+	/**
+	 * Hat der Plan diese Einheit nach einer zu harten Fahrt selbst leichter gemacht? Nur diese Anpassungen werden
+	 * neu bewertet; selbst Gewähltes und die Anpassungen nach Krankheit oder Pause bleiben stehen.
+	 */
+	static boolean isAutomaticRideAdjustment(PlannedWorkout planned) {
+		String note = planned.getAdjustmentNote();
+		return note != null && note.startsWith("Angepasst: Am ") && note.endsWith("mehr Erholung.")
+				&& !planned.isChosenByUser() && !planned.isCompleted() && planned.getActivityId() == null
+				&& planned.getSkipReason() == null;
+	}
+
+	/**
+	 * Nimmt die automatischen Anpassungen nach Fahrten ab heute zurück (das ursprüngliche Workout kehrt wieder).
+	 * Danach rechnet der Plan neu und {@link #reevaluate} prüft die Fahrten nach den aktuellen Regeln.
+	 */
+	public void revertAutomaticAdjustments(List<PlannedWorkout> all, LocalDate today) {
+		all.stream().filter(planned -> !planned.getDate().isBefore(today))
+				.filter(PlanAdaptationService::isAutomaticRideAdjustment).forEach(planned -> {
+					if (planned.getOriginalWorkoutId() != null) {
+						planned.setWorkoutId(planned.getOriginalWorkoutId());
+						planned.setDurationMinutes(planned.getOriginalDurationMinutes());
+					}
+					planned.setOriginalWorkoutId(null);
+					planned.setOriginalDurationMinutes(null);
+					planned.setOriginalTitle(null);
+					planned.setAdjustmentNote(null);
+				});
+	}
+
+	/**
+	 * Prüft die Fahrten, die noch auf kommende Tage wirken können (die letzten zwei Tage bis heute), erneut nach
+	 * den aktuellen Regeln: War eine Fahrt nach neuer Rechnung gar nicht zu hart, bleibt die Einheit stehen.
+	 */
+	public int reevaluate(List<PlannedWorkout> all, List<ExtraRide> rides, LocalDate today) {
+		LocalDate from = today.minusDays(DAYS_AHEAD);
+		int adjusted = 0;
+		List<PlannedWorkout> ridden = all.stream().filter(planned -> planned.getActivityId() != null)
+				.filter(planned -> !planned.getDate().isBefore(from) && !planned.getDate().isAfter(today))
+				.sorted(Comparator.comparing(PlannedWorkout::getDate)).toList();
+		for (PlannedWorkout planned : ridden) {
+			boolean before = planned.isAdaptationApplied();
+			planned.setAdaptationApplied(false);
+			boolean changed = adaptAfter(planned, all).isPresent();
+			planned.setAdaptationApplied(changed || before);
+			adjusted += changed ? 1 : 0;
+		}
+		for (ExtraRide ride : rides) {
+			if (ride.getDate() != null && !ride.getDate().isBefore(from) && !ride.getDate().isAfter(today)) {
+				boolean before = ride.isAdaptationApplied();
+				ride.setAdaptationApplied(false);
+				boolean changed = adaptAfter(ride, all).isPresent();
+				ride.setAdaptationApplied(changed || before);
+				adjusted += changed ? 1 : 0;
+			}
+		}
+		return adjusted;
+	}
+
 	private static String describeLoad(Integer tss, Integer minutes) {
 		return tss != null ? tss + " TSS" : minutes + " min";
 	}

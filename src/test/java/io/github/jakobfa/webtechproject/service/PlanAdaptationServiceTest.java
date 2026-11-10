@@ -170,4 +170,49 @@ class PlanAdaptationServiceTest {
 		assertThat(adaptation.assess(riddenEndurance(1.6))).isEqualTo(Assessment.MUCH_HARDER);
 	}
 
+
+	@Test
+	void anOldAdjustmentIsRevertedAndStaysAwayWhenTheRideWasNotTooHardAfterAll() {
+		PlannedWorkout ridden = riddenEndurance(1.0); // nach heutiger Rechnung genau wie geplant
+		PlannedWorkout sweetSpot = planned(MONDAY.plusDays(1), 5L);
+		// Zustand von früher: die Fahrt galt als zu hart, die Einheit wurde leichter gemacht
+		adaptation.adaptAfter(riddenEndurance(1.3), List.of(sweetSpot));
+		assertThat(sweetSpot.getWorkoutId()).isEqualTo(14L);
+
+		adaptation.revertAutomaticAdjustments(List.of(ridden, sweetSpot), MONDAY);
+		int adjusted = adaptation.reevaluate(List.of(ridden, sweetSpot), List.of(), MONDAY);
+
+		assertThat(adjusted).isZero();
+		assertThat(sweetSpot.getWorkoutId()).isEqualTo(5L);
+		assertThat(sweetSpot.getAdjustmentNote()).isNull();
+		assertThat(sweetSpot.getOriginalTitle()).isNull();
+	}
+
+	@Test
+	void aReallyHardRideIsAdjustedAgainAfterTheRevert() {
+		PlannedWorkout ridden = riddenEndurance(1.3);
+		PlannedWorkout sweetSpot = planned(MONDAY.plusDays(1), 5L);
+		adaptation.adaptAfter(ridden, List.of(ridden, sweetSpot));
+
+		adaptation.revertAutomaticAdjustments(List.of(ridden, sweetSpot), MONDAY);
+		assertThat(sweetSpot.getWorkoutId()).isEqualTo(5L);
+		int adjusted = adaptation.reevaluate(List.of(ridden, sweetSpot), List.of(), MONDAY);
+
+		assertThat(adjusted).isEqualTo(1);
+		assertThat(sweetSpot.getWorkoutId()).isEqualTo(14L);
+		assertThat(sweetSpot.getAdjustmentNote()).startsWith("Angepasst: Am Mo., 19.10.");
+	}
+
+	@Test
+	void choicesOfTheUserAndAbsenceAdjustmentsAreNotTouched() {
+		PlannedWorkout chosen = planned(MONDAY.plusDays(1), 5L);
+		chosen.setAdjustmentNote(PlannedWorkout.USER_CHOICE_NOTE + " getauscht.");
+		PlannedWorkout afterPause = planned(MONDAY.plusDays(2), 5L);
+		afterPause.setAdjustmentNote("Angepasst: Am Mo., 19.10. warst du krank – sanfter Wiedereinstieg.");
+
+		adaptation.revertAutomaticAdjustments(List.of(chosen, afterPause), MONDAY);
+
+		assertThat(chosen.getAdjustmentNote()).isNotNull();
+		assertThat(afterPause.getAdjustmentNote()).isNotNull();
+	}
 }
