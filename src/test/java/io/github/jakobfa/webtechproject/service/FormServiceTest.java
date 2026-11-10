@@ -57,7 +57,7 @@ class FormServiceTest {
 		var curve = service.curve(List.of(ridden, missed, skippedTomorrow, planned), List.of(commute), TODAY,
 				TODAY.plusDays(3));
 
-		assertThat(curve.days()).extracting(FormService.Day::tss).containsExactly(120, 30, 0, 0, 67, 0);
+		assertThat(curve.days()).extracting(FormService.Day::tss).containsExactly(120, 30, 0, 0, 73, 0);
 		assertThat(curve.days()).extracting(FormService.Day::planned)
 				.containsExactly(false, false, false, true, true, true);
 		assertThat(curve.today().date()).isEqualTo(TODAY);
