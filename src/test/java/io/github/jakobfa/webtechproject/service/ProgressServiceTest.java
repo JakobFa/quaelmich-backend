@@ -139,7 +139,7 @@ class ProgressServiceTest {
 
 	@Test
 	void loadCheckComparesTheLastSevenDaysWithThePlan() {
-		// geplant: 3 × Sweet Spot 3 × 12 (je 67 TSS) = 201 TSS
+		// geplant: 3 × Sweet Spot 3 × 12 (je 73 TSS, mit Normalized Power gerechnet) = 219 TSS
 		PlannedWorkout done = planned(TODAY.minusDays(5), true);
 		PlannedWorkout ridden = planned(TODAY.minusDays(3), false);
 		ridden.setActualTss(70);
@@ -154,8 +154,8 @@ class ProgressServiceTest {
 		var check = service.loadCheck(plan, java.util.List.of(done, ridden, missed, old, upcoming),
 				java.util.List.of(extra), TODAY);
 
-		assertThat(check.plannedTss()).isEqualTo(201);
-		assertThat(check.actualTss()).isEqualTo(67 + 70 + 40);
+		assertThat(check.plannedTss()).isEqualTo(219);
+		assertThat(check.actualTss()).isEqualTo(73 + 70 + 40);
 		assertThat(check.status()).isEqualTo(ProgressService.LoadStatus.ON_TRACK);
 	}
 
@@ -184,12 +184,12 @@ class ProgressServiceTest {
 		LocalDate start = TODAY; // heute gestartet, noch keine Historie
 		java.util.List<PlannedWorkout> ahead = new java.util.ArrayList<>();
 		for (int day = 0; day < 28; day += 2) {
-			ahead.add(planned(TODAY.plusDays(day), false)); // 14 × 67 TSS über 4 Wochen ≈ 234/Woche
+			ahead.add(planned(TODAY.plusDays(day), false)); // 14 × 73 TSS über 4 Wochen ≈ 255/Woche
 		}
 
 		int chronic = service.chronicWeekly(planFrom(start), ahead, java.util.List.of(), TODAY);
 
-		assertThat(chronic).as("Basis ≈ geplantes Wochenpensum").isBetween(210, 240);
+		assertThat(chronic).as("Basis ≈ geplantes Wochenpensum").isBetween(230, 260);
 		// wer am ersten Tag gleich das Doppelte fährt, bekommt eine Warnung
 		assertThat(ProgressService.statusOf(230, 470, chronic)).isEqualTo(ProgressService.LoadStatus.TOO_MUCH);
 	}
