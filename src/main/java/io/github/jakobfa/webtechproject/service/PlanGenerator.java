@@ -90,7 +90,7 @@ public class PlanGenerator {
 	 * Erhöhen, wenn sich die Regeln des Plans ändern: Bestehende Pläne werden sonst erst bei der nächsten neuen Fahrt
 	 * neu gerechnet, weil der Abgleich nur auf neue Daten schaut.
 	 */
-	public static final int RULES_VERSION = 3;
+	public static final int RULES_VERSION = 4;
 
 	/** Frühestens so viele Wochen nach dem letzten FTP-Test kommt der nächste */
 	static final int FTP_TEST_EVERY_WEEKS = 6;
