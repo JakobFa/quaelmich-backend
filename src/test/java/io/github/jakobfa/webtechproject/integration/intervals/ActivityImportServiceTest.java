@@ -493,18 +493,19 @@ class ActivityImportServiceTest {
 
 	@Test
 	void indoorRulesAreStrict() {
-		var sweetSpot = library.findById(5L).orElseThrow(); // 71 min, 67 TSS
+		var sweetSpot = library.findById(5L).orElseThrow(); // 71 min
+		int base = sweetSpot.getTss(); // geplante Last, mit Normalized Power gerechnet wie bei einer gefahrenen Fahrt
 		java.util.function.BiFunction<Integer, Integer, RecordedActivity> indoor = (minutes,
 				tss) -> new RecordedActivity("x", Sport.RIDE, java.time.LocalDateTime.parse(TODAY + "T07:00:00"),
 						minutes * 60, null, tss, false, false, false, 200, true);
 
-		assertThat(ActivityImportService.fitsIndoorExactly(indoor.apply(71, 67), sweetSpot)).isTrue();
-		assertThat(ActivityImportService.fitsIndoorExactly(indoor.apply(63, 67), sweetSpot)).as("zu kurz").isFalse();
-		assertThat(ActivityImportService.fitsIndoorExactly(indoor.apply(82, 67), sweetSpot)).as("zu lang").isFalse();
-		assertThat(ActivityImportService.fitsIndoorExactly(indoor.apply(71, 56), sweetSpot)).as("zu locker").isFalse();
-		assertThat(ActivityImportService.fitsIndoorExactly(indoor.apply(71, 78), sweetSpot)).as("zu hart").isFalse();
+		assertThat(ActivityImportService.fitsIndoorExactly(indoor.apply(71, base), sweetSpot)).isTrue();
+		assertThat(ActivityImportService.fitsIndoorExactly(indoor.apply(63, base), sweetSpot)).as("zu kurz").isFalse();
+		assertThat(ActivityImportService.fitsIndoorExactly(indoor.apply(82, base), sweetSpot)).as("zu lang").isFalse();
+		assertThat(ActivityImportService.fitsIndoorExactly(indoor.apply(71, (int) Math.round(base * 0.83)), sweetSpot)).as("zu locker").isFalse();
+		assertThat(ActivityImportService.fitsIndoorExactly(indoor.apply(71, (int) Math.round(base * 1.17)), sweetSpot)).as("zu hart").isFalse();
 		assertThat(ActivityImportService.fitsIndoorExactly(new RecordedActivity("x", Sport.RIDE,
-				java.time.LocalDateTime.parse(TODAY + "T07:00:00"), 71 * 60, null, 67, true, false, false, null, true),
+				java.time.LocalDateTime.parse(TODAY + "T07:00:00"), 71 * 60, null, base, true, false, false, null, true),
 				sweetSpot)).as("nur Puls-TSS").isFalse();
 	}
 
@@ -549,17 +550,18 @@ class ActivityImportServiceTest {
 
 	@Test
 	void fitRulesAtTheBorders() {
-		var sweetSpot = library.findById(5L).orElseThrow(); // 71 min, 67 TSS
+		var sweetSpot = library.findById(5L).orElseThrow(); // 71 min
+		int base = sweetSpot.getTss();
 		java.util.function.BiFunction<Integer, Integer, RecordedActivity> ride = (minutes, tss) -> new RecordedActivity(
 				"x", Sport.RIDE, java.time.LocalDateTime.parse(TODAY + "T07:00:00"), minutes * 60, null, tss, false,
 				false, false);
 
-		assertThat(ActivityImportService.fitsWorkout(ride.apply(57, 67), sweetSpot)).isTrue();
-		assertThat(ActivityImportService.fitsWorkout(ride.apply(56, 67), sweetSpot)).isFalse();
-		assertThat(ActivityImportService.fitsWorkout(ride.apply(92, 67), sweetSpot)).isTrue();
-		assertThat(ActivityImportService.fitsWorkout(ride.apply(93, 67), sweetSpot)).isFalse();
-		assertThat(ActivityImportService.fitsWorkout(ride.apply(71, 50), sweetSpot)).isFalse();
-		assertThat(ActivityImportService.fitsWorkout(ride.apply(71, 91), sweetSpot)).isFalse();
+		assertThat(ActivityImportService.fitsWorkout(ride.apply(57, base), sweetSpot)).isTrue();
+		assertThat(ActivityImportService.fitsWorkout(ride.apply(56, base), sweetSpot)).isFalse();
+		assertThat(ActivityImportService.fitsWorkout(ride.apply(92, base), sweetSpot)).isTrue();
+		assertThat(ActivityImportService.fitsWorkout(ride.apply(93, base), sweetSpot)).isFalse();
+		assertThat(ActivityImportService.fitsWorkout(ride.apply(71, (int) Math.round(base * 0.74)), sweetSpot)).isFalse();
+		assertThat(ActivityImportService.fitsWorkout(ride.apply(71, (int) Math.round(base * 1.36)), sweetSpot)).isFalse();
 
 		var endurance = WorkoutLibrary.endurance(90);
 		assertThat(ActivityImportService.fitsWorkout(ride.apply(90, null), endurance))
