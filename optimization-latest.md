@@ -2,22 +2,22 @@
 
 Sucht Stellschrauben, mit denen planfolgende Zufallsfahrer laut Fitness-Ermüdungs-Modell am Ziel-Tag in besserer Form sind – ohne mehr Befunde. **Vorschlag, keine Änderung:** übernehmen nur nach sportlicher Prüfung. Das Modell ist eine Annahme, keine Messung an echten Menschen.
 
-1064 Parameter-Sätze bewertet in 253 min (Trainings-Satz 600 Fahrer, Prüf-Satz 2000).
+1524 Parameter-Sätze bewertet in 252 min (Trainings-Satz 600 Fahrer, Prüf-Satz 2000).
 
 **Ergebnis: Vorschlag ist auch auf dem Prüf-Satz besser.**
 
-Änderungen: loadWeeksPerBlock 3 → 4, volumeStep 0.05 → 0.02, recoveryAcuteRatio 0.75 → 0.6, acuteChronicRatio 1.18 → 1.05, restedBlockRatio 0.9 → 0.8, spikeRatio 1.35 → 1.2, spikeMinExtraMinutes 90 → 60, maxLoadWeeksWithoutRecovery 6 → 5, memoryWeeklyDecay 0.95 → 0.85, taperWeeks 2 → 1
+Änderungen: loadWeeksPerBlock 3 → 4, volumeStep 0.05 → 0.02, recoveryVolume 0.6 → 0.75, recoveryAcuteRatio 0.75 → 0.6, acuteChronicRatio 1.18 → 1.05, restedBlockRatio 0.9 → 0.8, spikeRatio 1.35 → 1.2, spikeMinExtraMinutes 90 → 60, maxLoadWeeksWithoutRecovery 6 → 5, memoryWeeklyDecay 0.95 → 0.85, taperWeeks 2 → 1
 
 | | App-Werte | Vorschlag |
 |---|---|---|
-| Gesamtwert Trainings-Satz | 9.30 | 17.20 |
-| Gesamtwert Prüf-Satz | 4.59 | 8.66 |
-| Form-Zuwachs im Mittel (Prüf-Satz) | 13.82 | 16.18 |
-| schwächste 10 % (Prüf-Satz) | -14.18 | -10.78 |
+| Gesamtwert Trainings-Satz | 9.30 | 17.25 |
+| Gesamtwert Prüf-Satz | 4.59 | 8.99 |
+| Form-Zuwachs im Mittel (Prüf-Satz) | 13.82 | 16.29 |
+| schwächste 10 % (Prüf-Satz) | -14.18 | -10.65 |
 | Überlastung im Mittel (Prüf-Satz) | 0.26 | 0.00 |
-| Warnungen je Fahrer (Prüf-Satz) | 1.88 | 2.13 |
+| Warnungen je Fahrer (Prüf-Satz) | 1.88 | 1.98 |
 | harte Befunde je Fahrer (alle Zufallsfahrer) | 0.00 | 0.00 |
-| Warnungen je Fahrer (alle Zufallsfahrer) | 4.53 | 4.19 |
+| Warnungen je Fahrer (alle Zufallsfahrer) | 4.53 | 4.01 |
 
 ## Was jede Stellschraube bewirkt (Prüf-Satz, ausgehend von den App-Werten)
 
@@ -37,6 +37,5 @@ Sucht Stellschrauben, mit denen planfolgende Zufallsfahrer laut Fitness-Ermüdun
 
 ## Verlauf der Suche
 
-- Start beim besten Satz bisher: 16.81 – loadWeeksPerBlock 3 → 4, recoveryVolume 0.6 → 0.75, recoveryAcuteRatio 0.75 → 0.6, acuteChronicRatio 1.18 → 1.05, restedBlockRatio 0.9 → 0.8, spikeRatio 1.35 → 1.2, spikeMinExtraMinutes 90 → 150, maxLoadWeeksWithoutRecovery 6 → 5, memoryWeeklyDecay 0.95 → 0.85, taperWeeks 2 → 1
-- 9: 16.97 – loadWeeksPerBlock 3 → 4, recoveryVolume 0.6 → 0.8, recoveryAcuteRatio 0.75 → 0.6, acuteChronicRatio 1.18 → 1.05, restedBlockRatio 0.9 → 0.8, spikeRatio 1.35 → 1.2, spikeMinExtraMinutes 90 → 150, maxLoadWeeksWithoutRecovery 6 → 5, memoryWeeklyDecay 0.95 → 0.85, taperWeeks 2 → 1
-- 751: 17.20 – loadWeeksPerBlock 3 → 4, volumeStep 0.05 → 0.02, recoveryAcuteRatio 0.75 → 0.6, acuteChronicRatio 1.18 → 1.05, restedBlockRatio 0.9 → 0.8, spikeRatio 1.35 → 1.2, spikeMinExtraMinutes 90 → 60, maxLoadWeeksWithoutRecovery 6 → 5, memoryWeeklyDecay 0.95 → 0.85, taperWeeks 2 → 1
+- Start beim besten Satz bisher: 17.20 – loadWeeksPerBlock 3 → 4, volumeStep 0.05 → 0.02, recoveryAcuteRatio 0.75 → 0.6, acuteChronicRatio 1.18 → 1.05, restedBlockRatio 0.9 → 0.8, spikeRatio 1.35 → 1.2, spikeMinExtraMinutes 90 → 60, maxLoadWeeksWithoutRecovery 6 → 5, memoryWeeklyDecay 0.95 → 0.85, taperWeeks 2 → 1
+- 422: 17.25 – loadWeeksPerBlock 3 → 4, volumeStep 0.05 → 0.02, recoveryVolume 0.6 → 0.75, recoveryAcuteRatio 0.75 → 0.6, acuteChronicRatio 1.18 → 1.05, restedBlockRatio 0.9 → 0.8, spikeRatio 1.35 → 1.2, spikeMinExtraMinutes 90 → 60, maxLoadWeeksWithoutRecovery 6 → 5, memoryWeeklyDecay 0.95 → 0.85, taperWeeks 2 → 1
