@@ -2,7 +2,7 @@
 
 Sucht Stellschrauben, mit denen planfolgende Zufallsfahrer laut Fitness-Ermüdungs-Modell am Ziel-Tag in besserer Form sind – ohne mehr Befunde. **Vorschlag, keine Änderung:** übernehmen nur nach sportlicher Prüfung. Das Modell ist eine Annahme, keine Messung an echten Menschen.
 
-1524 Parameter-Sätze bewertet in 252 min (Trainings-Satz 600 Fahrer, Prüf-Satz 2000).
+1353 Parameter-Sätze bewertet in 252 min (Trainings-Satz 600 Fahrer, Prüf-Satz 2000).
 
 **Ergebnis: Vorschlag ist auch auf dem Prüf-Satz besser.**
 
@@ -37,5 +37,4 @@ Sucht Stellschrauben, mit denen planfolgende Zufallsfahrer laut Fitness-Ermüdun
 
 ## Verlauf der Suche
 
-- Start beim besten Satz bisher: 17.20 – loadWeeksPerBlock 3 → 4, volumeStep 0.05 → 0.02, recoveryAcuteRatio 0.75 → 0.6, acuteChronicRatio 1.18 → 1.05, restedBlockRatio 0.9 → 0.8, spikeRatio 1.35 → 1.2, spikeMinExtraMinutes 90 → 60, maxLoadWeeksWithoutRecovery 6 → 5, memoryWeeklyDecay 0.95 → 0.85, taperWeeks 2 → 1
-- 422: 17.25 – loadWeeksPerBlock 3 → 4, volumeStep 0.05 → 0.02, recoveryVolume 0.6 → 0.75, recoveryAcuteRatio 0.75 → 0.6, acuteChronicRatio 1.18 → 1.05, restedBlockRatio 0.9 → 0.8, spikeRatio 1.35 → 1.2, spikeMinExtraMinutes 90 → 60, maxLoadWeeksWithoutRecovery 6 → 5, memoryWeeklyDecay 0.95 → 0.85, taperWeeks 2 → 1
+- Start beim besten Satz bisher: 17.25 – loadWeeksPerBlock 3 → 4, volumeStep 0.05 → 0.02, recoveryVolume 0.6 → 0.75, recoveryAcuteRatio 0.75 → 0.6, acuteChronicRatio 1.18 → 1.05, restedBlockRatio 0.9 → 0.8, spikeRatio 1.35 → 1.2, spikeMinExtraMinutes 90 → 60, maxLoadWeeksWithoutRecovery 6 → 5, memoryWeeklyDecay 0.95 → 0.85, taperWeeks 2 → 1
