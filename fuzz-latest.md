@@ -1,41 +1,41 @@
 # Zufallssuche (erfundene Zufallsfahrer im Wochen-Kreislauf)
 
-100000 zufällige Fahrer in 908 s (Startwert-Basis 20772 = 2026-11-15). 5 (0.0 %) mit harten Befunden, 76013 (76.0 %) mit Warnungen, 15 Arten von Befunden.
+74400 zufällige Fahrer in 1501 s (Startwert-Basis 20773 = 2026-11-16). 7 (0.0 %) mit harten Befunden, 56380 (75.8 %) mit Warnungen, 15 Arten von Befunden.
 
 Nachstellen: `./gradlew fuzzSimulation -Pseed=<Startwert>` → build/fuzz-rider.md mit Wochenverlauf.
 
 | Art | Fahrer | Anteil | Vorkommen | kürzestes Beispiel |
 |---|---|---|---|---|
-| HART: Frische bis # TSB gefallen | 5 | 0.0 % | 5 | Startwert 20772073306: Woche ab 2026-11-09: Frische bis -68 TSB gefallen (Grenze -60) |
-| Frische bis # TSB gefallen | 42901 | 42.9 % | 120212 | Startwert 20772064475: Woche ab 2026-11-02: Frische bis -50 TSB gefallen (Warnung ab -35, selbst verursacht) |
-| geplant # TSS, #-mal so viel wie zuletzt gefahren | 27161 | 27.2 % | 103796 | Startwert 20772062316: Woche ab 2026-11-23: geplant 114 TSS, 2.0-mal so viel wie zuletzt gefahren (58/Woche, beste Woche 98) |
-| # × … – eintönig | 24834 | 24.8 % | 104590 | Startwert 20772062773: Woche ab 2026-11-02: 4 × "Lockeres Ausrollen 45 min" – eintönig |
-| # Belastungswochen am Stück | 20832 | 20.8 % | 22535 | Startwert 20772062502: Woche ab 2026-11-30: 5 Belastungswochen am Stück |
-| harte Einheit am Tag nach # min geplant | 4377 | 4.4 % | 27431 | Startwert 20772070403: 2026-11-06: harte Einheit (Over-Unders 3 × 16 (3/1)) am Tag nach 180 min geplant |
-| nach dem Rennen keine Entlastung in den # Wochen danach | 4033 | 4.0 % | 4033 | Startwert 20772063577: nach dem Rennen (Woche ab 2026-11-09) keine Entlastung in den 2 Wochen danach |
-| nach dem Urlaub keine Entlastung in den # Wochen danach | 3045 | 3.0 % | 3045 | Startwert 20772063577: nach dem Urlaub (Woche ab 2026-11-09) keine Entlastung in den 2 Wochen danach |
-| Fitness steigt um # CTL | 3033 | 3.0 % | 5779 | Startwert 20772073471: Woche ab 2026-11-16: Fitness steigt um 9.3 CTL (Grenze 8) |
-| Event-Tag: Frische # TSB passt nicht zum Ziel COMPETE | 2811 | 2.8 % | 2811 | Startwert 20772063398: Event-Tag: Frische 34 TSB passt nicht zum Ziel COMPETE |
-| Event-Tag: Frische # TSB passt nicht zum Ziel GOOD_TIME | 2671 | 2.7 % | 2671 | Startwert 20772063515: Event-Tag: Frische 26 TSB passt nicht zum Ziel GOOD_TIME |
-| nach # Tagen Krankheit # min geplant, mehr als davor | 2277 | 2.3 % | 2277 | Startwert 20772160815: Woche ab 2026-11-30: nach 7 Tagen Krankheit 105 min geplant, mehr als davor (97) |
-| Erholungswoche direkt vor dem Tapering | 610 | 0.6 % | 610 | Startwert 20772062869: Woche ab 2026-11-16: Erholungswoche direkt vor dem Tapering |
-| Event-Tag: Frische # TSB passt nicht zum Ziel FINISH | 523 | 0.5 % | 523 | Startwert 20772073943: Event-Tag: Frische -14 TSB passt nicht zum Ziel FINISH |
-| zwei Erholungswochen hintereinander, obwohl die erste ruhig gefahren wurde | 134 | 0.1 % | 134 | Startwert 20772091229: Woche ab 2026-11-30: zwei Erholungswochen hintereinander, obwohl die erste ruhig gefahren wurde |
+| HART: Frische bis # TSB gefallen | 7 | 0.0 % | 9 | Startwert 20773080501: Woche ab 2027-02-15: Frische bis -70 TSB gefallen (Grenze -60) |
+| Frische bis # TSB gefallen | 31933 | 42.9 % | 90473 | Startwert 20773064259: Woche ab 2026-11-02: Frische bis -37 TSB gefallen (Warnung ab -35, selbst verursacht) |
+| geplant # TSS, #-mal so viel wie zuletzt gefahren | 20395 | 27.4 % | 78415 | Startwert 20773063131: Woche ab 2026-11-16: geplant 231 TSS, 4.1-mal so viel wie zuletzt gefahren (56/Woche, beste Woche 196) |
+| # × … – eintönig | 18120 | 24.4 % | 75664 | Startwert 20773062836: Woche ab 2026-11-09: 4 × "Lockeres Ausrollen 45 min" – eintönig |
+| # Belastungswochen am Stück | 15493 | 20.8 % | 16801 | Startwert 20773062683: Woche ab 2026-11-30: 5 Belastungswochen am Stück |
+| harte Einheit am Tag nach # min geplant | 3407 | 4.6 % | 21184 | Startwert 20773068435: 2026-11-09: harte Einheit (Schwelle 3 × 10) am Tag nach 360 min geplant |
+| nach dem Rennen keine Entlastung in den # Wochen danach | 3058 | 4.1 % | 3058 | Startwert 20773065027: nach dem Rennen (Woche ab 2026-11-09) keine Entlastung in den 2 Wochen danach |
+| Fitness steigt um # CTL | 2361 | 3.2 % | 4447 | Startwert 20773062658: Woche ab 2026-11-16: Fitness steigt um 8.5 CTL (Grenze 8) |
+| nach dem Urlaub keine Entlastung in den # Wochen danach | 2260 | 3.0 % | 2260 | Startwert 20773062406: nach dem Urlaub (Woche ab 2026-11-09) keine Entlastung in den 2 Wochen danach |
+| Event-Tag: Frische # TSB passt nicht zum Ziel COMPETE | 2061 | 2.8 % | 2061 | Startwert 20773062352: Event-Tag: Frische -7 TSB passt nicht zum Ziel COMPETE |
+| Event-Tag: Frische # TSB passt nicht zum Ziel GOOD_TIME | 1943 | 2.6 % | 1943 | Startwert 20773064101: Event-Tag: Frische -13 TSB passt nicht zum Ziel GOOD_TIME |
+| nach # Tagen Krankheit # min geplant, mehr als davor | 1726 | 2.3 % | 1726 | Startwert 20773102089: Woche ab 2026-11-30: nach 7 Tagen Krankheit 299 min geplant, mehr als davor (248) |
+| Erholungswoche direkt vor dem Tapering | 470 | 0.6 % | 470 | Startwert 20773068437: Woche ab 2026-11-16: Erholungswoche direkt vor dem Tapering |
+| Event-Tag: Frische # TSB passt nicht zum Ziel FINISH | 373 | 0.5 % | 373 | Startwert 20773062603: Event-Tag: Frische -11 TSB passt nicht zum Ziel FINISH |
+| zwei Erholungswochen hintereinander, obwohl die erste ruhig gefahren wurde | 77 | 0.1 % | 77 | Startwert 20773071937: Woche ab 2026-12-14: zwei Erholungswochen hintereinander, obwohl die erste ruhig gefahren wurde |
 
 ## Beispiel-Fahrer je Art
 
-- **HART: Frische bis # TSB gefallen** – Startwert 20772073306: PERFORMANCE, GRAVEL GOOD_TIME 241 km/1687 hm in 2 Wochen, Zeit Mo–So [2.75, 1.5, 2.5, 3.0, 3.25, 7.0, 6.5] (26.5 h), Ausfälle 12 %, fährt 107 % der Dauer, pendelt 50 min [#20772073306]
-- **Frische bis # TSB gefallen** – Startwert 20772064475: AMBITIOUS, ULTRA GOOD_TIME 1451 km/15961 hm in 2 Wochen, Zeit Mo–So [2.25, 2.0, 1.75, 1.25, 2.25, 6.0, 3.25] (18.8 h), Ausfälle 13 %, fährt 113 % der Dauer, pendelt 50 min [#20772064475]
-- **geplant # TSS, #-mal so viel wie zuletzt gefahren** – Startwert 20772062316: AMBITIOUS, BIKEPACKING COMPETE 278 km/2780 hm in 3 Wochen, Zeit Mo–So [1.75, 0.0, 1.5, 0.75, 1.0, 1.5, 3.25] (9.8 h), Ausfälle 23 %, unter der Woche +41 %, fährt 97 % der Dauer, krank Woche 2 (9 Tage) [#20772062316]
-- **# × … – eintönig** – Startwert 20772062773: AMBITIOUS, BIKEPACKING COMPETE 1168 km/30368 hm in 2 Wochen, Zeit Mo–So [1.25, 2.25, 1.5, 2.75, 0.75, 1.0, 1.25] (10.8 h), Ausfälle 6 %, unter der Woche +55 %, fährt 83 % der Dauer [#20772062773]
-- **# Belastungswochen am Stück** – Startwert 20772062502: AMBITIOUS, CRITERIUM GOOD_TIME 39 km/351 hm in 6 Wochen, Zeit Mo–So [2.0, 2.0, 1.0, 1.25, 2.0, 4.25, 5.75] (18.3 h), Ausfälle 8 %, fährt 112 % der Dauer [#20772062502]
-- **harte Einheit am Tag nach # min geplant** – Startwert 20772070403: PERFORMANCE, GRAVEL COMPETE 247 km/5434 hm in 2 Wochen, Zeit Mo–So [0.0, 2.5, 4.0, 3.25, 3.5, 0.0, 3.0] (16.3 h), Ausfälle 1 %, unter der Woche +33 %, fährt 76 % der Dauer, pendelt 70 min, Schichtdienst [#20772070403]
-- **nach dem Rennen keine Entlastung in den # Wochen danach** – Startwert 20772063577: PERFORMANCE, TIME_TRIAL COMPETE 16 km/336 hm in 5 Wochen, Zeit Mo–So [3.0, 3.25, 3.25, 2.25, 3.25, 6.75, 3.25] (25.0 h), Ausfälle 11 %, fährt 84 % der Dauer, Urlaub Woche 2 (1 Wo.), Rennen Woche 2 [#20772063577]
-- **nach dem Urlaub keine Entlastung in den # Wochen danach** – Startwert 20772063577: PERFORMANCE, TIME_TRIAL COMPETE 16 km/336 hm in 5 Wochen, Zeit Mo–So [3.0, 3.25, 3.25, 2.25, 3.25, 6.75, 3.25] (25.0 h), Ausfälle 11 %, fährt 84 % der Dauer, Urlaub Woche 2 (1 Wo.), Rennen Woche 2 [#20772063577]
-- **Fitness steigt um # CTL** – Startwert 20772073471: PERFORMANCE, GRAN_FONDO FINISH 229 km/5725 hm in 4 Wochen, Zeit Mo–So [1.75, 1.5, 2.0, 1.5, 2.75, 3.5, 7.0] (20.0 h), Ausfälle 11 %, fährt 77 % der Dauer, pendelt 60 min, Reisewoche 2 [#20772073471]
-- **Event-Tag: Frische # TSB passt nicht zum Ziel COMPETE** – Startwert 20772063398: PERFORMANCE, TIME_TRIAL COMPETE 10 km/230 hm in 2 Wochen, Zeit Mo–So [4.25, 2.25, 3.0, 0.0, 0.0, 5.0, 4.5] (19.0 h), Ausfälle 16 %, fährt 97 % der Dauer [#20772063398]
-- **Event-Tag: Frische # TSB passt nicht zum Ziel GOOD_TIME** – Startwert 20772063515: PERFORMANCE, TIME_TRIAL GOOD_TIME 64 km/1280 hm in 2 Wochen, Zeit Mo–So [0.0, 0.0, 0.0, 0.0, 0.0, 5.5, 3.25] (8.8 h), Ausfälle 7 %, fährt 85 % der Dauer [#20772063515]
-- **nach # Tagen Krankheit # min geplant, mehr als davor** – Startwert 20772160815: BEGINNER, TIME_TRIAL GOOD_TIME 75 km/1875 hm in 5 Wochen, Zeit Mo–So [0.0, 0.0, 0.0, 0.0, 1.5, 0.25, 0.75] (2.5 h), Ausfälle 17 %, fährt 130 % der Dauer, krank Woche 4 (7 Tage) [#20772160815]
-- **Erholungswoche direkt vor dem Tapering** – Startwert 20772062869: AMBITIOUS, ROAD_RACE GOOD_TIME 189 km/756 hm in 4 Wochen, Zeit Mo–So [0.0, 0.0, 0.0, 0.0, 0.0, 4.0, 1.5] (5.5 h), Ausfälle 23 %, fährt 85 % der Dauer, pendelt 30 min, Urlaub Woche 3 (1 Wo.), Rennen Woche 4, krank Woche 1 (13 Tage) [#20772062869]
-- **Event-Tag: Frische # TSB passt nicht zum Ziel FINISH** – Startwert 20772073943: HOBBY, ULTRA FINISH 728 km/18928 hm in 2 Wochen, Zeit Mo–So [0.75, 0.0, 0.5, 1.25, 0.75, 3.0, 3.0] (9.3 h), Ausfälle 15 %, unter der Woche +31 %, fährt 119 % der Dauer, pendelt 80 min [#20772073943]
-- **zwei Erholungswochen hintereinander, obwohl die erste ruhig gefahren wurde** – Startwert 20772091229: AMBITIOUS, CRITERIUM FINISH 53 km/1325 hm in 11 Wochen, Zeit Mo–So [0.0, 0.0, 0.0, 0.0, 0.0, 3.75, 4.75] (8.5 h), Ausfälle 17 %, unter der Woche +37 %, fährt 124 % der Dauer, Reisewoche 2 [#20772091229]
+- **HART: Frische bis # TSB gefallen** – Startwert 20773080501: PERFORMANCE, GRAVEL COMPETE 208 km/4160 hm in 21 Wochen, Zeit Mo–So [2.5, 2.25, 1.5, 2.75, 2.75, 4.0, 5.25] (21.0 h), Ausfälle 21 %, fährt 100 % der Dauer, Urlaub Woche 12 (1 Wo.), krank Woche 1 (17 Tage), Reisewoche 5 [#20773080501]
+- **Frische bis # TSB gefallen** – Startwert 20773064259: AMBITIOUS, GRAN_FONDO FINISH 104 km/2704 hm in 2 Wochen, Zeit Mo–So [1.25, 1.75, 2.5, 2.0, 1.75, 5.5, 4.0] (18.8 h), Ausfälle 13 %, unter der Woche +58 %, fährt 111 % der Dauer [#20773064259]
+- **geplant # TSS, #-mal so viel wie zuletzt gefahren** – Startwert 20773063131: AMBITIOUS, GRAVEL GOOD_TIME 216 km/4320 hm in 3 Wochen, Zeit Mo–So [0.0, 2.75, 1.0, 0.0, 0.0, 0.0, 3.5] (7.3 h), Ausfälle 19 %, unter der Woche +46 %, fährt 96 % der Dauer [#20773063131]
+- **# × … – eintönig** – Startwert 20773062836: AMBITIOUS, CRITERIUM FINISH 53 km/477 hm in 2 Wochen, Zeit Mo–So [3.0, 2.25, 1.25, 0.0, 3.0, 2.25, 2.5] (14.3 h), Ausfälle 13 %, unter der Woche +36 %, fährt 97 % der Dauer, pendelt 70 min [#20773062836]
+- **# Belastungswochen am Stück** – Startwert 20773062683: AMBITIOUS, GRAVEL FINISH 248 km/3968 hm in 6 Wochen, Zeit Mo–So [1.75, 1.75, 1.0, 1.5, 1.75, 4.5, 5.25] (17.5 h), Ausfälle 1 %, fährt 82 % der Dauer, Rennen Woche 6 [#20773062683]
+- **harte Einheit am Tag nach # min geplant** – Startwert 20773068435: PERFORMANCE, GRAVEL GOOD_TIME 237 km/1185 hm in 2 Wochen, Zeit Mo–So [2.75, 0.0, 0.0, 0.0, 0.75, 5.5, 6.0] (15.0 h), Ausfälle 7 %, fährt 111 % der Dauer [#20773068435]
+- **nach dem Rennen keine Entlastung in den # Wochen danach** – Startwert 20773065027: PERFORMANCE, ROAD_RACE FINISH 81 km/1458 hm in 5 Wochen, Zeit Mo–So [0.0, 2.75, 0.0, 1.5, 0.0, 3.0, 6.25] (13.5 h), Ausfälle 19 %, fährt 82 % der Dauer, pendelt 70 min, Rennen Woche 2 [#20773065027]
+- **Fitness steigt um # CTL** – Startwert 20773062658: AMBITIOUS, GRAN_FONDO GOOD_TIME 218 km/1744 hm in 4 Wochen, Zeit Mo–So [2.0, 1.75, 1.75, 2.5, 1.25, 4.75, 4.0] (18.0 h), Ausfälle 14 %, fährt 84 % der Dauer, pendelt 80 min, Reisewoche 1 [#20773062658]
+- **nach dem Urlaub keine Entlastung in den # Wochen danach** – Startwert 20773062406: HOBBY, TIME_TRIAL COMPETE 52 km/1196 hm in 5 Wochen, Zeit Mo–So [1.5, 1.5, 1.0, 1.5, 1.0, 2.5, 3.5] (12.5 h), Ausfälle 10 %, unter der Woche +58 %, fährt 83 % der Dauer, Urlaub Woche 2 (1 Wo.), krank Woche 2 (8 Tage) [#20773062406]
+- **Event-Tag: Frische # TSB passt nicht zum Ziel COMPETE** – Startwert 20773062352: HOBBY, ROAD_RACE COMPETE 87 km/435 hm in 2 Wochen, Zeit Mo–So [0.0, 0.5, 0.75, 1.25, 0.0, 3.75, 2.0] (8.3 h), Ausfälle 9 %, fährt 101 % der Dauer, pendelt 90 min [#20773062352]
+- **Event-Tag: Frische # TSB passt nicht zum Ziel GOOD_TIME** – Startwert 20773064101: AMBITIOUS, ROAD_RACE GOOD_TIME 151 km/3171 hm in 2 Wochen, Zeit Mo–So [1.5, 1.0, 0.0, 2.0, 1.5, 4.5, 2.25] (12.8 h), Ausfälle 17 %, fährt 130 % der Dauer, pendelt 90 min [#20773064101]
+- **nach # Tagen Krankheit # min geplant, mehr als davor** – Startwert 20773102089: AMBITIOUS, GRAN_FONDO FINISH 93 km/465 hm in 5 Wochen, Zeit Mo–So [1.25, 1.75, 2.75, 0.0, 2.5, 0.0, 1.0] (9.3 h), Ausfälle 13 %, unter der Woche +34 %, fährt 113 % der Dauer, pendelt 20 min, Rennen Woche 5, krank Woche 4 (7 Tage) [#20773102089]
+- **Erholungswoche direkt vor dem Tapering** – Startwert 20773068437: PERFORMANCE, BIKEPACKING FINISH 461 km/922 hm in 4 Wochen, Zeit Mo–So [2.0, 2.5, 2.0, 1.25, 1.5, 0.0, 3.25] (12.5 h), Ausfälle 20 %, fährt 122 % der Dauer, pendelt 80 min, Urlaub Woche 2 (2 Wo.), Rennen Woche 4, krank Woche 1 (13 Tage) [#20773068437]
+- **Event-Tag: Frische # TSB passt nicht zum Ziel FINISH** – Startwert 20773062603: HOBBY, GRAN_FONDO FINISH 105 km/2310 hm in 2 Wochen, Zeit Mo–So [0.5, 1.25, 0.5, 0.0, 0.0, 3.75, 3.75] (9.8 h), Ausfälle 22 %, fährt 105 % der Dauer, pendelt 90 min [#20773062603]
+- **zwei Erholungswochen hintereinander, obwohl die erste ruhig gefahren wurde** – Startwert 20773071937: PERFORMANCE, CRITERIUM COMPETE 67 km/1675 hm in 12 Wochen, Zeit Mo–So [3.25, 0.0, 4.0, 0.0, 5.0, 2.75, 0.0] (15.0 h), Ausfälle 5 %, fährt 104 % der Dauer, pendelt 60 min, Rennen Woche 5, Reisewoche 3 [#20773071937]
