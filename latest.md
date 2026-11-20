@@ -1338,22 +1338,22 @@ Keine.
 
 ## Zufallssuche (Kurzfassung – ganze Liste in fuzz-latest.md)
 
-100000 zufällige Fahrer in 1095 s (Startwert-Basis 20776 = 2026-11-19). 9 (0.0 %) mit harten Befunden, 75960 (76.0 %) mit Warnungen, 15 Arten von Befunden.
+100000 zufällige Fahrer in 1415 s (Startwert-Basis 20777 = 2026-11-20). 4 (0.0 %) mit harten Befunden, 76375 (76.4 %) mit Warnungen, 15 Arten von Befunden.
 
 | Art | Fahrer | Anteil | Vorkommen | kürzestes Beispiel |
 |---|---|---|---|---|
-| HART: Frische bis # TSB gefallen | 9 | 0.0 % | 10 | Startwert 20776065462: Woche ab 2027-02-01: Frische bis -62 TSB gefallen (Grenze -60) |
-| Frische bis # TSB gefallen | 42850 | 42.9 % | 120313 | Startwert 20776063805: Woche ab 2026-11-09: Frische bis -45 TSB gefallen (Warnung ab -35, selbst verursacht) |
-| geplant # TSS, #-mal so viel wie zuletzt gefahren | 27287 | 27.3 % | 103798 | Startwert 20776062846: Woche ab 2026-11-16: geplant 139 TSS, 2.3-mal so viel wie zuletzt gefahren (60/Woche, beste Woche 119) |
-| # × … – eintönig | 24854 | 24.9 % | 105611 | Startwert 20776062364: Woche ab 2026-11-09: 4 × "Lockeres Ausrollen 45 min" – eintönig |
-| # Belastungswochen am Stück | 21006 | 21.0 % | 22748 | Startwert 20776062672: Woche ab 2026-11-30: 5 Belastungswochen am Stück |
-| harte Einheit am Tag nach # min geplant | 4327 | 4.3 % | 26792 | Startwert 20776094839: 2026-11-09: harte Einheit (Schwelle 2 × 10) am Tag nach 225 min geplant |
-| nach dem Rennen keine Entlastung in den # Wochen danach | 3936 | 3.9 % | 3936 | Startwert 20776064048: nach dem Rennen (Woche ab 2026-11-09) keine Entlastung in den 2 Wochen danach |
-| nach dem Urlaub keine Entlastung in den # Wochen danach | 3008 | 3.0 % | 3008 | Startwert 20776068541: nach dem Urlaub (Woche ab 2026-11-09) keine Entlastung in den 2 Wochen danach |
-| Fitness steigt um # CTL | 2976 | 3.0 % | 5669 | Startwert 20776070781: Woche ab 2026-11-16: Fitness steigt um 12.2 CTL (Grenze 8) |
-| Event-Tag: Frische # TSB passt nicht zum Ziel COMPETE | 2750 | 2.8 % | 2750 | Startwert 20776065863: Event-Tag: Frische 28 TSB passt nicht zum Ziel COMPETE |
-| Event-Tag: Frische # TSB passt nicht zum Ziel GOOD_TIME | 2642 | 2.6 % | 2642 | Startwert 20776066544: Event-Tag: Frische 26 TSB passt nicht zum Ziel GOOD_TIME |
-| nach # Tagen Krankheit # min geplant, mehr als davor | 2327 | 2.3 % | 2327 | Startwert 20776097619: Woche ab 2026-11-30: nach 7 Tagen Krankheit 215 min geplant, mehr als davor (202) |
-| Erholungswoche direkt vor dem Tapering | 665 | 0.7 % | 665 | Startwert 20776066106: Woche ab 2026-11-16: Erholungswoche direkt vor dem Tapering |
-| Event-Tag: Frische # TSB passt nicht zum Ziel FINISH | 469 | 0.5 % | 469 | Startwert 20776086027: Event-Tag: Frische -12 TSB passt nicht zum Ziel FINISH |
-| zwei Erholungswochen hintereinander, obwohl die erste ruhig gefahren wurde | 112 | 0.1 % | 112 | Startwert 20776097059: Woche ab 2026-12-21: zwei Erholungswochen hintereinander, obwohl die erste ruhig gefahren wurde |
+| HART: Frische bis # TSB gefallen | 4 | 0.0 % | 5 | Startwert 20777074328: Woche ab 2027-03-22: Frische bis -64 TSB gefallen (Grenze -60) |
+| Frische bis # TSB gefallen | 43080 | 43.1 % | 121289 | Startwert 20777065474: Woche ab 2026-11-02: Frische bis -53 TSB gefallen (Warnung ab -35, selbst verursacht) |
+| geplant # TSS, #-mal so viel wie zuletzt gefahren | 27564 | 27.6 % | 107658 | Startwert 20777062351: Woche ab 2026-11-16: geplant 177 TSS, 2.1-mal so viel wie zuletzt gefahren (83/Woche, beste Woche 119) |
+| # × … – eintönig | 23868 | 23.9 % | 99696 | Startwert 20777062736: Woche ab 2026-11-02: 4 × "Lockeres Ausrollen 45 min" – eintönig |
+| # Belastungswochen am Stück | 21474 | 21.5 % | 23312 | Startwert 20777063272: Woche ab 2026-11-30: 5 Belastungswochen am Stück |
+| harte Einheit am Tag nach # min geplant | 4715 | 4.7 % | 28978 | Startwert 20777067487: 2026-11-09: harte Einheit (Norwegian Schwelle 6 × 8) am Tag nach 240 min geplant |
+| nach dem Rennen keine Entlastung in den # Wochen danach | 4071 | 4.1 % | 4071 | Startwert 20777062903: nach dem Rennen (Woche ab 2026-11-09) keine Entlastung in den 2 Wochen danach |
+| Fitness steigt um # CTL | 3200 | 3.2 % | 5944 | Startwert 20777063773: Woche ab 2026-11-16: Fitness steigt um 12.6 CTL (Grenze 8) |
+| nach dem Urlaub keine Entlastung in den # Wochen danach | 3017 | 3.0 % | 3017 | Startwert 20777067319: nach dem Urlaub (Woche ab 2026-11-09) keine Entlastung in den 2 Wochen danach |
+| Event-Tag: Frische # TSB passt nicht zum Ziel COMPETE | 2745 | 2.7 % | 2745 | Startwert 20777065281: Event-Tag: Frische 29 TSB passt nicht zum Ziel COMPETE |
+| Event-Tag: Frische # TSB passt nicht zum Ziel GOOD_TIME | 2619 | 2.6 % | 2619 | Startwert 20777062591: Event-Tag: Frische -7 TSB passt nicht zum Ziel GOOD_TIME |
+| nach # Tagen Krankheit # min geplant, mehr als davor | 2194 | 2.2 % | 2194 | Startwert 20777108855: Woche ab 2026-11-30: nach 7 Tagen Krankheit 245 min geplant, mehr als davor (228) |
+| Erholungswoche direkt vor dem Tapering | 627 | 0.6 % | 627 | Startwert 20777080836: Woche ab 2026-11-16: Erholungswoche direkt vor dem Tapering |
+| Event-Tag: Frische # TSB passt nicht zum Ziel FINISH | 500 | 0.5 % | 500 | Startwert 20777064100: Event-Tag: Frische -10 TSB passt nicht zum Ziel FINISH |
+| zwei Erholungswochen hintereinander, obwohl die erste ruhig gefahren wurde | 116 | 0.1 % | 116 | Startwert 20777148357: Woche ab 2026-12-21: zwei Erholungswochen hintereinander, obwohl die erste ruhig gefahren wurde |
