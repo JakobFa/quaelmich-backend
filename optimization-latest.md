@@ -2,7 +2,7 @@
 
 Sucht Stellschrauben, mit denen planfolgende Zufallsfahrer laut Fitness-Ermüdungs-Modell am Ziel-Tag in besserer Form sind – ohne mehr Befunde. **Vorschlag, keine Änderung:** übernehmen nur nach sportlicher Prüfung. Das Modell ist eine Annahme, keine Messung an echten Menschen.
 
-1077 Parameter-Sätze bewertet in 253 min (Trainings-Satz 600 Fahrer, Prüf-Satz 2000).
+1543 Parameter-Sätze bewertet in 252 min (Trainings-Satz 600 Fahrer, Prüf-Satz 2000).
 
 **Ergebnis: Vorschlag ist auch auf dem Prüf-Satz besser.**
 
