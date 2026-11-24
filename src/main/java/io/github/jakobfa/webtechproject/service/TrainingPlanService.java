@@ -40,11 +40,14 @@ public class TrainingPlanService {
 	private final WorkoutLibrary library;
 	private final ExtraRideRepository extraRides;
 	private final StravaConnectionRepository stravaConnections;
+	private final PlanAdaptationService adaptation;
 	private final Clock clock;
 
 	public TrainingPlanService(AthleteRepository athleteRepository, TrainingPlanRepository planRepository,
 			PlanGenerator planGenerator, RaceEventRepository raceEvents, WorkoutLibrary library,
-			ExtraRideRepository extraRides, StravaConnectionRepository stravaConnections, Clock clock) {
+			ExtraRideRepository extraRides, StravaConnectionRepository stravaConnections,
+			PlanAdaptationService adaptation, Clock clock) {
+		this.adaptation = adaptation;
 		this.extraRides = extraRides;
 		this.stravaConnections = stravaConnections;
 		this.library = library;
@@ -436,7 +439,14 @@ public class TrainingPlanService {
 			plan.setActualsFingerprint(fingerprint);
 			// ab heute: ist die heutige Einheit noch offen, darf sie sich ändern (eine schon gefahrene oder selbst
 			// gewählte bleibt)
-			replan(plan, LocalDate.now(clock), LocalDate.MAX);
+			LocalDate today = LocalDate.now(clock);
+			// Der Plan folgt immer den aktuellen Regeln: Anpassungen nach Fahrten werden zurückgenommen, der Plan
+			// neu gerechnet, und die letzten Fahrten dann erneut bewertet (war eine Fahrt nach der neuen Rechnung
+			// doch nicht zu hart, bleibt die Einheit wie geplant).
+			adaptation.revertAutomaticAdjustments(plan.getWorkouts(), today);
+			replan(plan, today, LocalDate.MAX);
+			adaptation.reevaluate(plan.getWorkouts(), extraRides.findByAthleteIdAndDateGreaterThanEqualOrderByDate(
+					athleteId, today.minusDays(PlanAdaptationService.DAYS_AHEAD)), today);
 			planRepository.save(plan);
 		});
 	}
