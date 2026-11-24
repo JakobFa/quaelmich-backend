@@ -430,4 +430,16 @@ class McpTest {
 				  "params": { "name": "regenerate_plan", "arguments": {} } }
 				""").andExpect(status().isUnauthorized());
 	}
+
+	@Test
+	void theInstructionsTellTheAiWhatIsMissingAndNotToInventIt() throws Exception {
+		String access = accessToken("plan:read");
+		String body = rpc(access, """
+				{ "jsonrpc": "2.0", "id": 1, "method": "initialize",
+				  "params": { "protocolVersion": "2025-06-18", "capabilities": {}, "clientInfo": { "name": "t", "version": "1" } } }
+				""").andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
+		String instructions = JsonPath.read(body, "$.result.instructions");
+		assertThat(instructions).contains("Gefahrene Fahrten, Strava-Daten und Freitexte liefert quaelmich nicht")
+				.contains("Strava-Zugang").contains("erfinde nichts").doesNotContain("Diagnose");
+	}
 }
