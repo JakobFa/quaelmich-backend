@@ -89,12 +89,12 @@ class CalendarFeedTest {
 	}
 
 	@Test
-	void skippedWorkoutsDisappearFromTheCalendar() throws Exception {
+	void skippedFutureWorkoutsDisappearFromTheCalendar() throws Exception {
 		String token = subscribe();
 		int before = feed(token).split("BEGIN:VEVENT", -1).length - 1;
 		String plan = mockMvc.perform(get("/me/plan").header("Authorization", auth)).andReturn().getResponse()
 				.getContentAsString();
-		long id = ((Number) JsonPath.read(plan, "$.workouts[0].id")).longValue();
+		long id = ((Number) ((java.util.List<?>) JsonPath.read(plan, "$.workouts[-1:].id")).get(0)).longValue(); // weit in der Zukunft
 
 		mockMvc.perform(put("/planned-workouts/" + id + "/skip").header("Authorization", auth)
 				.contentType(MediaType.APPLICATION_JSON).content("{ \"reason\": \"SICK\" }"))
@@ -102,6 +102,32 @@ class CalendarFeedTest {
 
 		int after = feed(token).split("BEGIN:VEVENT", -1).length - 1;
 		assertThat(after).isEqualTo(before - 1);
+	}
+
+	@Test
+	void pastSkippedDaysShowTheReasonInTheCalendarAsDiary() {
+		var workout = new io.github.jakobfa.webtechproject.model.Workout(1L, "Grundlage",
+				io.github.jakobfa.webtechproject.model.WorkoutType.ENDURANCE, "locker",
+				java.util.List.of(io.github.jakobfa.webtechproject.model.WorkoutStep.steady(
+						io.github.jakobfa.webtechproject.model.StepKind.STEADY, 3600, 65)));
+		var now = java.time.ZonedDateTime.parse("2026-11-24T12:00:00+01:00[Europe/Berlin]");
+		var sick = new io.github.jakobfa.webtechproject.model.PlannedWorkout(java.time.LocalDate.of(2026, 11, 20), workout,
+				null, null);
+		sick.setSkipReason(io.github.jakobfa.webtechproject.model.SkipReason.SICK);
+		var tired = new io.github.jakobfa.webtechproject.model.PlannedWorkout(java.time.LocalDate.of(2026, 11, 21),
+				workout, null, null);
+		tired.setSkipReason(io.github.jakobfa.webtechproject.model.SkipReason.TIRED);
+		var today = new io.github.jakobfa.webtechproject.model.PlannedWorkout(now.toLocalDate(), workout, null, null);
+		today.setSkipReason(io.github.jakobfa.webtechproject.model.SkipReason.INJURED);
+		var future = new io.github.jakobfa.webtechproject.model.PlannedWorkout(now.toLocalDate().plusDays(1), workout,
+				null, null);
+		future.setSkipReason(io.github.jakobfa.webtechproject.model.SkipReason.SICK);
+
+		String ics = CalendarFeed.build(java.util.List.of(sick, tired, today, future), planned -> workout, now);
+
+		assertThat(ics).contains("SUMMARY:Krank").contains("Geplant war: Grundlage")
+				.contains("SUMMARY:Nicht gemacht (zu müde)").contains("SUMMARY:Verletzt");
+		assertThat(ics.split("BEGIN:VEVENT", -1).length - 1).isEqualTo(3); // der kommende kranke Tag steht nicht drin
 	}
 
 	@Test
