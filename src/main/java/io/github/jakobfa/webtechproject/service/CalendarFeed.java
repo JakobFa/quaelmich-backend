@@ -9,12 +9,14 @@ import java.util.ArrayList;
 import java.util.List;
 
 import io.github.jakobfa.webtechproject.model.PlannedWorkout;
+import io.github.jakobfa.webtechproject.model.SkipReason;
 import io.github.jakobfa.webtechproject.model.Workout;
 
 /**
  * Der Trainingsplan als iCalendar-Datei (RFC 5545) zum Abonnieren: ganztägige Einträge, weil der Plan keine
- * Uhrzeiten kennt. Ausgefallene Einheiten (krank, Pause, nicht gemacht) tauchen nicht auf – der Kalender zeigt, was
- * ansteht.
+ * Uhrzeiten kennt. Ausgefallene Einheiten (krank, verletzt, Pause, nicht gemacht) stehen für vergangene Tage und
+ * heute mit dem Grund im Kalender ("Krank"), damit er auch ein Trainingstagebuch ist; für kommende Tage steht dort
+ * nichts, der Kalender zeigt, was ansteht.
  */
 public final class CalendarFeed {
 
@@ -40,16 +42,24 @@ public final class CalendarFeed {
 		lines.add("X-PUBLISHED-TTL:" + REFRESH);
 		String stamp = STAMP.format(now.withZoneSameInstant(ZoneOffset.UTC));
 		for (PlannedWorkout planned : workouts) {
-			if (planned.getSkipReason() != null) {
+			if (planned.getSkipReason() != null && planned.getDate().isAfter(now.toLocalDate())) {
 				continue;
 			}
 			Workout workout = workoutOf.apply(planned);
 			LocalDate day = planned.getDate();
-			String title = (planned.isCompleted() ? "Erledigt: " : "") + workout.getTitle() + " · "
-					+ formatMinutes(workout.getDurationInMinutes());
-			StringBuilder description = new StringBuilder(workout.getDescription() == null ? "" : workout.getDescription());
-			description.append("\n\nDauer ").append(formatMinutes(workout.getDurationInMinutes()))
-					.append(" · ca. ").append(workout.getTss()).append(" TSS");
+			StringBuilder description = new StringBuilder();
+			String title;
+			if (planned.getSkipReason() != null) {
+				title = skippedTitle(planned.getSkipReason());
+				description.append("Geplant war: ").append(workout.getTitle()).append(" · ")
+						.append(formatMinutes(workout.getDurationInMinutes()));
+			} else {
+				title = (planned.isCompleted() ? "Erledigt: " : "") + workout.getTitle() + " · "
+						+ formatMinutes(workout.getDurationInMinutes());
+				description.append(workout.getDescription() == null ? "" : workout.getDescription());
+				description.append("\n\nDauer ").append(formatMinutes(workout.getDurationInMinutes()))
+						.append(" · ca. ").append(workout.getTss()).append(" TSS");
+			}
 			if (planned.getAdjustmentNote() != null) {
 				description.append("\n").append(planned.getAdjustmentNote());
 			}
@@ -67,6 +77,16 @@ public final class CalendarFeed {
 		StringBuilder out = new StringBuilder();
 		lines.forEach(line -> out.append(fold(line)).append("\r\n"));
 		return out.toString();
+	}
+
+	/** Was im Kalender steht, wenn eine Einheit ausgefallen ist */
+	static String skippedTitle(SkipReason reason) {
+		return switch (reason) {
+			case SICK -> "Krank";
+			case INJURED -> "Verletzt";
+			case PAUSE -> "Pause";
+			default -> "Nicht gemacht (" + reason.inGerman() + ")";
+		};
 	}
 
 	static String formatMinutes(int minutes) {

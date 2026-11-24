@@ -18,7 +18,7 @@ import io.github.jakobfa.webtechproject.repository.TrainingPlanRepository;
 public class CalendarService {
 
 	/** Vergangene Tage, die noch im Kalender stehen bleiben */
-	static final int DAYS_BACK = 28;
+	static final int DAYS_BACK = 365;
 
 	private static final SecureRandom RANDOM = new SecureRandom();
 
