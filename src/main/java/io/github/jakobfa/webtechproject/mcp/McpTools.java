@@ -18,6 +18,7 @@ import io.github.jakobfa.webtechproject.model.TrainingPlan;
 import io.github.jakobfa.webtechproject.model.Workout;
 import io.github.jakobfa.webtechproject.model.WorkoutType;
 import io.github.jakobfa.webtechproject.service.AthleteService;
+import io.github.jakobfa.webtechproject.service.RaceEventService;
 import io.github.jakobfa.webtechproject.service.TrainingPlanService;
 import io.github.jakobfa.webtechproject.service.WorkoutLibrary;
 
@@ -56,15 +57,17 @@ public class McpTools {
 	private final TrainingPlanService plans;
 	private final WorkoutLibrary library;
 	private final CustomWorkoutService customWorkouts;
+	private final RaceEventService events;
 	private final TransactionTemplate tx;
 	private final Clock clock;
 
 	public McpTools(AthleteService athletes, TrainingPlanService plans,
-			WorkoutLibrary library, CustomWorkoutService customWorkouts, TransactionTemplate tx, Clock clock) {
+			WorkoutLibrary library, CustomWorkoutService customWorkouts, RaceEventService events, TransactionTemplate tx, Clock clock) {
 		this.athletes = athletes;
 		this.plans = plans;
 		this.library = library;
 		this.customWorkouts = customWorkouts;
+		this.events = events;
 		this.tx = tx;
 		this.clock = clock;
 	}
@@ -96,6 +99,9 @@ public class McpTools {
 						schema(Map.of("type", text("Trainingsart, z. B. THRESHOLD"))), OAuthService.SCOPE_READ),
 				new Tool("list_my_workouts", "Die eigenen Workouts des Nutzers (selbst gebaut oder von dir mit create_workout "
 						+ "angelegt), mit Abschnitten. Die id geht in replace_workout.", schema(Map.of()),
+						OAuthService.SCOPE_READ),
+				new Tool("list_events", "Die weiteren Events des Nutzers (zusätzlich zum ersten im Profil, das get_overview "
+						+ "zeigt) mit id. Die id geht in update_event und delete_event.", schema(Map.of()),
 						OAuthService.SCOPE_READ));
 	}
 
@@ -105,6 +111,7 @@ public class McpTools {
 			case "get_overview" -> overview(userId);
 			case "get_plan" -> plan(userId, date(arguments, "from", today()), date(arguments, "to", today().plusDays(14)));
 			case "list_workouts" -> workouts(arguments == null ? null : (String) arguments.get("type"));
+			case "list_events" -> eventRows(userId);
 			case "list_my_workouts" -> workoutRows(customWorkouts.listOwn(userId), true);
 			default -> throw new ToolException("Unbekanntes Werkzeug: " + name);
 		};
@@ -186,6 +193,24 @@ public class McpTools {
 		}
 		WorkoutType wanted = filter;
 		return workoutRows(all.stream().filter(workout -> wanted == null || workout.getType() == wanted).toList(), false);
+	}
+
+	private Object eventRows(Long userId) {
+		List<Map<String, Object>> rows = events.list(userId).orElseThrow(() -> new ToolException("Es gibt noch kein Profil."))
+				.stream().map(McpTools::eventRow).toList();
+		return Map.of("anzahl", rows.size(), "events", rows);
+	}
+
+	static Map<String, Object> eventRow(io.github.jakobfa.webtechproject.model.RaceEvent event) {
+		Map<String, Object> row = new LinkedHashMap<>();
+		row.put("id", event.getId());
+		row.put("name", event.getName());
+		row.put("datum", valueOrNull(event.getDate()));
+		row.put("distanzKm", event.getDistanceKm());
+		row.put("hoehenmeter", event.getElevationMeters());
+		row.put("art", valueOrNull(event.getType()));
+		row.put("ziel", valueOrNull(event.getGoal()));
+		return row;
 	}
 
 	static Map<String, Object> workoutRows(List<Workout> workouts, boolean withSteps) {

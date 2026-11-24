@@ -79,7 +79,8 @@ public class McpPrompts {
 					+ "unterfordert, braucht es mehr Erholung, mehr Reiz oder einen anderen Schwerpunkt? Dafür gibt es "
 					+ "keine festen Regeln, du urteilst als Trainer. 4. Sag mir kurz, was du siehst und was du ändern "
 					+ "würdest, und führe es nach meinem Ja mit den Werkzeugen aus (adjust_workout, replace_workout, "
-					+ "skip_workout, create_workout, set_week_availability oder regenerate_plan). Ändere nichts, wenn der "
+					+ "add_workout, move_workout, remove_workout, create_workout, skip_workout, set_week_availability oder "
+					+ "regenerate_plan). Ändere nichts, wenn der "
 					+ "Plan schon passt.";
 			case "einrichten" -> "Ich möchte quaelmich mit dir benutzen. Ruf get_overview auf, erkläre mir kurz, was du "
 					+ "dort lesen und ändern kannst (Plan, Profil, sportliches Ziel, Krankheit, Pause, eigene Workouts), und "
