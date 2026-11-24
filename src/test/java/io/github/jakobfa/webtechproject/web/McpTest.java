@@ -364,7 +364,7 @@ class McpTest {
 		assertThat((List<String>) JsonPath.read(full, "$.result.tools[*].name")).contains("get_plan", "update_profile",
 				"regenerate_plan", "skip_workout", "undo_skip", "adjust_workout", "replace_workout", "report_sick",
 				"report_healthy", "pause_plan", "resume_plan", "set_week_availability", "create_workout", "list_my_workouts", "update_workout", "delete_workout",
-				"add_workout", "move_workout", "remove_workout", "shuffle_workout", "add_event", "update_event", "delete_event");
+				"add_workout", "set_day_free", "move_workout", "remove_workout", "shuffle_workout", "add_event", "update_event", "delete_event");
 		assertThat((List<Boolean>) JsonPath.read(full, "$.result.tools[?(@.name=='update_profile')].annotations.destructiveHint"))
 				.containsExactly(true);
 		assertThat((List<Boolean>) JsonPath.read(full, "$.result.tools[?(@.name=='get_plan')].annotations.readOnlyHint"))
@@ -412,9 +412,14 @@ class McpTest {
 				""")).contains("powerStartPercent");
 		assertThat(callError(access, "create_workout", """
 				{ "title": "Zu lang", "type": "ENDURANCE",
-				  "steps": [ { "kind": "STEADY", "minutes": 200, "powerStartPercent": 60 },
-				             { "kind": "STEADY", "minutes": 200, "powerStartPercent": 60 } ] }
-				""")).contains("6 Stunden");
+				  "steps": [ { "kind": "STEADY", "minutes": 400, "powerStartPercent": 60 },
+				             { "kind": "STEADY", "minutes": 400, "powerStartPercent": 60 } ] }
+				""")).contains("12 Stunden");
+		// ein Tag über 6 Stunden ist erlaubt (zum Beispiel 300 km)
+		assertThat(callWrite(access, "create_workout", """
+				{ "title": "Langer Tag", "type": "ENDURANCE",
+				  "steps": [ { "kind": "STEADY", "minutes": 540, "powerStartPercent": 60 } ] }
+				""")).contains("\"dauerMinuten\":540");
 		assertThat(callError(access, "create_workout", """
 				{ "title": "Test", "type": "FTP_TEST",
 				  "steps": [ { "kind": "STEADY", "minutes": 10, "powerStartPercent": 60 } ] }
@@ -481,9 +486,10 @@ class McpTest {
 		assertThat(added).contains("eingeplant").contains(day).contains("Von dir");
 		long addedId = ((Number) JsonPath.read(added, "$.einheit.planId")).longValue();
 
-		// eine selbst gewählte Einheit weicht keiner zweiten, bleibt aber verschiebbar
-		assertThat(callError(access, "add_workout", "{ \"date\": \"%s\", \"workoutId\": %d }".formatted(day, libraryId)))
-				.contains("Das geht nicht");
+		// eine zweite Wahl ersetzt die selbst gewählte Einheit, ist aber danach verschiebbar
+		String again = callWrite(access, "add_workout",
+				"{ \"date\": \"%s\", \"workoutId\": %d }".formatted(day, libraryId));
+		addedId = ((Number) JsonPath.read(again, "$.einheit.planId")).longValue();
 		String target = java.time.LocalDate.parse(day).plusDays(30).toString();
 		String moved = callWrite(access, "move_workout",
 				"{ \"planId\": %d, \"date\": \"%s\" }".formatted(addedId, target));
@@ -501,6 +507,37 @@ class McpTest {
 				.formatted(java.time.LocalDate.now().plusDays(2), java.time.LocalDate.now().plusDays(10))),
 				"$.tage[0].planId")).longValue();
 		assertThat(callWrite(access, "shuffle_workout", "{ \"planId\": %d }".formatted(other))).contains("getauscht");
+	}
+
+	@Test
+	void theAiCanReplaceItsOwnPickAndChooseShortEnduranceAndFreeSingleDays() throws Exception {
+		String access = accessToken("plan:read plan:write");
+		String upcoming = call(access, "get_plan", "{ \"from\": \"%s\", \"to\": \"%s\" }"
+				.formatted(java.time.LocalDate.now().plusDays(10), java.time.LocalDate.now().plusDays(24)));
+		String day = JsonPath.read(upcoming, "$.tage[0].tag");
+
+		// Grundlage mit 45 Minuten, und eine zweite Wahl ersetzt die erste (selbst gewählte) Einheit
+		callWrite(access, "add_workout", "{ \"date\": \"%s\", \"workoutId\": 2, \"durationMinutes\": 60 }".formatted(day));
+		String short45 = callWrite(access, "add_workout",
+				"{ \"date\": \"%s\", \"workoutId\": 2, \"durationMinutes\": 45 }".formatted(day));
+		assertThat(short45).contains("\"minuten\":45");
+		assertThat(call(access, "get_plan", "{ \"from\": \"%s\", \"to\": \"%s\" }".formatted(day, day)))
+				.contains("\"minuten\":45").doesNotContain("\"minuten\":60");
+
+		// einen einzelnen Tag fest freihalten: die Einheit dort (selbst gewählt) erst entfernen, dann bleibt er frei
+		long chosen = ((Number) JsonPath.read(short45, "$.einheit.planId")).longValue();
+		callWrite(access, "remove_workout", "{ \"planId\": %d }".formatted(chosen));
+		callWrite(access, "set_day_free", "{ \"date\": \"%s\", \"free\": true }".formatted(day));
+		assertThat(call(access, "get_plan", "{ \"from\": \"%s\", \"to\": \"%s\" }".formatted(day, day)))
+				.doesNotContain("\"tag\":\"" + day + "\"");
+		callWrite(access, "regenerate_plan", "{}");
+		assertThat(call(access, "get_plan", "{ \"from\": \"%s\", \"to\": \"%s\" }".formatted(day, day)))
+				.doesNotContain("\"tag\":\"" + day + "\"");
+
+		// und wieder freigeben
+		callWrite(access, "set_day_free", "{ \"date\": \"%s\", \"free\": false }".formatted(day));
+		assertThat(callError(access, "set_day_free", "{ \"date\": \"2020-01-01\", \"free\": true }"))
+				.contains("heute oder später");
 	}
 
 	@Test

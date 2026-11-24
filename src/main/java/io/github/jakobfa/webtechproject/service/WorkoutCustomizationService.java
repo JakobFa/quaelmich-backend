@@ -140,7 +140,7 @@ public class WorkoutCustomizationService {
 			return null;
 		}
 		int minutes = durationMinutes != null ? durationMinutes : chosen.getDurationInMinutes();
-		if (minutes < minimumMinutes(workoutId) || minutes > MAX_MINUTES || minutes % 15 != 0) {
+		if (minutes < explicitMinimum(workoutId) || minutes > MAX_MINUTES || minutes % 15 != 0) {
 			throw new NotPossibleException();
 		}
 		return minutes;
@@ -410,6 +410,12 @@ public class WorkoutCustomizationService {
 		return id == RECOVERY || id == ENDURANCE || id == LONG_RIDE || id == LONG_RIDE_WITH_TEMPO
 				|| id == ENDURANCE_WITH_SPRINTS || id == ENDURANCE_WITH_TEMPO || id == ENDURANCE_WITH_FINISH
 				|| id == LONG_RIDE_PROGRESSIVE;
+	}
+
+	/** Wer ein Workout selbst wählt, darf auch kürzere Grundlage fahren (ab 30 Minuten); lange Ausfahrten bleiben lang */
+	static int explicitMinimum(long id) {
+		return id == ENDURANCE || id == ENDURANCE_WITH_SPRINTS || id == ENDURANCE_WITH_TEMPO
+				|| id == ENDURANCE_WITH_FINISH ? 30 : minimumMinutes(id);
 	}
 
 	static int minimumMinutes(long id) {

@@ -92,6 +92,28 @@ public class PlanEditService {
 		});
 	}
 
+	/**
+	 * Einen einzelnen Tag fest freihalten (free = true) oder wieder wie im Profil planen. Technisch eine Ausnahme für
+	 * diese Woche, in der nur dieser Wochentag auf 0 Stunden steht; sie bleibt bei jeder Neuberechnung bestehen.
+	 * Selbst gewählte Einheiten an diesem Tag bleiben stehen (vorher remove_workout). Leer ohne Plan oder Profil;
+	 * NotPossibleException bei einem Tag vor heute oder weiter als ein Jahr voraus.
+	 */
+	@Transactional
+	public Optional<TrainingPlan> setDayFree(Long userId, LocalDate date, boolean free) {
+		checkDate(date);
+		return athletes.findByOwner(userId).flatMap(athlete -> plans.findByAthlete(athlete.getId()).map(plan -> {
+			LocalDate monday = date.with(TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY));
+			io.github.jakobfa.webtechproject.model.WeeklyAvailability normal = athlete.getAvailability();
+			io.github.jakobfa.webtechproject.model.WeeklyAvailability week = plan.getWeekAvailability().getOrDefault(monday,
+					normal);
+			io.github.jakobfa.webtechproject.model.WeeklyAvailability changed = week.with(date.getDayOfWeek(),
+					free ? 0 : normal.hoursOn(date.getDayOfWeek()));
+			// wieder genau wie im Profil: keine Ausnahme mehr nötig
+			return plans.setWeekAvailability(athlete.getId(), monday, changed.sameHoursAs(normal) ? null : changed)
+					.orElseThrow();
+		}));
+	}
+
 	private Optional<TrainingPlan> planOf(Long userId) {
 		return athletes.findByOwner(userId).flatMap(athlete -> plans.findByAthlete(athlete.getId()));
 	}
@@ -112,15 +134,15 @@ public class PlanEditService {
 
 	/**
 	 * Macht den Platz für Rad bzw. Kraft an einem Tag frei: eine offene Einheit dort weicht, eine feststehende
-	 * (abgehakt, gefahren, ausgefallen oder selbst gewählt) bleibt, dann geht es nicht.
+	 * (abgehakt, gefahren oder ausgefallen) bleibt, dann geht es nicht. Eine selbst gewählte weicht, denn wer sie
+	 * hier setzt, will es so.
 	 */
 	private void clearSlot(TrainingPlan plan, LocalDate date, boolean strength, PlannedWorkout except) {
 		for (PlannedWorkout other : plan.getWorkouts().stream().filter(candidate -> candidate != except
 				&& candidate.getDate().equals(date)
 				&& WorkoutLibrary.isStrengthId(candidate.getWorkoutId()) == strength)
 				.toList()) {
-			boolean fixed = other.isCompleted() || other.getActivityId() != null || other.getSkipReason() != null
-					|| other.isChosenByUser();
+			boolean fixed = other.isCompleted() || other.getActivityId() != null || other.getSkipReason() != null;
 			if (fixed) {
 				throw new NotPossibleException();
 			}
