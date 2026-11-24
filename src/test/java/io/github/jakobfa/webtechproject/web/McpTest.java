@@ -326,4 +326,108 @@ class McpTest {
 		setAiMode(other, false);
 		rpc(access, "{ \"jsonrpc\": \"2.0\", \"id\": 1, \"method\": \"ping\" }").andExpect(status().isOk());
 	}
+
+	private String callWrite(String access, String tool, String arguments) throws Exception {
+		return call(access, tool, arguments);
+	}
+
+	private String callError(String access, String tool, String arguments) throws Exception {
+		String body = rpc(access, """
+				{ "jsonrpc": "2.0", "id": 8, "method": "tools/call", "params": { "name": "%s", "arguments": %s } }
+				""".formatted(tool, arguments)).andExpect(status().isOk()).andReturn().getResponse()
+				.getContentAsString();
+		assertThat((Boolean) JsonPath.read(body, "$.result.isError")).isTrue();
+		return JsonPath.read(body, "$.result.content[0].text");
+	}
+
+	private long upcomingPlanId(String access) throws Exception {
+		String upcoming = call(access, "get_plan", "{ \"from\": \"%s\", \"to\": \"%s\" }"
+				.formatted(java.time.LocalDate.now().plusDays(2), java.time.LocalDate.now().plusDays(10)));
+		return ((Number) JsonPath.read(upcoming, "$.tage[0].planId")).longValue();
+	}
+
+	@Test
+	void writeToolsAreOnlyVisibleAndUsableWithTheWriteScope() throws Exception {
+		String readOnly = accessToken("plan:read");
+		String list = rpc(readOnly, "{ \"jsonrpc\": \"2.0\", \"id\": 2, \"method\": \"tools/list\" }")
+				.andReturn().getResponse().getContentAsString();
+		assertThat((List<String>) JsonPath.read(list, "$.result.tools[*].name")).doesNotContain("update_profile",
+				"skip_workout", "regenerate_plan");
+		rpc(readOnly, """
+				{ "jsonrpc": "2.0", "id": 9, "method": "tools/call",
+				  "params": { "name": "regenerate_plan", "arguments": {} } }
+				""").andExpect(jsonPath("$.error.message").value(org.hamcrest.Matchers.containsString("plan:write")));
+
+		String access = accessToken("plan:read plan:write");
+		String full = rpc(access, "{ \"jsonrpc\": \"2.0\", \"id\": 2, \"method\": \"tools/list\" }")
+				.andReturn().getResponse().getContentAsString();
+		assertThat((List<String>) JsonPath.read(full, "$.result.tools[*].name")).contains("get_plan", "update_profile",
+				"regenerate_plan", "skip_workout", "undo_skip", "adjust_workout", "replace_workout", "report_sick",
+				"report_healthy", "pause_plan", "resume_plan", "set_week_availability");
+		assertThat((List<Boolean>) JsonPath.read(full, "$.result.tools[?(@.name=='update_profile')].annotations.destructiveHint"))
+				.containsExactly(true);
+		assertThat((List<Boolean>) JsonPath.read(full, "$.result.tools[?(@.name=='get_plan')].annotations.readOnlyHint"))
+				.containsExactly(true);
+	}
+
+	@Test
+	void theAiCanSkipAndTakeBackAWorkoutAndAdjustIt() throws Exception {
+		String access = accessToken("plan:read plan:write");
+		long id = upcomingPlanId(access);
+
+		String skipped = callWrite(access, "skip_workout", "{ \"planId\": %d, \"reason\": \"TIRED\" }".formatted(id));
+		assertThat(skipped).contains("nicht gemacht").contains("ausgefallen (TIRED)");
+		assertThat(skipped).doesNotContain("gefahren").doesNotContain("erledigt\":false");
+		assertThat(callWrite(access, "undo_skip", "{ \"planId\": %d }".formatted(id))).doesNotContain("ausgefallen");
+		assertThat(callError(access, "skip_workout", "{ \"planId\": %d, \"reason\": \"quatsch\" }".formatted(id)))
+				.contains("reason");
+		assertThat(callError(access, "skip_workout", "{ \"planId\": 999999999, \"reason\": \"TIRED\" }"))
+				.contains("planId");
+	}
+
+	@Test
+	void theAiCanChangeTheSportingGoalAndRebuildThePlan() throws Exception {
+		String access = accessToken("plan:read plan:write");
+
+		String changed = callWrite(access, "update_profile",
+				"{ \"trainingGoal\": \"FTP\", \"event\": null, \"availability\": { \"saturday\": 4 } }");
+		assertThat(changed).contains("\"trainingGoal\"".replace("trainingGoal", "ziel")).contains("FTP")
+				.contains("regenerate_plan");
+		assertThat(call(access, "get_overview", "{}")).contains("\"ziel\":\"FTP\"").contains("\"samstag\":4.0")
+				.doesNotContain("\"event\"");
+		// die anderen Werte des Profils bleiben
+		assertThat(call(access, "get_overview", "{}")).contains("AMBITIOUS");
+
+		String plan = callWrite(access, "regenerate_plan", "{}");
+		assertThat(plan).contains("Plan neu erstellt").contains("\"einheit\"").doesNotContain("gefahren");
+
+		assertThat(callError(access, "update_profile", "{ \"ftp\": 5 }")).contains("ungültig");
+		assertThat(callError(access, "update_profile", "{ \"trainingGoal\": \"EVENT\", \"event\": null }"))
+				.contains("Event");
+		assertThat(callError(access, "update_profile", "{ \"owner\": 1 }")).contains("Unbekannte Felder");
+		assertThat(callError(access, "update_profile", "{ \"level\": \"GOTT\" }")).contains("Ungültig");
+	}
+
+	@Test
+	void theAiCanReportSicknessAndBeingHealthyAgain() throws Exception {
+		String access = accessToken("plan:read plan:write");
+		String today = java.time.LocalDate.now().toString();
+
+		assertThat(callWrite(access, "report_sick", "{ \"from\": \"%s\" }".formatted(today))).contains("Krank gemeldet");
+		assertThat(call(access, "get_overview", "{}")).contains("\"krankSeit\":\"" + today + "\"");
+		assertThat(callWrite(access, "report_healthy", "{}")).contains("Wieder gesund");
+		assertThat(call(access, "get_overview", "{}")).contains("\"krankSeit\":null");
+		assertThat(callError(access, "report_healthy", "{}")).contains("geht so nicht");
+		assertThat(callError(access, "report_sick", "{ \"from\": \"2099-01-01\" }")).contains("geht so nicht");
+	}
+
+	@Test
+	void writeToolsStopWhenTheAiModeIsSwitchedOff() throws Exception {
+		String access = accessToken("plan:read plan:write");
+		setAiMode(auth, false);
+		rpc(access, """
+				{ "jsonrpc": "2.0", "id": 1, "method": "tools/call",
+				  "params": { "name": "regenerate_plan", "arguments": {} } }
+				""").andExpect(status().isUnauthorized());
+	}
 }

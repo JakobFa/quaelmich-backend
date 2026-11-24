@@ -29,8 +29,17 @@ import io.github.jakobfa.webtechproject.service.WorkoutLibrary;
 @Component
 public class McpTools {
 
-	/** Beschreibung eines Werkzeugs (Name, Text, JSON-Schema der Eingaben) */
-	public record Tool(String name, String description, Map<String, Object> inputSchema, String scope) {
+	/**
+	 * Beschreibung eines Werkzeugs (Name, Text, JSON-Schema der Eingaben). annotations sagen der KI-App, ob das
+	 * Werkzeug etwas ändert (readOnlyHint, destructiveHint), damit sie vorher beim Nutzer nachfragt.
+	 */
+	public record Tool(String name, String description, Map<String, Object> inputSchema, String scope,
+			Map<String, Object> annotations) {
+
+		/** Ein Lesewerkzeug */
+		public Tool(String name, String description, Map<String, Object> inputSchema, String scope) {
+			this(name, description, inputSchema, scope, Map.of("readOnlyHint", true));
+		}
 	}
 
 	/** Wird geworfen, wenn die Eingaben nicht passen oder es nichts zu zeigen gibt (kommt als Fehlertext zurück) */
@@ -192,7 +201,12 @@ public class McpTools {
 		return rows;
 	}
 
-	private Map<String, Object> day(PlannedWorkout planned) {
+	/** Die nächsten 7 Tage eines Plans (für die Antworten der Schreibwerkzeuge) */
+	List<Map<String, Object>> nextDays(TrainingPlan plan) {
+		return days(plan, today(), today().plusDays(6));
+	}
+
+	Map<String, Object> day(PlannedWorkout planned) {
 		Workout workout = library.resolve(planned.getWorkoutId(), planned.getDurationMinutes()).orElseThrow();
 		Map<String, Object> row = new LinkedHashMap<>();
 		row.put("tag", planned.getDate().toString());
