@@ -284,7 +284,7 @@ class McpTest {
 		String list = rpc(access, "{ \"jsonrpc\": \"2.0\", \"id\": 2, \"method\": \"tools/list\" }")
 				.andReturn().getResponse().getContentAsString();
 		List<String> names = JsonPath.read(list, "$.result.tools[*].name");
-		assertThat(names).containsExactlyInAnyOrder("get_overview", "get_plan", "list_workouts");
+		assertThat(names).containsExactlyInAnyOrder("get_overview", "get_plan", "list_workouts", "list_my_workouts");
 		assertThat(Map.of("scope", "plan:read")).isNotEmpty();
 	}
 
@@ -363,7 +363,7 @@ class McpTest {
 				.andReturn().getResponse().getContentAsString();
 		assertThat((List<String>) JsonPath.read(full, "$.result.tools[*].name")).contains("get_plan", "update_profile",
 				"regenerate_plan", "skip_workout", "undo_skip", "adjust_workout", "replace_workout", "report_sick",
-				"report_healthy", "pause_plan", "resume_plan", "set_week_availability");
+				"report_healthy", "pause_plan", "resume_plan", "set_week_availability", "create_workout", "list_my_workouts");
 		assertThat((List<Boolean>) JsonPath.read(full, "$.result.tools[?(@.name=='update_profile')].annotations.destructiveHint"))
 				.containsExactly(true);
 		assertThat((List<Boolean>) JsonPath.read(full, "$.result.tools[?(@.name=='get_plan')].annotations.readOnlyHint"))
@@ -383,6 +383,41 @@ class McpTest {
 				.contains("reason");
 		assertThat(callError(access, "skip_workout", "{ \"planId\": 999999999, \"reason\": \"TIRED\" }"))
 				.contains("planId");
+	}
+
+	@Test
+	void theAiCanBuildItsOwnWorkoutAndPutItIntoThePlan() throws Exception {
+		String access = accessToken("plan:read plan:write");
+		assertThat(call(access, "list_my_workouts", "{}")).contains("\"anzahl\":0");
+
+		String created = callWrite(access, "create_workout", """
+				{ "title": "Steigende Treppe", "description": "Von der KI gebaut", "type": "ENDURANCE",
+				  "steps": [ { "kind": "WARMUP", "minutes": 10, "powerStartPercent": 50, "powerEndPercent": 65 },
+				             { "kind": "STEADY", "minutes": 40, "powerStartPercent": 70 },
+				             { "kind": "COOLDOWN", "minutes": 10, "powerStartPercent": 55 } ] }
+				""");
+		assertThat(created).contains("Steigende Treppe").contains("\"dauerMinuten\":60");
+		long workoutId = ((Number) JsonPath.read(call(access, "list_my_workouts", "{}"), "$.workouts[0].id")).longValue();
+		assertThat(call(access, "list_my_workouts", "{}")).contains("abschnitte").contains("Steigende Treppe");
+		assertThat(call(access, "list_workouts", "{}")).doesNotContain("Steigende Treppe");
+
+		long planId = upcomingPlanId(access);
+		assertThat(callWrite(access, "replace_workout",
+				"{ \"planId\": %d, \"workoutId\": %d }".formatted(planId, workoutId))).contains("Steigende Treppe");
+
+		assertThat(callError(access, "create_workout", """
+				{ "title": "Kaputt", "type": "ENDURANCE",
+				  "steps": [ { "kind": "STEADY", "minutes": 10, "powerStartPercent": 500 } ] }
+				""")).contains("powerStartPercent");
+		assertThat(callError(access, "create_workout", """
+				{ "title": "Zu lang", "type": "ENDURANCE",
+				  "steps": [ { "kind": "STEADY", "minutes": 200, "powerStartPercent": 60 },
+				             { "kind": "STEADY", "minutes": 200, "powerStartPercent": 60 } ] }
+				""")).contains("6 Stunden");
+		assertThat(callError(access, "create_workout", """
+				{ "title": "Test", "type": "FTP_TEST",
+				  "steps": [ { "kind": "STEADY", "minutes": 10, "powerStartPercent": 60 } ] }
+				""")).contains("FTP-Test");
 	}
 
 	@Test

@@ -10,13 +10,18 @@ import java.util.stream.Collectors;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.support.TransactionTemplate;
 
+import io.github.jakobfa.webtechproject.custom.CustomWorkoutService;
 import io.github.jakobfa.webtechproject.integration.intervals.IntervalsAutoSyncService;
 import io.github.jakobfa.webtechproject.integration.intervals.IntervalsFtpSync;
 import io.github.jakobfa.webtechproject.model.Athlete;
 import io.github.jakobfa.webtechproject.model.PlannedWorkout;
 import io.github.jakobfa.webtechproject.model.SkipReason;
+import io.github.jakobfa.webtechproject.model.StepKind;
 import io.github.jakobfa.webtechproject.model.TrainingPlan;
 import io.github.jakobfa.webtechproject.model.WeeklyAvailability;
+import io.github.jakobfa.webtechproject.model.Workout;
+import io.github.jakobfa.webtechproject.model.WorkoutStep;
+import io.github.jakobfa.webtechproject.model.WorkoutType;
 import io.github.jakobfa.webtechproject.service.AbsenceService;
 import io.github.jakobfa.webtechproject.service.AthleteService;
 import io.github.jakobfa.webtechproject.service.TrainingPlanService;
@@ -45,13 +50,14 @@ public class McpWriteTools {
 	private final WorkoutCustomizationService customization;
 	private final IntervalsAutoSyncService autoSync;
 	private final IntervalsFtpSync ftpSync;
+	private final CustomWorkoutService customWorkouts;
 	private final ObjectMapper mapper;
 	private final Validator validator;
 	private final TransactionTemplate tx;
 
 	public McpWriteTools(McpTools read, AthleteService athletes, TrainingPlanService plans, AbsenceService absence,
 			WorkoutCustomizationService customization, IntervalsAutoSyncService autoSync, IntervalsFtpSync ftpSync,
-			ObjectMapper mapper, Validator validator, TransactionTemplate tx) {
+			CustomWorkoutService customWorkouts, ObjectMapper mapper, Validator validator, TransactionTemplate tx) {
 		this.read = read;
 		this.athletes = athletes;
 		this.plans = plans;
@@ -59,6 +65,7 @@ public class McpWriteTools {
 		this.customization = customization;
 		this.autoSync = autoSync;
 		this.ftpSync = ftpSync;
+		this.customWorkouts = customWorkouts;
 		this.mapper = mapper;
 		this.validator = validator;
 		this.tx = tx;
@@ -138,6 +145,21 @@ public class McpWriteTools {
 								"durationMinutes", prop("integer", "Dauer in Minuten, nur bei Workouts mit variabler Dauer")),
 								"planId", "workoutId"),
 						false),
+				tool("create_workout", "Legt ein eigenes Workout für den Nutzer an (erscheint in seiner Liste eigener Workouts "
+						+ "und im Workout-Builder). Danach mit replace_workout in den Plan tauschen. Leistung in Prozent der "
+						+ "FTP (30 bis 250); unterschiedliche Start- und Endwerte ergeben eine Rampe. Höchstens 6 Stunden, "
+						+ "kein FTP-Test.",
+						object(Map.of("title", prop("string", "Name, höchstens 80 Zeichen"),
+								"description", prop("string", "Beschreibung, höchstens 500 Zeichen, optional"),
+								"type", prop("string", "Art, zum Beispiel ENDURANCE, SWEET_SPOT, THRESHOLD, VO2MAX (siehe list_workouts)"),
+								"steps", Map.of("type", "array", "description", "Abschnitte in Reihenfolge, 1 bis 100",
+										"items", object(Map.of("kind", prop("string", "WARMUP, STEADY, INTERVAL, RECOVERY oder COOLDOWN"),
+												"minutes", prop("number", "Dauer in Minuten (mindestens 10 Sekunden)"),
+												"powerStartPercent", prop("integer", "Leistung am Anfang in % der FTP"),
+												"powerEndPercent", prop("integer", "Leistung am Ende in % der FTP, optional (sonst gleich dem Anfang)")),
+												"kind", "minutes", "powerStartPercent"))),
+								"title", "type", "steps"),
+						false),
 				tool("report_sick", "Meldet Krankheit (oder Verletzung). Ohne until bleibt der Plan stehen, bis "
 						+ "report_healthy kommt; from darf bis zu 8 Wochen zurückliegen. Mit until ein abgeschlossener "
 						+ "Zeitraum.",
@@ -188,6 +210,7 @@ public class McpWriteTools {
 			case "replace_workout" -> workoutResult(userId, "Einheit getauscht.", planId(args),
 					id -> customization.replace(id, userId, number(args, "workoutId", true),
 							args.get("durationMinutes") == null ? null : number(args, "durationMinutes", true).intValue()));
+			case "create_workout" -> createWorkout(userId, args);
 			case "report_sick" -> planResult(userId, "Krank gemeldet.", () -> absence.startSickness(userId,
 					date(args, "from", true), date(args, "until", false)));
 			case "report_healthy" -> planResult(userId, "Wieder gesund gemeldet.", () -> {
@@ -248,6 +271,57 @@ public class McpWriteTools {
 				+ "regenerate_plan aufrufen.");
 		out.put("profil", read.call(userId, "get_overview", Map.of()));
 		return out;
+	}
+
+	private Object createWorkout(Long userId, Map<String, Object> args) {
+		String title = text(args, "title");
+		if (title == null || title.isBlank() || title.strip().length() > 80) {
+			throw new McpTools.ToolException("'title' fehlt oder ist länger als 80 Zeichen");
+		}
+		String description = args.get("description") == null ? null : args.get("description").toString();
+		if (description != null && description.length() > 500) {
+			throw new McpTools.ToolException("'description' ist länger als 500 Zeichen");
+		}
+		WorkoutType type = enumOf(WorkoutType.class, text(args, "type"), "type");
+		if (!(args.get("steps") instanceof List<?> rawSteps) || rawSteps.isEmpty() || rawSteps.size() > 100) {
+			throw new McpTools.ToolException("'steps' braucht 1 bis 100 Abschnitte");
+		}
+		List<WorkoutStep> steps = rawSteps.stream().map(raw -> {
+			if (!(raw instanceof Map<?, ?> step)) {
+				throw new McpTools.ToolException("Jeder Abschnitt braucht kind, minutes und powerStartPercent");
+			}
+			@SuppressWarnings("unchecked")
+			Map<String, Object> values = (Map<String, Object>) step;
+			StepKind kind = enumOf(StepKind.class, text(values, "kind"), "kind");
+			if (!(values.get("minutes") instanceof Number minutes)) {
+				throw new McpTools.ToolException("'minutes' fehlt");
+			}
+			int seconds = (int) Math.round(minutes.doubleValue() * 60);
+			int start = percent(values, "powerStartPercent", null);
+			int end = percent(values, "powerEndPercent", start);
+			if (seconds < 10 || seconds > 4 * 3600) {
+				throw new McpTools.ToolException("Ein Abschnitt dauert 10 Sekunden bis 4 Stunden");
+			}
+			return new WorkoutStep(kind, seconds, start, end);
+		}).toList();
+		try {
+			Workout created = customWorkouts.create(userId, title, description, type, steps);
+			return Map.of("erledigt", "Workout angelegt. Mit replace_workout und dieser id in den Plan tauschen.",
+					"workout", McpTools.workoutRows(List.of(created), true).get("workouts"));
+		} catch (CustomWorkoutService.InvalidWorkoutException e) {
+			throw new McpTools.ToolException(e.getMessage());
+		}
+	}
+
+	private static int percent(Map<String, Object> values, String key, Integer fallback) {
+		Object value = values.get(key);
+		if (value == null && fallback != null) {
+			return fallback;
+		}
+		if (!(value instanceof Number number) || number.intValue() < 30 || number.intValue() > 250) {
+			throw new McpTools.ToolException("'" + key + "' muss zwischen 30 und 250 liegen");
+		}
+		return number.intValue();
 	}
 
 	private Object regeneratePlan(Long userId) {
