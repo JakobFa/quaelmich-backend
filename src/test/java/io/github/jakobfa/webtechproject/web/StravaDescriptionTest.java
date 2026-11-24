@@ -123,8 +123,9 @@ class StravaDescriptionTest {
 
 		confirm(true).andExpect(status().isOk());
 
-		String title = library.resolve(repository.findById(plannedId).orElseThrow().getWorkoutId(), null)
-				.orElseThrow().getTitle();
+		// mit der geplanten Dauer, wie in der App: der Titel hängt davon ab ("Grundlage 90 min" / "Grundlage 2 h")
+		PlannedWorkout stored = repository.findById(plannedId).orElseThrow();
+		String title = library.resolve(stored.getWorkoutId(), stored.getDurationMinutes()).orElseThrow().getTitle();
 		verify(client, timeout(5000)).updateActivity(eq("acc"), eq(ACTIVITY), anyString(), eq(title));
 	}
 
