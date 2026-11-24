@@ -427,7 +427,7 @@ class McpTest {
 		String access = accessToken("plan:read");
 		String list = rpc(access, "{ \"jsonrpc\": \"2.0\", \"id\": 1, \"method\": \"prompts/list\" }")
 				.andReturn().getResponse().getContentAsString();
-		assertThat((List<String>) JsonPath.read(list, "$.result.prompts[*].name")).contains("plan_pruefen",
+		assertThat((List<String>) JsonPath.read(list, "$.result.prompts[*].name")).contains("plan_erstellen", "plan_pruefen",
 				"woche_umplanen", "workout_bauen", "fahrten_abgleichen", "einrichten");
 
 		String prompt = rpc(access, """
@@ -442,6 +442,13 @@ class McpTest {
 				""").andReturn().getResponse().getContentAsString();
 		assertThat((String) JsonPath.read(compare, "$.result.messages[0].content.text")).contains("Trainer")
 				.contains("Strava-Konnektor").contains("die letzten 7 Tage");
+
+		String create = rpc(access, """
+				{ "jsonrpc": "2.0", "id": 6, "method": "prompts/get", "params": { "name": "plan_erstellen" } }
+				""").andReturn().getResponse().getContentAsString();
+		assertThat((String) JsonPath.read(create, "$.result.messages[0].content.text")).contains("optimalen sportlichen Plan")
+				.contains("pro Wochentag").contains("tägliche Aufgabe").contains("fahrten_abgleichen")
+				.contains("deutlich härter oder schwächer");
 
 		rpc(access, """
 				{ "jsonrpc": "2.0", "id": 3, "method": "prompts/get",
