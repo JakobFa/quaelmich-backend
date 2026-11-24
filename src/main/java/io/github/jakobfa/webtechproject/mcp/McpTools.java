@@ -11,6 +11,7 @@ import java.util.Optional;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.support.TransactionTemplate;
 
+import io.github.jakobfa.webtechproject.custom.CustomWorkoutService;
 import io.github.jakobfa.webtechproject.model.Athlete;
 import io.github.jakobfa.webtechproject.model.PlannedWorkout;
 import io.github.jakobfa.webtechproject.model.TrainingPlan;
@@ -54,14 +55,16 @@ public class McpTools {
 	private final AthleteService athletes;
 	private final TrainingPlanService plans;
 	private final WorkoutLibrary library;
+	private final CustomWorkoutService customWorkouts;
 	private final TransactionTemplate tx;
 	private final Clock clock;
 
 	public McpTools(AthleteService athletes, TrainingPlanService plans,
-			WorkoutLibrary library, TransactionTemplate tx, Clock clock) {
+			WorkoutLibrary library, CustomWorkoutService customWorkouts, TransactionTemplate tx, Clock clock) {
 		this.athletes = athletes;
 		this.plans = plans;
 		this.library = library;
+		this.customWorkouts = customWorkouts;
 		this.tx = tx;
 		this.clock = clock;
 	}
@@ -90,7 +93,10 @@ public class McpTools {
 						OAuthService.SCOPE_READ),
 				new Tool("list_workouts", "Die Workout-Bibliothek: Titel, Art, Dauer, Belastung und Beschreibung. Optional "
 						+ "nach Art gefiltert (z. B. SWEET_SPOT, THRESHOLD, VO2MAX, ENDURANCE, LONG_RIDE).",
-						schema(Map.of("type", text("Trainingsart, z. B. THRESHOLD"))), OAuthService.SCOPE_READ));
+						schema(Map.of("type", text("Trainingsart, z. B. THRESHOLD"))), OAuthService.SCOPE_READ),
+				new Tool("list_my_workouts", "Die eigenen Workouts des Nutzers (selbst gebaut oder von dir mit create_workout "
+						+ "angelegt), mit Abschnitten. Die id geht in replace_workout.", schema(Map.of()),
+						OAuthService.SCOPE_READ));
 	}
 
 	/** Führt ein Werkzeug für einen Nutzer aus; Ergebnis ist eine JSON-fähige Struktur */
@@ -99,6 +105,7 @@ public class McpTools {
 			case "get_overview" -> overview(userId);
 			case "get_plan" -> plan(userId, date(arguments, "from", today()), date(arguments, "to", today().plusDays(14)));
 			case "list_workouts" -> workouts(arguments == null ? null : (String) arguments.get("type"));
+			case "list_my_workouts" -> workoutRows(customWorkouts.listOwn(userId), true);
 			default -> throw new ToolException("Unbekanntes Werkzeug: " + name);
 		};
 	}
@@ -178,17 +185,25 @@ public class McpTools {
 			}
 		}
 		WorkoutType wanted = filter;
-		List<Map<String, Object>> rows = all.stream().filter(workout -> wanted == null || workout.getType() == wanted)
-				.map(workout -> {
-					Map<String, Object> row = new LinkedHashMap<>();
-					row.put("id", workout.getId());
-					row.put("titel", workout.getTitle());
-					row.put("art", workout.getType().name());
-					row.put("dauerMinuten", workout.getDurationInMinutes());
-					row.put("tss", workout.getTss());
-					row.put("beschreibung", workout.getDescription());
-					return row;
-				}).toList();
+		return workoutRows(all.stream().filter(workout -> wanted == null || workout.getType() == wanted).toList(), false);
+	}
+
+	static Map<String, Object> workoutRows(List<Workout> workouts, boolean withSteps) {
+		List<Map<String, Object>> rows = workouts.stream().map(workout -> {
+			Map<String, Object> row = new LinkedHashMap<>();
+			row.put("id", workout.getId());
+			row.put("titel", workout.getTitle());
+			row.put("art", workout.getType().name());
+			row.put("dauerMinuten", workout.getDurationInMinutes());
+			row.put("tss", workout.getTss());
+			row.put("beschreibung", workout.getDescription());
+			if (withSteps) {
+				row.put("abschnitte", workout.getSteps().stream().map(step -> Map.of("art", step.kind().name(),
+						"minuten", Math.round(step.durationSeconds() / 6f) / 10.0, "von%FTP", step.powerStartPercent(),
+						"bis%FTP", step.powerEndPercent())).toList());
+			}
+			return row;
+		}).toList();
 		return Map.of("anzahl", rows.size(), "workouts", rows);
 	}
 
