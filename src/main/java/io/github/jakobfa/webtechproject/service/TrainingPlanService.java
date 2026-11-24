@@ -42,9 +42,13 @@ public class TrainingPlanService {
 	private final StravaConnectionRepository stravaConnections;
 	private final Clock clock;
 
+	private final AiModeGuard aiMode;
+
 	public TrainingPlanService(AthleteRepository athleteRepository, TrainingPlanRepository planRepository,
 			PlanGenerator planGenerator, RaceEventRepository raceEvents, WorkoutLibrary library,
-			ExtraRideRepository extraRides, StravaConnectionRepository stravaConnections, Clock clock) {
+			ExtraRideRepository extraRides, StravaConnectionRepository stravaConnections, Clock clock,
+			AiModeGuard aiMode) {
+		this.aiMode = aiMode;
 		this.extraRides = extraRides;
 		this.stravaConnections = stravaConnections;
 		this.library = library;
@@ -424,7 +428,8 @@ public class TrainingPlanService {
 	@Transactional
 	public void adaptToActuals(Long athleteId) {
 		planRepository.findByAthleteId(athleteId).ifPresent(plan -> {
-			if (plan.getSickSince() != null || stravaDataOutdated(athleteId)) {
+			if (plan.getSickSince() != null || stravaDataOutdated(athleteId)
+					|| aiMode.automaticChangesBlocked(plan.getAthlete())) {
 				return;
 			}
 			PlanHistory history = historyOf(plan);
@@ -599,6 +604,10 @@ public class TrainingPlanService {
 	@Transactional
 	public Optional<TrainingPlan> currentPlan(Long athleteId) {
 		return planRepository.findByAthleteId(athleteId).map(plan -> {
+			if (aiMode.automaticChangesBlocked(plan.getAthlete())) {
+				plan.getWorkouts().size(); // KI-Modus: der Plan bleibt, wie er ist (Workouts innerhalb der Transaktion laden)
+				return plan;
+			}
 			adaptOncePerWeek(plan);
 			// Auch beim Öffnen abgleichen (nicht nur nach einer neuen Fahrt): ändert sich die Rechnung oder wurde
 			// zwischendurch etwas gefahren, passt sich der Plan an. Passiert nichts Neues, passiert hier nichts.

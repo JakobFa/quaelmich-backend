@@ -32,6 +32,7 @@ import io.github.jakobfa.webtechproject.service.IntervalAccuracy;
 import io.github.jakobfa.webtechproject.service.IntervalAccuracyService;
 import io.github.jakobfa.webtechproject.model.Workout;
 import io.github.jakobfa.webtechproject.model.WorkoutType;
+import io.github.jakobfa.webtechproject.service.AiModeGuard;
 import io.github.jakobfa.webtechproject.service.PlanAdaptationService;
 import io.github.jakobfa.webtechproject.service.TrainingPlanService;
 import io.github.jakobfa.webtechproject.service.WorkoutLibrary;
@@ -68,13 +69,16 @@ public class ActivityImportService {
 	private final TrainingPlanService planService;
 	private final io.github.jakobfa.webtechproject.service.StravaDescriptionService stravaDescription;
 	private final Clock clock;
+	private final AiModeGuard aiMode;
 
 	public ActivityImportService(IntervalsConnectionService connectionService, IntervalsIcuClient client,
 			StravaService stravaService, AthleteService athleteService,
 			PlannedWorkoutRepository plannedWorkoutRepository, ExtraRideRepository extraRideRepository,
 			PlanAdaptationService adaptation, WorkoutLibrary library, IntervalAccuracyService intervalAccuracy,
 			TrainingPlanService planService,
-			io.github.jakobfa.webtechproject.service.StravaDescriptionService stravaDescription, Clock clock) {
+			io.github.jakobfa.webtechproject.service.StravaDescriptionService stravaDescription, Clock clock,
+			AiModeGuard aiMode) {
+		this.aiMode = aiMode;
 		this.planService = planService;
 		this.stravaDescription = stravaDescription;
 		this.intervalAccuracy = intervalAccuracy;
@@ -99,6 +103,8 @@ public class ActivityImportService {
 			return Optional.empty();
 		}
 		Long athleteId = athlete.get().getId();
+		// KI-Modus: Fahrten werden weiter übernommen, aber der Plan passt sich nicht mehr von selbst an
+		boolean aiModeFrozen = aiMode.automaticChangesBlocked(athlete.get());
 		// Plan-Seite zweimal schnell geöffnet → zwei Importe; ohne Sperre würde jede Fahrt doppelt gespeichert
 		athleteService.lockForImport(athleteId);
 
@@ -176,7 +182,7 @@ public class ActivityImportService {
 						intervalAccuracy.rampTestOf(fromPlayer.id(), userId).ifPresent(result -> FtpSuggestions
 								.fromRampTest(athlete.get(), result, planned.getDate()));
 					}
-					if (adaptation.adaptAfter(planned, window).isPresent()) {
+					if (!aiModeFrozen && adaptation.adaptAfter(planned, window).isPresent()) {
 						adjusted++;
 					}
 					confirmedFromPlayer.add(planned.getId());
@@ -242,7 +248,7 @@ public class ActivityImportService {
 			}
 			apply(planned, ride);
 			matched++;
-			if (adaptation.adaptAfter(planned, window).isPresent()) {
+			if (!aiModeFrozen && adaptation.adaptAfter(planned, window).isPresent()) {
 				adjusted++;
 			}
 		}
@@ -275,7 +281,7 @@ public class ActivityImportService {
 			if (existing == null) {
 				extra++;
 			}
-			if (adaptation.adaptAfter(extraRide, window).isPresent()) {
+			if (!aiModeFrozen && adaptation.adaptAfter(extraRide, window).isPresent()) {
 				adjusted++;
 			}
 		}
