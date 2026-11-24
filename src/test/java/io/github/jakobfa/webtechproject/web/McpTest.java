@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -45,7 +46,14 @@ class McpTest {
 	void setUp() throws Exception {
 		auth = registerWithProfile(mockMvc);
 		mockMvc.perform(post("/me/plan").header("Authorization", auth)).andExpect(status().isCreated());
+		setAiMode(auth, true);
 		clientId = registerClient();
+	}
+
+	private void setAiMode(String token, boolean enabled) throws Exception {
+		mockMvc.perform(put("/me/ai-mode").header("Authorization", token).contentType(MediaType.APPLICATION_JSON)
+				.content("{ \"enabled\": %s }".formatted(enabled))).andExpect(status().isOk())
+				.andExpect(jsonPath("$.enabled").value(enabled));
 	}
 
 	private static String challenge(String verifier) throws Exception {
@@ -171,6 +179,7 @@ class McpTest {
 		// ein zweiter Nutzer mit eigenem Profil und Plan
 		auth = registerWithProfile(mockMvc);
 		mockMvc.perform(post("/me/plan").header("Authorization", auth)).andExpect(status().isCreated());
+		setAiMode(auth, true);
 		String theirs = accessToken("plan:read");
 		String planOfTheirs = call(theirs, "get_plan", "{}");
 
@@ -275,5 +284,44 @@ class McpTest {
 		List<String> names = JsonPath.read(list, "$.result.tools[*].name");
 		assertThat(names).containsExactlyInAnyOrder("get_overview", "get_plan", "list_workouts");
 		assertThat(Map.of("scope", "plan:read")).isNotEmpty();
+	}
+
+	@Test
+	void theAiModeIsOffByDefaultAndWithoutItNoAiAppGetsIn() throws Exception {
+		String fresh = registerWithProfile(mockMvc);
+		mockMvc.perform(get("/me/ai-mode").header("Authorization", fresh)).andExpect(status().isOk())
+				.andExpect(jsonPath("$.enabled").value(false));
+		mockMvc.perform(post("/oauth/consent").header("Authorization", fresh).contentType(MediaType.APPLICATION_JSON)
+				.content("""
+						{ "clientId": "%s", "redirectUri": "%s", "codeChallenge": "%s", "codeChallengeMethod": "S256",
+						  "scope": "plan:read" }
+						""".formatted(clientId, REDIRECT, challenge(VERIFIER))))
+				.andExpect(status().isBadRequest()).andExpect(jsonPath("$.error").value("access_denied"));
+	}
+
+	@Test
+	void switchingTheAiModeOffEndsAllConnectionsAtOnce() throws Exception {
+		String access = accessToken("plan:read");
+		rpc(access, "{ \"jsonrpc\": \"2.0\", \"id\": 1, \"method\": \"ping\" }").andExpect(status().isOk());
+
+		setAiMode(auth, false);
+
+		rpc(access, "{ \"jsonrpc\": \"2.0\", \"id\": 1, \"method\": \"ping\" }")
+				.andExpect(status().isUnauthorized());
+		mockMvc.perform(get("/me/ai-connections").header("Authorization", auth)).andExpect(status().isOk())
+				.andExpect(jsonPath("$").isEmpty());
+		// wieder einschalten gibt den alten Zugang nicht zurück
+		setAiMode(auth, true);
+		rpc(access, "{ \"jsonrpc\": \"2.0\", \"id\": 1, \"method\": \"ping\" }")
+				.andExpect(status().isUnauthorized());
+	}
+
+	@Test
+	void theAiModeOfOneUserDoesNotAffectAnother() throws Exception {
+		String other = registerWithProfile(mockMvc);
+		setAiMode(other, true);
+		String access = accessToken("plan:read");
+		setAiMode(other, false);
+		rpc(access, "{ \"jsonrpc\": \"2.0\", \"id\": 1, \"method\": \"ping\" }").andExpect(status().isOk());
 	}
 }

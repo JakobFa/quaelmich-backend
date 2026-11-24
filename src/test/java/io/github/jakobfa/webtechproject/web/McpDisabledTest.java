@@ -30,6 +30,7 @@ class McpDisabledTest {
 				.content("{\"client_name\":\"x\",\"redirect_uris\":[\"https://claude.ai/cb\"]}"))
 				.andExpect(status().isNotFound());
 		mockMvc.perform(get("/me/ai-connections")).andExpect(status().isNotFound());
+		mockMvc.perform(get("/me/ai-mode")).andExpect(status().isNotFound());
 	}
 
 	@Test
