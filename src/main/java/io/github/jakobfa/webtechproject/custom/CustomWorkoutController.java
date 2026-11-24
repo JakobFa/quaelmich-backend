@@ -42,7 +42,7 @@ public class CustomWorkoutController {
 		this.fitExporter = fitExporter;
 	}
 
-	public record StepRequest(@NotNull StepKind kind, @Min(10) @Max(4 * 3600) int durationSeconds,
+	public record StepRequest(@NotNull StepKind kind, @Min(10) @Max(12 * 3600) int durationSeconds,
 			@Min(30) @Max(250) int powerStartPercent, @Min(30) @Max(250) int powerEndPercent) {
 
 		WorkoutStep toStep() {
