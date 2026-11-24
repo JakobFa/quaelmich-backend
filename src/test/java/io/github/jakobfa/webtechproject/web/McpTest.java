@@ -284,7 +284,7 @@ class McpTest {
 		String list = rpc(access, "{ \"jsonrpc\": \"2.0\", \"id\": 2, \"method\": \"tools/list\" }")
 				.andReturn().getResponse().getContentAsString();
 		List<String> names = JsonPath.read(list, "$.result.tools[*].name");
-		assertThat(names).containsExactlyInAnyOrder("get_overview", "get_plan", "list_workouts", "list_my_workouts");
+		assertThat(names).containsExactlyInAnyOrder("get_overview", "get_plan", "list_workouts", "list_my_workouts", "list_events");
 		assertThat(Map.of("scope", "plan:read")).isNotEmpty();
 	}
 
@@ -363,7 +363,8 @@ class McpTest {
 				.andReturn().getResponse().getContentAsString();
 		assertThat((List<String>) JsonPath.read(full, "$.result.tools[*].name")).contains("get_plan", "update_profile",
 				"regenerate_plan", "skip_workout", "undo_skip", "adjust_workout", "replace_workout", "report_sick",
-				"report_healthy", "pause_plan", "resume_plan", "set_week_availability", "create_workout", "list_my_workouts");
+				"report_healthy", "pause_plan", "resume_plan", "set_week_availability", "create_workout", "list_my_workouts", "update_workout", "delete_workout",
+				"add_workout", "move_workout", "remove_workout", "shuffle_workout", "add_event", "update_event", "delete_event");
 		assertThat((List<Boolean>) JsonPath.read(full, "$.result.tools[?(@.name=='update_profile')].annotations.destructiveHint"))
 				.containsExactly(true);
 		assertThat((List<Boolean>) JsonPath.read(full, "$.result.tools[?(@.name=='get_plan')].annotations.readOnlyHint"))
@@ -449,6 +450,102 @@ class McpTest {
 		rpc(access, """
 				{ "jsonrpc": "2.0", "id": 4, "method": "prompts/get", "params": { "name": "gibtsnicht" } }
 				""").andExpect(jsonPath("$.error.code").value(-32602));
+	}
+
+	@Test
+	void theAiCanRemoveMoveAndAddWorkoutsOnAnyDay() throws Exception {
+		String access = accessToken("plan:read plan:write");
+		String upcoming = call(access, "get_plan", "{ \"from\": \"%s\", \"to\": \"%s\" }"
+				.formatted(java.time.LocalDate.now().plusDays(2), java.time.LocalDate.now().plusDays(14)));
+		long planId = ((Number) JsonPath.read(upcoming, "$.tage[0].planId")).longValue();
+		String day = JsonPath.read(upcoming, "$.tage[0].tag");
+		long libraryId = ((Number) JsonPath.read(call(access, "list_workouts", "{ \"type\": \"THRESHOLD\" }"),
+				"$.workouts[0].id")).longValue();
+
+		// entfernen: der Tag ist danach leer
+		assertThat(callWrite(access, "remove_workout", "{ \"planId\": %d }".formatted(planId))).contains("entfernt")
+				.contains(day);
+		assertThat(call(access, "get_plan", "{ \"from\": \"%s\", \"to\": \"%s\" }".formatted(day, day)))
+				.doesNotContain("\"planId\":" + planId);
+
+		// an diesem freien Tag eine Einheit anlegen: sie gilt als selbst gewählt
+		String added = callWrite(access, "add_workout",
+				"{ \"date\": \"%s\", \"workoutId\": %d }".formatted(day, libraryId));
+		assertThat(added).contains("eingeplant").contains(day).contains("Von dir");
+		long addedId = ((Number) JsonPath.read(added, "$.einheit.planId")).longValue();
+
+		// eine selbst gewählte Einheit weicht keiner zweiten, bleibt aber verschiebbar
+		assertThat(callError(access, "add_workout", "{ \"date\": \"%s\", \"workoutId\": %d }".formatted(day, libraryId)))
+				.contains("Das geht nicht");
+		String target = java.time.LocalDate.parse(day).plusDays(30).toString();
+		String moved = callWrite(access, "move_workout",
+				"{ \"planId\": %d, \"date\": \"%s\" }".formatted(addedId, target));
+		assertThat(moved).contains("verschoben").contains(target);
+
+		// Vergangenheit und Quatsch gehen nicht
+		assertThat(callError(access, "add_workout", "{ \"date\": \"2020-01-01\", \"workoutId\": %d }".formatted(libraryId)))
+				.contains("heute oder später");
+		assertThat(callError(access, "add_workout", "{ \"date\": \"%s\", \"workoutId\": 999999 }".formatted(day)))
+				.contains("Das geht nicht");
+		assertThat(callError(access, "remove_workout", "{ \"planId\": 999999999 }")).contains("planId");
+
+		// würfeln geht bei einer offenen Einheit
+		long other = ((Number) JsonPath.read(call(access, "get_plan", "{ \"from\": \"%s\", \"to\": \"%s\" }"
+				.formatted(java.time.LocalDate.now().plusDays(2), java.time.LocalDate.now().plusDays(10))),
+				"$.tage[0].planId")).longValue();
+		assertThat(callWrite(access, "shuffle_workout", "{ \"planId\": %d }".formatted(other))).contains("getauscht");
+	}
+
+	@Test
+	void theAiCanChangeAndDeleteItsOwnWorkouts() throws Exception {
+		String access = accessToken("plan:read plan:write");
+		callWrite(access, "create_workout", """
+				{ "title": "Alt", "type": "ENDURANCE",
+				  "steps": [ { "kind": "STEADY", "minutes": 30, "powerStartPercent": 65 } ] }
+				""");
+		long id = ((Number) JsonPath.read(call(access, "list_my_workouts", "{}"), "$.workouts[0].id")).longValue();
+
+		assertThat(callWrite(access, "update_workout", """
+				{ "workoutId": %d, "title": "Neu", "type": "ENDURANCE",
+				  "steps": [ { "kind": "STEADY", "minutes": 45, "powerStartPercent": 70 } ] }
+				""".formatted(id))).contains("geändert").contains("Neu").contains("\"dauerMinuten\":45");
+		assertThat(callError(access, "update_workout", """
+				{ "workoutId": 999999, "title": "X", "type": "ENDURANCE",
+				  "steps": [ { "kind": "STEADY", "minutes": 45, "powerStartPercent": 70 } ] }
+				""")).contains("Kein eigenes Workout");
+
+		assertThat(callWrite(access, "delete_workout", "{ \"workoutId\": %d }".formatted(id))).contains("gelöscht");
+		assertThat(call(access, "list_my_workouts", "{}")).contains("\"anzahl\":0");
+		assertThat(callError(access, "delete_workout", "{ \"workoutId\": %d }".formatted(id))).contains("Kein eigenes");
+	}
+
+	@Test
+	void theAiCanManageFurtherEvents() throws Exception {
+		String access = accessToken("plan:read plan:write");
+		assertThat(call(access, "list_events", "{}")).contains("\"anzahl\":0");
+		String date = java.time.LocalDate.now().plusWeeks(20).toString();
+
+		String added = callWrite(access, "add_event", """
+				{ "name": "Alpenbrevet", "date": "%s", "distanceKm": 120, "elevationMeters": 2500, "type": "GRAN_FONDO",
+				  "goal": "FINISH" }
+				""".formatted(date));
+		assertThat(added).contains("Alpenbrevet").contains("angelegt");
+		long id = ((Number) JsonPath.read(call(access, "list_events", "{}"), "$.events[0].id")).longValue();
+
+		assertThat(callError(access, "add_event", """
+				{ "name": "Doppelt", "date": "%s", "distanceKm": 50, "elevationMeters": 500, "type": "GRAN_FONDO" }
+				""".formatted(date))).contains("schon ein Event");
+		assertThat(callError(access, "add_event", """
+				{ "name": "Alt", "date": "2020-01-01", "distanceKm": 50, "elevationMeters": 500, "type": "GRAN_FONDO" }
+				""")).contains("ungültig");
+
+		assertThat(callWrite(access, "update_event", """
+				{ "eventId": %d, "name": "Alpenbrevet Gold", "date": "%s", "distanceKm": 130, "elevationMeters": 2700,
+				  "type": "GRAN_FONDO", "goal": "COMPETE" }
+				""".formatted(id, date))).contains("Alpenbrevet Gold").contains("geändert");
+		assertThat(callWrite(access, "delete_event", "{ \"eventId\": %d }".formatted(id))).contains("gelöscht");
+		assertThat(call(access, "list_events", "{}")).contains("\"anzahl\":0");
+		assertThat(callError(access, "delete_event", "{ \"eventId\": %d }".formatted(id))).contains("Kein Event");
 	}
 
 	@Test
