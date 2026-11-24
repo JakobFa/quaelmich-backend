@@ -14,6 +14,8 @@ import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
+import io.github.jakobfa.webtechproject.model.AppUser;
+import io.github.jakobfa.webtechproject.repository.AppUserRepository;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -67,14 +69,45 @@ public class OAuthService {
 	private final OAuthClientRepository clients;
 	private final OAuthCodeRepository codes;
 	private final OAuthTokenRepository tokens;
+	private final AppUserRepository users;
 	private final Clock clock;
 
 	public OAuthService(OAuthClientRepository clients, OAuthCodeRepository codes, OAuthTokenRepository tokens,
-			Clock clock) {
+			AppUserRepository users, Clock clock) {
 		this.clients = clients;
 		this.codes = codes;
 		this.tokens = tokens;
+		this.users = users;
 		this.clock = clock;
+	}
+
+	// ---------- KI-Modus ----------
+
+	/** Hat der Nutzer den KI-Modus eingeschaltet? */
+	@Transactional(readOnly = true)
+	public boolean aiModeEnabled(Long userId) {
+		return users.findById(userId).map(AppUser::isAiModeEnabled).orElse(false);
+	}
+
+	/** KI-Modus ein- oder ausschalten; beim Ausschalten enden alle KI-Zugänge sofort */
+	@Transactional
+	public boolean setAiMode(Long userId, boolean enabled) {
+		AppUser user = users.findById(userId).orElseThrow();
+		user.setAiModeEnabled(enabled);
+		users.save(user);
+		if (!enabled) {
+			tokens.findByUserIdAndRevokedFalseOrderByCreatedAtDesc(userId).forEach(token -> {
+				token.setRevoked(true);
+				tokens.save(token);
+			});
+		}
+		return enabled;
+	}
+
+	private void requireAiMode(Long userId) {
+		if (!aiModeEnabled(userId)) {
+			throw new OAuthException("access_denied", "Der KI-Modus ist bei quaelmich nicht eingeschaltet");
+		}
 	}
 
 	// ---------- Registrierung der KI-App ----------
@@ -121,6 +154,7 @@ public class OAuthService {
 	@Transactional
 	public String authorize(Long userId, String clientId, String redirectUri, String codeChallenge,
 			String codeChallengeMethod, String scope) {
+		requireAiMode(userId);
 		OAuthClient client = clients.findById(clientId == null ? "" : clientId)
 				.orElseThrow(() -> new OAuthException("invalid_client", "Unbekannte KI-App"));
 		if (redirectUri == null || !client.getRedirectUris().contains(redirectUri)) {
@@ -181,6 +215,7 @@ public class OAuthService {
 				|| !old.getClientId().equals(clientId)) {
 			throw new OAuthException("invalid_grant", "Erneuerungstoken abgelaufen oder widerrufen");
 		}
+		requireAiMode(old.getUserId());
 		old.setRevoked(true); // das Erneuerungstoken gilt nur einmal
 		tokens.save(old);
 		return issue(old.getUserId(), old.getClientId(), old.getScope());
@@ -203,6 +238,7 @@ public class OAuthService {
 		}
 		return tokens.findByAccessHash(hash(accessToken))
 				.filter(token -> !token.isRevoked() && token.getAccessExpiresAt().isAfter(clock.instant()))
+				.filter(token -> aiModeEnabled(token.getUserId()))
 				.map(token -> {
 					Instant now = clock.instant();
 					// nicht bei jedem Aufruf schreiben

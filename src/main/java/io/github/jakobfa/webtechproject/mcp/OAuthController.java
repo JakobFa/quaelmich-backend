@@ -19,6 +19,7 @@ import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
@@ -171,6 +172,21 @@ public class OAuthController {
 	}
 
 	// ---------- Verwaltung durch den Nutzer ----------
+
+	public record AiMode(boolean enabled) {
+	}
+
+	/** Ist der KI-Modus für das Konto eingeschaltet? */
+	@GetMapping(path = "/me/ai-mode")
+	public AiMode aiMode(@AuthenticationPrincipal Jwt jwt) {
+		return new AiMode(oauth.aiModeEnabled(CurrentUser.id(jwt)));
+	}
+
+	/** KI-Modus ein- oder ausschalten (aus: alle KI-Zugänge enden sofort) */
+	@PutMapping(path = "/me/ai-mode")
+	public AiMode setAiMode(@AuthenticationPrincipal Jwt jwt, @RequestBody AiMode request) {
+		return new AiMode(oauth.setAiMode(CurrentUser.id(jwt), request.enabled()));
+	}
 
 	/** Die KI-Apps, die auf das Konto zugreifen dürfen */
 	@GetMapping(path = "/me/ai-connections")

@@ -2,6 +2,8 @@ package io.github.jakobfa.webtechproject.model;
 
 import java.time.Instant;
 
+import org.hibernate.annotations.ColumnDefault;
+
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.GeneratedValue;
@@ -36,6 +38,10 @@ public class AppUser {
 
 	/** Zeitpunkt der letzten Passwort-Änderung – davor ausgestellte Anmeldungen (JWTs) gelten nicht mehr */
 	private Instant passwordChangedAt;
+
+	/** KI-Modus: nur wenn der Nutzer ihn einschaltet, darf eine eigene KI-App (z. B. Claude) auf sein Konto zugreifen */
+	@ColumnDefault("false")
+	private boolean aiModeEnabled;
 
 	public AppUser(String email, String passwordHash, Instant createdAt) {
 		this.email = email;

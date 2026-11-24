@@ -33,7 +33,7 @@ public class McpSwitchFilter extends OncePerRequestFilter {
 
 	static boolean isMcpPath(String path) {
 		return path.equals("/mcp") || path.startsWith("/mcp/") || path.startsWith("/oauth/")
-				|| path.startsWith("/.well-known/oauth-") || path.equals("/me/ai-connections")
+				|| path.startsWith("/.well-known/oauth-") || path.equals("/me/ai-mode") || path.equals("/me/ai-connections")
 				|| path.startsWith("/me/ai-connections/");
 	}
 
