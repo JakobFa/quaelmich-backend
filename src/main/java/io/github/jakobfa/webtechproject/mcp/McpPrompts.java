@@ -37,6 +37,9 @@ public class McpPrompts {
 					"Baut ein eigenes Workout und tauscht es in den Plan.",
 					List.of(new Argument("beschreibung", "Was für ein Workout soll es werden?", true),
 							new Argument("tag", "An welchem Tag soll es stattfinden (JJJJ-MM-TT)?", false))),
+			new Prompt("fahrten_abgleichen", "Fahrten abgleichen",
+					"Gleicht den Plan mit den gefahrenen Fahrten ab und passt ihn an, wie ein Trainer es täte.",
+					List.of(new Argument("zeitraum", "Welche Tage? Standard: die letzten 7 Tage.", false))),
 			new Prompt("einrichten", "Mit quaelmich starten",
 					"Erklärt, was die KI mit quaelmich kann, und fragt nach dem, was sie für den Anfang braucht.",
 					List.of()));
@@ -67,6 +70,17 @@ public class McpPrompts {
 					+ (argument(arguments, "tag").isEmpty() ? "" : ". Es soll am " + argument(arguments, "tag") + " stattfinden")
 					+ ". Ruf get_overview und list_my_workouts auf, lege es mit create_workout an (Abschnitte in Minuten "
 					+ "und Prozent der FTP) und tausche es mit replace_workout in den Plan. Sag mir vorher, wie es aufgebaut ist.";
+			case "fahrten_abgleichen" -> "Du bist mein Trainer und gleichst meinen Plan in quaelmich mit meinen gefahrenen "
+					+ "Fahrten ab. Zeitraum: " + (argument(arguments, "zeitraum").isEmpty() ? "die letzten 7 Tage"
+							: argument(arguments, "zeitraum"))
+					+ ". 1. Ruf get_overview und get_plan auf: Ziel, Event, Zeit pro Woche und was geplant war. 2. Hol die "
+					+ "gefahrenen Fahrten aus meinem Strava-Konnektor (quaelmich selbst liefert sie nicht). 3. Entscheide "
+					+ "selbst, was sportlich sinnvoll ist: Passen die Fahrten zum Plan und zum Ziel, bin ich über- oder "
+					+ "unterfordert, braucht es mehr Erholung, mehr Reiz oder einen anderen Schwerpunkt? Dafür gibt es "
+					+ "keine festen Regeln, du urteilst als Trainer. 4. Sag mir kurz, was du siehst und was du ändern "
+					+ "würdest, und führe es nach meinem Ja mit den Werkzeugen aus (adjust_workout, replace_workout, "
+					+ "skip_workout, create_workout, set_week_availability oder regenerate_plan). Ändere nichts, wenn der "
+					+ "Plan schon passt.";
 			case "einrichten" -> "Ich möchte quaelmich mit dir benutzen. Ruf get_overview auf, erkläre mir kurz, was du "
 					+ "dort lesen und ändern kannst (Plan, Profil, sportliches Ziel, Krankheit, Pause, eigene Workouts), und "
 					+ "frag mich, was ich als Erstes möchte.";

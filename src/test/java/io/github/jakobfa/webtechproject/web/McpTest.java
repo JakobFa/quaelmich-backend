@@ -427,7 +427,7 @@ class McpTest {
 		String list = rpc(access, "{ \"jsonrpc\": \"2.0\", \"id\": 1, \"method\": \"prompts/list\" }")
 				.andReturn().getResponse().getContentAsString();
 		assertThat((List<String>) JsonPath.read(list, "$.result.prompts[*].name")).contains("plan_pruefen",
-				"woche_umplanen", "workout_bauen", "einrichten");
+				"woche_umplanen", "workout_bauen", "fahrten_abgleichen", "einrichten");
 
 		String prompt = rpc(access, """
 				{ "jsonrpc": "2.0", "id": 2, "method": "prompts/get",
@@ -435,6 +435,12 @@ class McpTest {
 				""").andReturn().getResponse().getContentAsString();
 		assertThat((String) JsonPath.read(prompt, "$.result.messages[0].content.text"))
 				.contains("Diese Woche nur 3 Stunden").contains("get_plan").contains("keine gefahrenen Werte");
+
+		String compare = rpc(access, """
+				{ "jsonrpc": "2.0", "id": 5, "method": "prompts/get", "params": { "name": "fahrten_abgleichen" } }
+				""").andReturn().getResponse().getContentAsString();
+		assertThat((String) JsonPath.read(compare, "$.result.messages[0].content.text")).contains("Trainer")
+				.contains("Strava-Konnektor").contains("die letzten 7 Tage");
 
 		rpc(access, """
 				{ "jsonrpc": "2.0", "id": 3, "method": "prompts/get",
