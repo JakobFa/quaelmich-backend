@@ -126,7 +126,9 @@ public class McpController {
 				+ "ändern. Fang mit get_overview an. Alle Zahlen sind Minuten und TSS (Trainingsbelastung). Gefahrene "
 				+ "Fahrten, Strava-Daten und Freitexte liefert quaelmich nicht. Brauchst du sie, frag den Nutzer oder "
 				+ "nimm einen Strava-Zugang, den er selbst eingerichtet hat. Die Daten gehören dem Nutzer; erfinde nichts, "
-				+ "was nicht in den Ergebnissen steht.");
+				+ "was nicht in den Ergebnissen steht. Solange der KI-Modus an ist, ändert quaelmich den Plan nicht mehr von "
+				+ "selbst: keine Anpassung an gefahrene Werte, keine Neuberechnung pro Woche und bei einem Ziel ohne Event "
+				+ "keine Verlängerung. Änderungen und neue Wochen planst du selbst (zum Beispiel mit regenerate_plan).");
 		return result;
 	}
 

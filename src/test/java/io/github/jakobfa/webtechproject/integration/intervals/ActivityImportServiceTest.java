@@ -57,7 +57,7 @@ class ActivityImportServiceTest {
 	private final ActivityImportService service = new ActivityImportService(connectionService, client,
 			strava, athleteService, repository, extraRides, new PlanAdaptationService(library), library,
 			intervalAccuracy, mock(io.github.jakobfa.webtechproject.service.TrainingPlanService.class), descriptions,
-			CLOCK);
+			CLOCK, new io.github.jakobfa.webtechproject.service.AiModeGuard());
 
 	@BeforeEach
 	void connectedUserWithProfile() {
