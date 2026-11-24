@@ -130,6 +130,25 @@ public class TrainingPlanController {
 		}
 	}
 
+	public record HealthySinceRequest(@NotNull LocalDate since) {
+	}
+
+	/**
+	 * "Ab diesem Tag war ich wieder gesund", auch für eine schon beendete Krankheit (aus dem Kalender). 409, wenn der
+	 * Tag nicht in einer Krankheit liegt, in der Zukunft oder zu weit zurück.
+	 */
+	@PutMapping(path = "/me/plan/sickness/healthy-since")
+	public ResponseEntity<TrainingPlanResponse> healthySince(@AuthenticationPrincipal Jwt jwt,
+			@Valid @RequestBody HealthySinceRequest request) {
+		Long userId = CurrentUser.id(jwt);
+		try {
+			return absence.healthySince(userId, request.since()).map(plan -> syncedResponse(userId, plan))
+					.orElse(ResponseEntity.notFound().build());
+		} catch (AbsenceService.NotPossibleException e) {
+			return ResponseEntity.status(HttpStatus.CONFLICT).build();
+		}
+	}
+
 	/** Wieder gesund (optional "since": schon seit diesem Tag). 409, wenn niemand krank gemeldet ist. */
 	@DeleteMapping(path = "/me/plan/sickness")
 	public ResponseEntity<TrainingPlanResponse> endSickness(@AuthenticationPrincipal Jwt jwt,

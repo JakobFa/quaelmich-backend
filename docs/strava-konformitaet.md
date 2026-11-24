@@ -13,7 +13,7 @@ nur die Lesart des Textes. Bei Zweifeln gilt der Originaltext: <https://www.stra
 | Löschen bei Trennen, Widerruf, Konto-Löschung (§2.5, §7.4) | `StravaService.disconnect`, `removeConnectionAndData`, `AccountService.delete` |
 | Schriftliche Bestätigung der Löschung (§2.1 (v), §2.5) | `DeletionNotice`: Mail an den Nutzer |
 | Anzeige nur für den Nutzer selbst (§2.3) | Keine Weitergabe, keine Auswertung über Nutzer hinweg |
-| Keine Strava-Daten und nichts daraus Abgeleitetes an KI-Anbieter (§5.3, §5.10) | KI-Anbindung (MCP) abgeschaltet: `app.mcp.enabled=false`, `McpSwitchFilter` antwortet auf MCP, OAuth und KI-Verwaltung mit 404. Grund: Der Plan richtet sich nach gefahrenen Werten und kann damit aus Strava-Daten abgeleitet sein |
+| Keine Strava-Daten und nichts daraus Abgeleitetes an KI-Anbieter (§5.3, §5.10) | KI-Anbindung (MCP) seit dem 24.11.2026 wieder eingeschaltet (`MCP_ENABLED=true`). Bewusste Entscheidung des Betreibers: Die App bleibt ein Uniprojekt mit wenigen Testern. Der Plan richtet sich nach gefahrenen Werten und kann damit aus Strava-Daten abgeleitet sein, deshalb ist das für einen öffentlichen Betrieb nicht konform. Dann `MCP_ENABLED` entfernen: `McpSwitchFilter` antwortet auf MCP, OAuth und KI-Verwaltung wieder mit 404 |
 | Zugriff des Nutzers auf seine Daten (§2.2) | Export "Meine Daten herunterladen" |
 
 ## Abläufe, die kein Code sind

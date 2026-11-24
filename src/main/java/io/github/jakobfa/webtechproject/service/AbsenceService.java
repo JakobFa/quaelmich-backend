@@ -4,6 +4,7 @@ import java.time.Clock;
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
 import java.time.temporal.ChronoUnit;
+import java.util.List;
 import java.util.Locale;
 import java.util.Optional;
 
@@ -171,6 +172,58 @@ public class AbsenceService {
 			returnAfter(plan, ChronoUnit.DAYS.between(sickSince, healthy), back, healthy.minusDays(1));
 			return plan;
 		});
+	}
+
+	/**
+	 * "Ab diesem Tag war ich wieder gesund" – auch für eine Krankheit, die schon beendet oder als Zeitraum nachgetragen
+	 * wurde. Bei einer laufenden Krankheit wie {@link #endSickness}. Sonst gilt die Krankheit, in der der Tag liegt:
+	 * eine zusammenhängende Reihe als krank markierter Einheiten. Die Einheiten ab diesem Tag (ohne zugeordnete Fahrt)
+	 * werden frei, davor bleibt alles als krank markiert. Eine lockere Wiedereinstiegswoche, die der alte Zeitraum
+	 * ausgelöst hat, bleibt bestehen (lieber zu sanft als zu hart).
+	 * NotPossibleException, wenn der Tag in der Zukunft oder zu weit zurück liegt oder in keiner Krankheit.
+	 */
+	@Transactional
+	public Optional<TrainingPlan> healthySince(Long userId, LocalDate since) {
+		LocalDate today = LocalDate.now(clock);
+		if (since.isAfter(today) || ChronoUnit.DAYS.between(since, today) > MAX_SICK_DAYS_BACK) {
+			throw new NotPossibleException();
+		}
+		return planOf(userId).map(plan -> {
+			if (plan.getSickSince() != null && !since.isBefore(plan.getSickSince())) {
+				return endSickness(userId, since).orElseThrow();
+			}
+			List<PlannedWorkout> run = sickRunAround(plan, since);
+			List<PlannedWorkout> toFree = run.stream().filter(planned -> !planned.getDate().isBefore(since))
+					.filter(planned -> planned.getActivityId() == null).toList();
+			if (toFree.isEmpty()) {
+				throw new NotPossibleException();
+			}
+			toFree.forEach(planned -> planned.setSkipReason(null));
+			planService.replanFromToday(plan);
+			return plan;
+		});
+	}
+
+	/** Die zusammenhängende Reihe krank markierter Einheiten, in deren Zeitraum der Tag liegt (leer, wenn keine) */
+	private static List<PlannedWorkout> sickRunAround(TrainingPlan plan, LocalDate day) {
+		List<PlannedWorkout> sorted = plan.getWorkouts().stream()
+				.sorted(java.util.Comparator.comparing(PlannedWorkout::getDate)).toList();
+		List<PlannedWorkout> run = new java.util.ArrayList<>();
+		for (PlannedWorkout planned : sorted) {
+			if (planned.getSkipReason() == SkipReason.SICK) {
+				run.add(planned);
+				continue;
+			}
+			if (covers(run, day)) {
+				return run;
+			}
+			run = new java.util.ArrayList<>();
+		}
+		return covers(run, day) ? run : List.of();
+	}
+
+	private static boolean covers(List<PlannedWorkout> run, LocalDate day) {
+		return !run.isEmpty() && !day.isBefore(run.get(0).getDate()) && !day.isAfter(run.get(run.size() - 1).getDate());
 	}
 
 	/** Offene Einheiten im Zeitraum als krank markieren (Erledigtes und Gefahrenes bleibt unberührt) */

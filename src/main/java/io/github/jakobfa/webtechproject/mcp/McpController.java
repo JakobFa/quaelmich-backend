@@ -41,14 +41,16 @@ public class McpController {
 
 	private final OAuthService oauth;
 	private final McpTools tools;
+	private final McpWriteTools writeTools;
 	private final RateLimiter rateLimiter;
 	private final ObjectMapper mapper;
 	private final String apiUrl;
 
-	public McpController(OAuthService oauth, McpTools tools, RateLimiter rateLimiter, ObjectMapper mapper,
-			@Value("${app.public.api-url:https://api.quaelmich.com}") String apiUrl) {
+	public McpController(OAuthService oauth, McpTools tools, McpWriteTools writeTools, RateLimiter rateLimiter,
+			ObjectMapper mapper, @Value("${app.public.api-url:https://api.quaelmich.com}") String apiUrl) {
 		this.oauth = oauth;
 		this.tools = tools;
+		this.writeTools = writeTools;
 		this.rateLimiter = rateLimiter;
 		this.mapper = mapper;
 		this.apiUrl = apiUrl;
@@ -126,12 +128,20 @@ public class McpController {
 		return result;
 	}
 
+	/** Lese- und Schreibwerkzeuge zusammen */
+	private List<McpTools.Tool> catalog() {
+		List<McpTools.Tool> all = new ArrayList<>(tools.tools());
+		all.addAll(writeTools.tools());
+		return all;
+	}
+
 	private List<Map<String, Object>> visibleTools(OAuthService.Principal principal) {
-		return tools.tools().stream().filter(tool -> principal.may(tool.scope())).map(tool -> {
+		return catalog().stream().filter(tool -> principal.may(tool.scope())).map(tool -> {
 			Map<String, Object> row = new LinkedHashMap<>();
 			row.put("name", tool.name());
 			row.put("description", tool.description());
 			row.put("inputSchema", tool.inputSchema());
+			row.put("annotations", tool.annotations());
 			return row;
 		}).toList();
 	}
@@ -142,7 +152,7 @@ public class McpController {
 			throw new RpcException(-32602, "name fehlt");
 		}
 		String name = params.get("name").asString();
-		McpTools.Tool tool = tools.tools().stream().filter(candidate -> candidate.name().equals(name)).findFirst()
+		McpTools.Tool tool = catalog().stream().filter(candidate -> candidate.name().equals(name)).findFirst()
 				.orElseThrow(() -> new RpcException(-32602, "Unbekanntes Werkzeug: " + name));
 		if (!principal.may(tool.scope())) {
 			throw new RpcException(-32602, "Für dieses Werkzeug fehlt die Erlaubnis (" + tool.scope() + ")");
@@ -152,7 +162,8 @@ public class McpController {
 		log.info("MCP Nutzer {} ruft {} auf", principal.userId(), name);
 		Map<String, Object> result = new LinkedHashMap<>();
 		try {
-			Object data = tools.call(principal.userId(), name, arguments);
+			Object data = writeTools.handles(name) ? writeTools.call(principal.userId(), name, arguments)
+					: tools.call(principal.userId(), name, arguments);
 			result.put("content", List.of(Map.of("type", "text", "text", mapper.writeValueAsString(data))));
 			result.put("isError", false);
 		} catch (McpTools.ToolException e) {

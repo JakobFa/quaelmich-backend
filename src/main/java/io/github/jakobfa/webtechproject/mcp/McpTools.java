@@ -29,8 +29,17 @@ import io.github.jakobfa.webtechproject.service.WorkoutLibrary;
 @Component
 public class McpTools {
 
-	/** Beschreibung eines Werkzeugs (Name, Text, JSON-Schema der Eingaben) */
-	public record Tool(String name, String description, Map<String, Object> inputSchema, String scope) {
+	/**
+	 * Beschreibung eines Werkzeugs (Name, Text, JSON-Schema der Eingaben). annotations sagen der KI-App, ob das
+	 * Werkzeug etwas ändert (readOnlyHint, destructiveHint), damit sie vorher beim Nutzer nachfragt.
+	 */
+	public record Tool(String name, String description, Map<String, Object> inputSchema, String scope,
+			Map<String, Object> annotations) {
+
+		/** Ein Lesewerkzeug */
+		public Tool(String name, String description, Map<String, Object> inputSchema, String scope) {
+			this(name, description, inputSchema, scope, Map.of("readOnlyHint", true));
+		}
 	}
 
 	/** Wird geworfen, wenn die Eingaben nicht passen oder es nichts zu zeigen gibt (kommt als Fehlertext zurück) */
@@ -103,20 +112,20 @@ public class McpTools {
 			Map<String, Object> out = new LinkedHashMap<>();
 			out.put("heute", today.toString());
 			Map<String, Object> profile = new LinkedHashMap<>();
-			profile.put("level", String.valueOf(athlete.getLevel()));
+			profile.put("level", valueOrNull(athlete.getLevel()));
 			profile.put("ftpWatt", athlete.getFtp());
 			profile.put("gewichtKg", athlete.getWeightKg());
-			profile.put("ziel", String.valueOf(athlete.getTrainingGoal()));
-			profile.put("trainingsmodus", String.valueOf(athlete.getTrainingMode()));
+			profile.put("ziel", valueOrNull(athlete.getTrainingGoal()));
+			profile.put("trainingsmodus", valueOrNull(athlete.getTrainingMode()));
 			if (athlete.getEvent() != null) {
 				var event = athlete.getEvent();
 				Map<String, Object> e = new LinkedHashMap<>();
 				e.put("name", event.getName());
-				e.put("datum", String.valueOf(event.getDate()));
+				e.put("datum", valueOrNull(event.getDate()));
 				e.put("distanzKm", event.getDistanceKm());
 				e.put("hoehenmeter", event.getElevationMeters());
-				e.put("art", String.valueOf(event.getType()));
-				e.put("ziel", String.valueOf(event.getGoal()));
+				e.put("art", valueOrNull(event.getType()));
+				e.put("ziel", valueOrNull(event.getGoal()));
 				profile.put("event", e);
 			}
 			if (athlete.getAvailability() != null) {
@@ -134,7 +143,7 @@ public class McpTools {
 			out.put("athlet", profile);
 			Optional<TrainingPlan> plan = plans.findByAthlete(athlete.getId());
 			if (plan.isPresent()) {
-				out.put("planStart", String.valueOf(plan.get().getStartDate()));
+				out.put("planStart", valueOrNull(plan.get().getStartDate()));
 				out.put("krankSeit", plan.get().getSickSince() == null ? null : plan.get().getSickSince().toString());
 				out.put("naechste7Tage", days(plan.get(), today, today.plusDays(6)));
 			} else {
@@ -192,13 +201,18 @@ public class McpTools {
 		return rows;
 	}
 
-	private Map<String, Object> day(PlannedWorkout planned) {
+	/** Die nächsten 7 Tage eines Plans (für die Antworten der Schreibwerkzeuge) */
+	List<Map<String, Object>> nextDays(TrainingPlan plan) {
+		return days(plan, today(), today().plusDays(6));
+	}
+
+	Map<String, Object> day(PlannedWorkout planned) {
 		Workout workout = library.resolve(planned.getWorkoutId(), planned.getDurationMinutes()).orElseThrow();
 		Map<String, Object> row = new LinkedHashMap<>();
 		row.put("tag", planned.getDate().toString());
 		row.put("wochentag", planned.getDate().getDayOfWeek().toString());
 		row.put("planId", planned.getId());
-		row.put("phase", String.valueOf(planned.getPhase()));
+		row.put("phase", valueOrNull(planned.getPhase()));
 		row.put("einheit", workout.getTitle());
 		row.put("art", workout.getType().name());
 		row.put("minuten", workout.getDurationInMinutes());
@@ -241,5 +255,10 @@ public class McpTools {
 		if (java.time.temporal.ChronoUnit.DAYS.between(from, to) > MAX_DAYS) {
 			throw new ToolException("Der Zeitraum darf höchstens " + MAX_DAYS + " Tage lang sein");
 		}
+	}
+
+	/** Text eines Werts, null bleibt null (nicht der Text "null") */
+	private static String valueOrNull(Object value) {
+		return value == null ? null : value.toString();
 	}
 }
