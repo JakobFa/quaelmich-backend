@@ -21,12 +21,15 @@ import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.ResultActions;
+import org.springframework.transaction.support.TransactionTemplate;
 
 import com.jayway.jsonpath.JsonPath;
 
 import io.github.jakobfa.webtechproject.model.PlannedWorkout;
 import io.github.jakobfa.webtechproject.model.SkipReason;
+import io.github.jakobfa.webtechproject.model.TrainingPlan;
 import io.github.jakobfa.webtechproject.repository.PlannedWorkoutRepository;
+import io.github.jakobfa.webtechproject.repository.TrainingPlanRepository;
 
 /** Krank melden: offen (Plan steht still), rückwirkend und wieder gesund */
 @SpringBootTest
@@ -41,6 +44,14 @@ class SicknessTest {
 	@Autowired
 	private PlannedWorkoutRepository repository;
 
+	@Autowired
+	private TrainingPlanRepository plans;
+
+	@Autowired
+	private TransactionTemplate tx;
+
+	private long planId;
+
 	private String token;
 	private Long athleteId;
 
@@ -49,6 +60,7 @@ class SicknessTest {
 		token = registerWithProfile(mockMvc);
 		String plan = mockMvc.perform(post("/me/plan").header("Authorization", token)).andReturn().getResponse()
 				.getContentAsString();
+		planId = ((Number) JsonPath.read(plan, "$.id")).longValue();
 		long firstId = ((Number) JsonPath.read(plan, "$.workouts[0].id")).longValue();
 		athleteId = repository.findById(firstId).orElseThrow().getPlan().getAthlete().getId();
 	}
@@ -118,6 +130,79 @@ class SicknessTest {
 		assertThat(workouts(TODAY.minusDays(6), healthySince.minusDays(1)))
 				.allMatch(p -> p.getSkipReason() == SkipReason.SICK);
 		assertThat(workouts(healthySince, TODAY)).noneMatch(p -> p.getSkipReason() == SkipReason.SICK);
+	}
+
+	/** Verschiebt den Plan um 14 Tage nach hinten: Es gibt zwei vergangene Wochen */
+	private void shiftPlanBack() {
+		tx.executeWithoutResult(status -> {
+			TrainingPlan plan = plans.findById(planId).orElseThrow();
+			plan.setStartDate(plan.getStartDate().minusDays(14));
+			plan.getWorkouts().forEach(planned -> planned.setDate(planned.getDate().minusDays(14)));
+			plans.save(plan);
+		});
+	}
+
+	private ResultActions healthySince(LocalDate day) throws Exception {
+		return mockMvc.perform(put("/me/plan/sickness/healthy-since").header("Authorization", token)
+				.contentType(MediaType.APPLICATION_JSON).content("{ \"since\": \"%s\" }".formatted(day)));
+	}
+
+	@Test
+	void aDayInAnEndedSicknessCanBeMarkedAsHealthySinceThen() throws Exception {
+		shiftPlanBack();
+		sick("{ \"from\": \"%s\", \"until\": \"%s\" }".formatted(TODAY.minusDays(6), TODAY.minusDays(2)))
+				.andExpect(status().isOk());
+		List<PlannedWorkout> sickDays = workouts(TODAY.minusDays(6), TODAY.minusDays(2)).stream()
+				.sorted(java.util.Comparator.comparing(PlannedWorkout::getDate)).toList();
+		assertThat(sickDays).hasSizeGreaterThanOrEqualTo(2).allMatch(p -> p.getSkipReason() == SkipReason.SICK);
+		LocalDate since = sickDays.get(1).getDate();
+
+		healthySince(since).andExpect(status().isOk()).andExpect(jsonPath("$.sickSince").value(nullValue()));
+
+		// davor bleibt es krank, ab dem Tag ist es frei
+		assertThat(workouts(TODAY.minusDays(6), since.minusDays(1)))
+				.isNotEmpty().allMatch(p -> p.getSkipReason() == SkipReason.SICK);
+		assertThat(workouts(since, TODAY.minusDays(2))).isNotEmpty()
+				.noneMatch(p -> p.getSkipReason() == SkipReason.SICK);
+	}
+
+	@Test
+	void healthySinceKeepsRidesThatWereMatchedDuringTheSickness() throws Exception {
+		shiftPlanBack();
+		sick("{ \"from\": \"%s\", \"until\": \"%s\" }".formatted(TODAY.minusDays(6), TODAY.minusDays(2)))
+				.andExpect(status().isOk());
+		LocalDate since = workouts(TODAY.minusDays(6), TODAY.minusDays(2)).stream().map(PlannedWorkout::getDate)
+				.min(java.util.Comparator.naturalOrder()).orElseThrow();
+		workouts(since, since).forEach(p -> {
+			p.setActivityId("strava-1");
+			repository.save(p);
+		});
+
+		healthySince(since).andExpect(status().isOk());
+
+		assertThat(workouts(since, since)).allMatch(p -> p.getActivityId() != null);
+	}
+
+	@Test
+	void healthySinceNeedsADayInsideASicknessAndNotInTheFuture() throws Exception {
+		shiftPlanBack();
+		healthySince(TODAY.minusDays(3)).andExpect(status().isConflict());
+		sick("{ \"from\": \"%s\", \"until\": \"%s\" }".formatted(TODAY.minusDays(6), TODAY.minusDays(2)))
+				.andExpect(status().isOk());
+		healthySince(TODAY.plusDays(1)).andExpect(status().isConflict());
+		healthySince(TODAY.minusDays(100)).andExpect(status().isConflict());
+		healthySince(TODAY.minusDays(20)).andExpect(status().isConflict());
+	}
+
+	@Test
+	void healthySinceAlsoWorksForARunningSickness() throws Exception {
+		sick("{ \"from\": \"%s\" }".formatted(TODAY.minusDays(6))).andExpect(status().isOk());
+		LocalDate since = TODAY.minusDays(2);
+
+		healthySince(since).andExpect(status().isOk()).andExpect(jsonPath("$.sickSince").value(nullValue()));
+
+		assertThat(workouts(since, TODAY)).noneMatch(p -> p.getSkipReason() == SkipReason.SICK);
+		assertThat(workouts(TODAY.minusDays(6), since.minusDays(1))).allMatch(p -> p.getSkipReason() == SkipReason.SICK);
 	}
 
 	@Test
