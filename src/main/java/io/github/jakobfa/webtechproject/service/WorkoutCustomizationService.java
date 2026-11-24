@@ -117,24 +117,33 @@ public class WorkoutCustomizationService {
 			if (planned.isCompleted() || planned.getSkipReason() != null) {
 				throw new NotPossibleException();
 			}
-			// eigene Workouts nur vom Besitzer – die Bibliothek für alle
-			Workout chosen = (customWorkouts.isOwnedBy(workoutId, userId)
-					? library.resolve(workoutId, null)
-					: library.findById(workoutId)).orElseThrow(NotPossibleException::new);
+			Workout chosen = chosenWorkout(userId, workoutId);
 			// Kraft und Rad lassen sich nicht gegeneinander tauschen
 			if (WorkoutLibrary.isStrength(chosen) || WorkoutLibrary.isStrength(workoutOf(planned))) {
 				throw new NotPossibleException();
 			}
-			Integer minutes = null;
-			if (isVariable(workoutId)) {
-				minutes = durationMinutes != null ? durationMinutes : chosen.getDurationInMinutes();
-				if (minutes < minimumMinutes(workoutId) || minutes > MAX_MINUTES || minutes % 15 != 0) {
-					throw new NotPossibleException();
-				}
-			}
+			Integer minutes = validMinutes(workoutId, chosen, durationMinutes);
 			return apply(planned, workoutOf(planned), new Choice(workoutId, minutes),
 					PlannedWorkout.USER_CHOICE_NOTE + " getauscht.");
 		});
+	}
+
+	/** Eigene Workouts nur vom Besitzer, die Bibliothek für alle */
+	Workout chosenWorkout(Long userId, Long workoutId) {
+		return (customWorkouts.isOwnedBy(workoutId, userId) ? library.resolve(workoutId, null)
+				: library.findById(workoutId)).orElseThrow(NotPossibleException::new);
+	}
+
+	/** Dauer bei Workouts mit variabler Länge (Standard: die Länge des Workouts), sonst null */
+	Integer validMinutes(Long workoutId, Workout chosen, Integer durationMinutes) {
+		if (!isVariable(workoutId)) {
+			return null;
+		}
+		int minutes = durationMinutes != null ? durationMinutes : chosen.getDurationInMinutes();
+		if (minutes < minimumMinutes(workoutId) || minutes > MAX_MINUTES || minutes % 15 != 0) {
+			throw new NotPossibleException();
+		}
+		return minutes;
 	}
 
 	/**

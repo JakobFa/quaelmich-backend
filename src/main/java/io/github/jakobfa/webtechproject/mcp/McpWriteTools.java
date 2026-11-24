@@ -15,6 +15,7 @@ import io.github.jakobfa.webtechproject.integration.intervals.IntervalsAutoSyncS
 import io.github.jakobfa.webtechproject.integration.intervals.IntervalsFtpSync;
 import io.github.jakobfa.webtechproject.model.Athlete;
 import io.github.jakobfa.webtechproject.model.PlannedWorkout;
+import io.github.jakobfa.webtechproject.model.RaceEvent;
 import io.github.jakobfa.webtechproject.model.SkipReason;
 import io.github.jakobfa.webtechproject.model.StepKind;
 import io.github.jakobfa.webtechproject.model.TrainingPlan;
@@ -24,6 +25,8 @@ import io.github.jakobfa.webtechproject.model.WorkoutStep;
 import io.github.jakobfa.webtechproject.model.WorkoutType;
 import io.github.jakobfa.webtechproject.service.AbsenceService;
 import io.github.jakobfa.webtechproject.service.AthleteService;
+import io.github.jakobfa.webtechproject.service.PlanEditService;
+import io.github.jakobfa.webtechproject.service.RaceEventService;
 import io.github.jakobfa.webtechproject.service.TrainingPlanService;
 import io.github.jakobfa.webtechproject.service.WorkoutCustomizationService;
 import jakarta.validation.ConstraintViolation;
@@ -51,13 +54,16 @@ public class McpWriteTools {
 	private final IntervalsAutoSyncService autoSync;
 	private final IntervalsFtpSync ftpSync;
 	private final CustomWorkoutService customWorkouts;
+	private final PlanEditService planEdit;
+	private final RaceEventService raceEvents;
 	private final ObjectMapper mapper;
 	private final Validator validator;
 	private final TransactionTemplate tx;
 
 	public McpWriteTools(McpTools read, AthleteService athletes, TrainingPlanService plans, AbsenceService absence,
 			WorkoutCustomizationService customization, IntervalsAutoSyncService autoSync, IntervalsFtpSync ftpSync,
-			CustomWorkoutService customWorkouts, ObjectMapper mapper, Validator validator, TransactionTemplate tx) {
+			CustomWorkoutService customWorkouts, PlanEditService planEdit, RaceEventService raceEvents,
+			ObjectMapper mapper, Validator validator, TransactionTemplate tx) {
 		this.read = read;
 		this.athletes = athletes;
 		this.plans = plans;
@@ -66,6 +72,8 @@ public class McpWriteTools {
 		this.autoSync = autoSync;
 		this.ftpSync = ftpSync;
 		this.customWorkouts = customWorkouts;
+		this.planEdit = planEdit;
+		this.raceEvents = raceEvents;
 		this.mapper = mapper;
 		this.validator = validator;
 		this.tx = tx;
@@ -97,6 +105,39 @@ public class McpWriteTools {
 	private static McpTools.Tool tool(String name, String description, Map<String, Object> schema, boolean destructive) {
 		return new McpTools.Tool(name, description, schema, OAuthService.SCOPE_WRITE,
 				Map.of("readOnlyHint", false, "destructiveHint", destructive, "idempotentHint", false));
+	}
+
+	private static Map<String, Object> workoutProperties(boolean withId) {
+		Map<String, Object> properties = new LinkedHashMap<>();
+		if (withId) {
+			properties.put("workoutId", prop("integer", "Die id aus list_my_workouts"));
+		}
+		properties.put("title", prop("string", "Name, höchstens 80 Zeichen"));
+		properties.put("description", prop("string", "Beschreibung, höchstens 500 Zeichen, optional"));
+		properties.put("type", prop("string",
+				"Art, zum Beispiel ENDURANCE, SWEET_SPOT, THRESHOLD, VO2MAX (siehe list_workouts)"));
+		properties.put("steps", Map.of("type", "array", "description", "Abschnitte in Reihenfolge, 1 bis 100", "items",
+				object(Map.of("kind", prop("string", "WARMUP, STEADY, INTERVAL, RECOVERY oder COOLDOWN"),
+						"minutes", prop("number", "Dauer in Minuten (mindestens 10 Sekunden)"),
+						"powerStartPercent", prop("integer", "Leistung am Anfang in % der FTP"),
+						"powerEndPercent", prop("integer", "Leistung am Ende in % der FTP, optional (sonst gleich dem Anfang)")),
+						"kind", "minutes", "powerStartPercent")));
+		return properties;
+	}
+
+	private static Map<String, Object> eventProperties(boolean withId) {
+		Map<String, Object> properties = new LinkedHashMap<>();
+		if (withId) {
+			properties.put("eventId", prop("integer", "Die id aus list_events"));
+		}
+		properties.put("name", prop("string", "Name des Events"));
+		properties.put("date", prop("string", "Datum JJJJ-MM-TT (heute oder später)"));
+		properties.put("distanceKm", prop("number", "Distanz in km"));
+		properties.put("elevationMeters", prop("integer", "Höhenmeter"));
+		properties.put("type", prop("string",
+				"GRAN_FONDO, ROAD_RACE, CRITERIUM, TIME_TRIAL, GRAVEL, ULTRA oder BIKEPACKING"));
+		properties.put("goal", prop("string", "FINISH (ankommen) oder COMPETE (gute Zeit)"));
+		return properties;
 	}
 
 	/** Alle Schreibwerkzeuge (die Aufrufer filtern nach ihrem Zugriffsbereich) */
@@ -146,20 +187,43 @@ public class McpWriteTools {
 								"planId", "workoutId"),
 						false),
 				tool("create_workout", "Legt ein eigenes Workout für den Nutzer an (erscheint in seiner Liste eigener Workouts "
-						+ "und im Workout-Builder). Danach mit replace_workout in den Plan tauschen. Leistung in Prozent der "
-						+ "FTP (30 bis 250); unterschiedliche Start- und Endwerte ergeben eine Rampe. Höchstens 6 Stunden, "
-						+ "kein FTP-Test.",
-						object(Map.of("title", prop("string", "Name, höchstens 80 Zeichen"),
-								"description", prop("string", "Beschreibung, höchstens 500 Zeichen, optional"),
-								"type", prop("string", "Art, zum Beispiel ENDURANCE, SWEET_SPOT, THRESHOLD, VO2MAX (siehe list_workouts)"),
-								"steps", Map.of("type", "array", "description", "Abschnitte in Reihenfolge, 1 bis 100",
-										"items", object(Map.of("kind", prop("string", "WARMUP, STEADY, INTERVAL, RECOVERY oder COOLDOWN"),
-												"minutes", prop("number", "Dauer in Minuten (mindestens 10 Sekunden)"),
-												"powerStartPercent", prop("integer", "Leistung am Anfang in % der FTP"),
-												"powerEndPercent", prop("integer", "Leistung am Ende in % der FTP, optional (sonst gleich dem Anfang)")),
-												"kind", "minutes", "powerStartPercent"))),
-								"title", "type", "steps"),
+						+ "und im Workout-Builder). Danach mit replace_workout oder add_workout in den Plan setzen. Leistung "
+						+ "in Prozent der FTP (30 bis 250); unterschiedliche Start- und Endwerte ergeben eine Rampe. Höchstens "
+						+ "6 Stunden, kein FTP-Test.", object(workoutProperties(false), "title", "type", "steps"), false),
+				tool("update_workout", "Ändert ein eigenes Workout (alle Angaben wie bei create_workout, id aus "
+						+ "list_my_workouts). Gilt auch für Tage im Plan, an denen es schon steht.",
+						object(workoutProperties(true), "workoutId", "title", "type", "steps"), true),
+				tool("delete_workout", "Löscht ein eigenes Workout aus der Liste. Tage im Plan, an denen es steht, bleiben "
+						+ "lesbar.", object(Map.of("workoutId", prop("integer", "Die id aus list_my_workouts")), "workoutId"),
+						true),
+				tool("add_workout", "Setzt eine Einheit an einen beliebigen Tag (heute bis ein Jahr voraus), auch an einen "
+						+ "freien Tag. Workout aus list_workouts oder list_my_workouts. Eine offene Einheit an diesem Tag "
+						+ "weicht; sie bleibt dann stehen, auch wenn der Plan neu verteilt wird.",
+						object(Map.of("date", prop("string", "Tag JJJJ-MM-TT"),
+								"workoutId", prop("integer", "Die id des Workouts"),
+								"durationMinutes", prop("integer", "Dauer in Minuten, nur bei Workouts mit variabler Dauer")),
+								"date", "workoutId"),
 						false),
+				tool("move_workout", "Schiebt eine offene Einheit auf einen anderen Tag (heute oder später). Der alte Tag "
+						+ "bleibt leer, bis der Plan neu verteilt wird.",
+						object(Map.of("planId", prop("integer", "Die planId der Einheit"),
+								"date", prop("string", "Neuer Tag JJJJ-MM-TT")), "planId", "date"),
+						false),
+				tool("remove_workout", "Entfernt eine offene Einheit (freier Tag). Eine Neuberechnung des Plans (zum Beispiel "
+						+ "regenerate_plan) kann den Tag wieder füllen; für einen festen freien Tag die Zeit dieses Wochentags "
+						+ "im Profil auf 0 setzen.",
+						object(Map.of("planId", prop("integer", "Die planId der Einheit")), "planId"), true),
+				tool("shuffle_workout", "Tauscht eine offene Einheit gegen ein zufälliges anderes Workout, das in die Zeit "
+						+ "des Tages passt und gleich hart ist.",
+						object(Map.of("planId", prop("integer", "Die planId der Einheit")), "planId"), false),
+				tool("add_event", "Legt ein weiteres Event an (zusätzlich zum ersten im Profil, höchstens 12, pro Tag eins). "
+						+ "Der Plan wird danach ab heute neu verteilt.", object(eventProperties(false), "name", "date",
+								"distanceKm", "elevationMeters", "type"), true),
+				tool("update_event", "Ändert ein weiteres Event (id aus list_events). Der Plan wird danach ab heute neu "
+						+ "verteilt.", object(eventProperties(true), "eventId", "name", "date", "distanceKm",
+								"elevationMeters", "type"), true),
+				tool("delete_event", "Löscht ein weiteres Event (id aus list_events). Der Plan wird danach ab heute neu "
+						+ "verteilt.", object(Map.of("eventId", prop("integer", "Die id aus list_events")), "eventId"), true),
 				tool("report_sick", "Meldet Krankheit (oder Verletzung). Ohne until bleibt der Plan stehen, bis "
 						+ "report_healthy kommt; from darf bis zu 8 Wochen zurückliegen. Mit until ein abgeschlossener "
 						+ "Zeitraum.",
@@ -211,6 +275,18 @@ public class McpWriteTools {
 					id -> customization.replace(id, userId, number(args, "workoutId", true),
 							args.get("durationMinutes") == null ? null : number(args, "durationMinutes", true).intValue()));
 			case "create_workout" -> createWorkout(userId, args);
+			case "update_workout" -> updateWorkout(userId, args);
+			case "delete_workout" -> deleteWorkout(userId, args);
+			case "add_workout" -> editResult("Einheit eingeplant.", () -> planEdit.add(userId, date(args, "date", true),
+					number(args, "workoutId", true), args.get("durationMinutes") == null ? null
+							: number(args, "durationMinutes", true).intValue()));
+			case "move_workout" -> editResult("Einheit verschoben.", () -> planEdit.move(userId, planId(args),
+					date(args, "date", true)));
+			case "remove_workout" -> removeWorkout(userId, args);
+			case "shuffle_workout" -> workoutResult(userId, "Einheit getauscht.", planId(args),
+					id -> customization.shuffle(id, userId));
+			case "add_event", "update_event" -> saveEvent(userId, name, args);
+			case "delete_event" -> deleteEvent(userId, args);
 			case "report_sick" -> planResult(userId, "Krank gemeldet.", () -> absence.startSickness(userId,
 					date(args, "from", true), date(args, "until", false)));
 			case "report_healthy" -> planResult(userId, "Wieder gesund gemeldet.", () -> {
@@ -273,7 +349,11 @@ public class McpWriteTools {
 		return out;
 	}
 
-	private Object createWorkout(Long userId, Map<String, Object> args) {
+	/** Die Angaben eines eigenen Workouts, geprüft */
+	private record WorkoutSpec(String title, String description, WorkoutType type, List<WorkoutStep> steps) {
+	}
+
+	private WorkoutSpec workoutSpec(Map<String, Object> args) {
 		String title = text(args, "title");
 		if (title == null || title.isBlank() || title.strip().length() > 80) {
 			throw new McpTools.ToolException("'title' fehlt oder ist länger als 80 Zeichen");
@@ -304,13 +384,97 @@ public class McpWriteTools {
 			}
 			return new WorkoutStep(kind, seconds, start, end);
 		}).toList();
+		return new WorkoutSpec(title, description, type, steps);
+	}
+
+	private Object createWorkout(Long userId, Map<String, Object> args) {
+		WorkoutSpec spec = workoutSpec(args);
 		try {
-			Workout created = customWorkouts.create(userId, title, description, type, steps);
-			return Map.of("erledigt", "Workout angelegt. Mit replace_workout und dieser id in den Plan tauschen.",
-					"workout", McpTools.workoutRows(List.of(created), true).get("workouts"));
+			Workout created = customWorkouts.create(userId, spec.title(), spec.description(), spec.type(), spec.steps());
+			return Map.of("erledigt", "Workout angelegt. Mit replace_workout oder add_workout und dieser id in den Plan "
+					+ "setzen.", "workout", McpTools.workoutRows(List.of(created), true).get("workouts"));
 		} catch (CustomWorkoutService.InvalidWorkoutException e) {
 			throw new McpTools.ToolException(e.getMessage());
 		}
+	}
+
+	private Object updateWorkout(Long userId, Map<String, Object> args) {
+		WorkoutSpec spec = workoutSpec(args);
+		try {
+			Workout changed = customWorkouts.update(number(args, "workoutId", true), userId, spec.title(),
+					spec.description(), spec.type(), spec.steps())
+					.orElseThrow(() -> new McpTools.ToolException("Kein eigenes Workout mit dieser id"));
+			return Map.of("erledigt", "Workout geändert.", "workout",
+					McpTools.workoutRows(List.of(changed), true).get("workouts"));
+		} catch (CustomWorkoutService.InvalidWorkoutException e) {
+			throw new McpTools.ToolException(e.getMessage());
+		}
+	}
+
+	private Object deleteWorkout(Long userId, Map<String, Object> args) {
+		if (!customWorkouts.delete(number(args, "workoutId", true), userId)) {
+			throw new McpTools.ToolException("Kein eigenes Workout mit dieser id");
+		}
+		return Map.of("erledigt", "Workout gelöscht.");
+	}
+
+	private Object editResult(String done, java.util.function.Supplier<java.util.Optional<PlannedWorkout>> action) {
+		try {
+			return tx.execute(status -> {
+				PlannedWorkout changed = action.get()
+						.orElseThrow(() -> new McpTools.ToolException("Es gibt noch keinen Plan oder keine solche Einheit."));
+				return Map.of("erledigt", done, "einheit", read.day(changed));
+			});
+		} catch (WorkoutCustomizationService.NotPossibleException e) {
+			throw new McpTools.ToolException("Das geht nicht: Der Tag muss heute oder später sein (höchstens ein Jahr "
+					+ "voraus), das Workout muss es geben (und gehören dir, wenn es ein eigenes ist), die Dauer muss zum "
+					+ "Workout passen, und an dem Tag darf keine abgehakte, gefahrene, ausgefallene oder selbst gewählte "
+					+ "Einheit stehen. Eine Einheit, die schon erledigt ist, lässt sich nicht verschieben.");
+		}
+	}
+
+	private Object removeWorkout(Long userId, Map<String, Object> args) {
+		try {
+			LocalDate day = tx.execute(status -> planEdit.remove(userId, planId(args))
+					.orElseThrow(() -> new McpTools.ToolException("Keine Einheit mit dieser planId: " + planId(args))));
+			return Map.of("erledigt", "Einheit entfernt.", "tag", day.toString());
+		} catch (WorkoutCustomizationService.NotPossibleException e) {
+			throw new McpTools.ToolException("Das geht nur bei einer offenen Einheit ab heute (nicht erledigt, nicht "
+					+ "gefahren, nicht ausgefallen).");
+		}
+	}
+
+	private Object saveEvent(Long userId, String tool, Map<String, Object> args) {
+		Map<String, Object> values = new LinkedHashMap<>(args);
+		Long eventId = "update_event".equals(tool) ? number(args, "eventId", true) : null;
+		values.remove("eventId");
+		RaceEvent event;
+		try {
+			event = mapper.convertValue(values, RaceEvent.class);
+		} catch (JacksonException | IllegalArgumentException e) {
+			throw new McpTools.ToolException("Ungültiger Wert im Event (zum Beispiel eine unbekannte Auswahl oder ein "
+					+ "Datum ohne Format JJJJ-MM-TT).");
+		}
+		List<String> problems = validator.validate(event).stream().map(ConstraintViolation::getMessage).sorted().toList();
+		if (!problems.isEmpty()) {
+			throw new McpTools.ToolException("Das Event wäre ungültig: " + String.join("; ", problems));
+		}
+		try {
+			RaceEvent saved = (eventId == null ? raceEvents.add(userId, event) : raceEvents.update(userId, eventId, event))
+					.orElseThrow(() -> new McpTools.ToolException(eventId == null ? "Es gibt noch kein Profil."
+							: "Kein Event mit dieser id"));
+			return Map.of("erledigt", eventId == null ? "Event angelegt. Der Plan wird neu verteilt."
+					: "Event geändert. Der Plan wird neu verteilt.", "event", McpTools.eventRow(saved));
+		} catch (RaceEventService.ConflictException e) {
+			throw new McpTools.ToolException("An diesem Tag ist schon ein Event, oder es gibt schon zu viele (höchstens 12).");
+		}
+	}
+
+	private Object deleteEvent(Long userId, Map<String, Object> args) {
+		if (!raceEvents.delete(userId, number(args, "eventId", true))) {
+			throw new McpTools.ToolException("Kein Event mit dieser id");
+		}
+		return Map.of("erledigt", "Event gelöscht. Der Plan wird neu verteilt.");
 	}
 
 	private static int percent(Map<String, Object> values, String key, Integer fallback) {

@@ -127,7 +127,7 @@ public class McpController {
 		result.put("serverInfo", Map.of("name", "quaelmich", "version", "1.0"));
 		result.put("instructions", "quaelmich ist ein Trainingsplan für Radfahrer. Die Werkzeuge zeigen den Plan, das "
 				+ "Profil und die Workout-Bibliothek des angemeldeten Nutzers und können sie mit der Erlaubnis plan:write "
-				+ "ändern. Fang mit get_overview an. Alle Zahlen sind Minuten und TSS (Trainingsbelastung). Gefahrene "
+				+ "ändern: Einheiten setzen, verschieben, entfernen und tauschen (auch an freien Tagen), eigene Workouts bauen, das Profil, das sportliche Ziel und weitere Events. Fang mit get_overview an. Alle Zahlen sind Minuten und TSS (Trainingsbelastung). Gefahrene "
 				+ "Fahrten, Strava-Daten und Freitexte liefert quaelmich nicht. Brauchst du sie, frag den Nutzer oder "
 				+ "nimm einen Strava-Zugang, den er selbst eingerichtet hat. Die Daten gehören dem Nutzer; erfinde nichts, "
 				+ "was nicht in den Ergebnissen steht. Solange der KI-Modus an ist, ändert quaelmich den Plan nicht mehr von "
