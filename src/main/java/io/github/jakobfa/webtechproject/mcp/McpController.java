@@ -42,15 +42,17 @@ public class McpController {
 	private final OAuthService oauth;
 	private final McpTools tools;
 	private final McpWriteTools writeTools;
+	private final McpPrompts prompts;
 	private final RateLimiter rateLimiter;
 	private final ObjectMapper mapper;
 	private final String apiUrl;
 
-	public McpController(OAuthService oauth, McpTools tools, McpWriteTools writeTools, RateLimiter rateLimiter,
+	public McpController(OAuthService oauth, McpTools tools, McpWriteTools writeTools, McpPrompts prompts, RateLimiter rateLimiter,
 			ObjectMapper mapper, @Value("${app.public.api-url:https://api.quaelmich.com}") String apiUrl) {
 		this.oauth = oauth;
 		this.tools = tools;
 		this.writeTools = writeTools;
+		this.prompts = prompts;
 		this.rateLimiter = rateLimiter;
 		this.mapper = mapper;
 		this.apiUrl = apiUrl;
@@ -107,6 +109,8 @@ public class McpController {
 				case "ping" -> Map.of();
 				case "tools/list" -> Map.of("tools", visibleTools(principal));
 				case "tools/call" -> callTool(principal, params);
+				case "prompts/list" -> Map.of("prompts", prompts.list());
+				case "prompts/get" -> getPrompt(params);
 				default -> throw new RpcException(-32601, "Methode nicht unterstützt: " + method);
 			}));
 		} catch (RpcException e) {
@@ -119,7 +123,7 @@ public class McpController {
 				: LATEST_PROTOCOL;
 		Map<String, Object> result = new LinkedHashMap<>();
 		result.put("protocolVersion", SUPPORTED_PROTOCOLS.contains(requested) ? requested : LATEST_PROTOCOL);
-		result.put("capabilities", Map.of("tools", Map.of("listChanged", false)));
+		result.put("capabilities", Map.of("tools", Map.of("listChanged", false), "prompts", Map.of("listChanged", false)));
 		result.put("serverInfo", Map.of("name", "quaelmich", "version", "1.0"));
 		result.put("instructions", "quaelmich ist ein Trainingsplan für Radfahrer. Die Werkzeuge zeigen den Plan, das "
 				+ "Profil und die Workout-Bibliothek des angemeldeten Nutzers und können sie mit der Erlaubnis plan:write "
@@ -130,6 +134,20 @@ public class McpController {
 				+ "selbst: keine Anpassung an gefahrene Werte, keine Neuberechnung pro Woche und bei einem Ziel ohne Event "
 				+ "keine Verlängerung. Änderungen und neue Wochen planst du selbst (zum Beispiel mit regenerate_plan).");
 		return result;
+	}
+
+	@SuppressWarnings("unchecked")
+	private Map<String, Object> getPrompt(JsonNode params) {
+		if (params == null || !params.has("name")) {
+			throw new RpcException(-32602, "name fehlt");
+		}
+		String name = params.get("name").asString();
+		Map<String, String> arguments = params.has("arguments") && params.get("arguments").isObject()
+				? mapper.convertValue(params.get("arguments"), Map.class) : Map.of();
+		prompts.missing(name, arguments).ifPresent(missing -> {
+			throw new RpcException(-32602, "Argument fehlt: " + missing);
+		});
+		return prompts.get(name, arguments).orElseThrow(() -> new RpcException(-32602, "Unbekannter Prompt: " + name));
 	}
 
 	/** Lese- und Schreibwerkzeuge zusammen */
