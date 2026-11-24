@@ -440,6 +440,7 @@ class McpTest {
 				""").andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
 		String instructions = JsonPath.read(body, "$.result.instructions");
 		assertThat(instructions).contains("Gefahrene Fahrten, Strava-Daten und Freitexte liefert quaelmich nicht")
-				.contains("Strava-Zugang").contains("erfinde nichts").doesNotContain("Diagnose");
+				.contains("Strava-Zugang").contains("erfinde nichts").doesNotContain("Diagnose")
+				.contains("ändert quaelmich den Plan nicht mehr von selbst");
 	}
 }
