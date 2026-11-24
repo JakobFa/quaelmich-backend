@@ -121,10 +121,12 @@ public class McpController {
 		result.put("protocolVersion", SUPPORTED_PROTOCOLS.contains(requested) ? requested : LATEST_PROTOCOL);
 		result.put("capabilities", Map.of("tools", Map.of("listChanged", false)));
 		result.put("serverInfo", Map.of("name", "quaelmich", "version", "1.0"));
-		result.put("instructions", "quaelmich ist ein Trainingsplan für Radfahrer. Die Werkzeuge zeigen den Plan, die "
-				+ "Fahrten und die Diagnose des angemeldeten Nutzers. Fang mit get_overview an. Alle Zahlen sind Minuten "
-				+ "und TSS (Trainingsbelastung). Die Daten gehören dem Nutzer; erfinde nichts, was nicht in den "
-				+ "Ergebnissen steht.");
+		result.put("instructions", "quaelmich ist ein Trainingsplan für Radfahrer. Die Werkzeuge zeigen den Plan, das "
+				+ "Profil und die Workout-Bibliothek des angemeldeten Nutzers und können sie mit der Erlaubnis plan:write "
+				+ "ändern. Fang mit get_overview an. Alle Zahlen sind Minuten und TSS (Trainingsbelastung). Gefahrene "
+				+ "Fahrten, Strava-Daten und Freitexte liefert quaelmich nicht. Brauchst du sie, frag den Nutzer oder "
+				+ "nimm einen Strava-Zugang, den er selbst eingerichtet hat. Die Daten gehören dem Nutzer; erfinde nichts, "
+				+ "was nicht in den Ergebnissen steht.");
 		return result;
 	}
 
