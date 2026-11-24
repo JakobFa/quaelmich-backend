@@ -152,6 +152,8 @@ class McpTest {
 
 		String overview = call(access, "get_overview", "{}");
 		assertThat(overview).contains("\"athlet\"").contains("\"naechste7Tage\"").contains("AMBITIOUS");
+		// nicht gesetzte Werte kommen als leer an, nicht als der Text "null"
+		assertThat(overview).doesNotContain("\"null\"");
 
 		String plan = call(access, "get_plan", "{ \"from\": \"2000-01-01\", \"to\": \"2000-01-10\" }");
 		assertThat(plan).contains("\"tage\":[]");
