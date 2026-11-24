@@ -118,7 +118,7 @@ public class McpWriteTools {
 				"Art, zum Beispiel ENDURANCE, SWEET_SPOT, THRESHOLD, VO2MAX (siehe list_workouts)"));
 		properties.put("steps", Map.of("type", "array", "description", "Abschnitte in Reihenfolge, 1 bis 100", "items",
 				object(Map.of("kind", prop("string", "WARMUP, STEADY, INTERVAL, RECOVERY oder COOLDOWN"),
-						"minutes", prop("number", "Dauer in Minuten (mindestens 10 Sekunden)"),
+						"minutes", prop("number", "Dauer in Minuten (mindestens 10 Sekunden, höchstens 12 Stunden)"),
 						"powerStartPercent", prop("integer", "Leistung am Anfang in % der FTP"),
 						"powerEndPercent", prop("integer", "Leistung am Ende in % der FTP, optional (sonst gleich dem Anfang)")),
 						"kind", "minutes", "powerStartPercent")));
@@ -189,7 +189,7 @@ public class McpWriteTools {
 				tool("create_workout", "Legt ein eigenes Workout für den Nutzer an (erscheint in seiner Liste eigener Workouts "
 						+ "und im Workout-Builder). Danach mit replace_workout oder add_workout in den Plan setzen. Leistung "
 						+ "in Prozent der FTP (30 bis 250); unterschiedliche Start- und Endwerte ergeben eine Rampe. Höchstens "
-						+ "6 Stunden, kein FTP-Test.", object(workoutProperties(false), "title", "type", "steps"), false),
+						+ "12 Stunden, kein FTP-Test.", object(workoutProperties(false), "title", "type", "steps"), false),
 				tool("update_workout", "Ändert ein eigenes Workout (alle Angaben wie bei create_workout, id aus "
 						+ "list_my_workouts). Gilt auch für Tage im Plan, an denen es schon steht.",
 						object(workoutProperties(true), "workoutId", "title", "type", "steps"), true),
@@ -197,11 +197,12 @@ public class McpWriteTools {
 						+ "lesbar.", object(Map.of("workoutId", prop("integer", "Die id aus list_my_workouts")), "workoutId"),
 						true),
 				tool("add_workout", "Setzt eine Einheit an einen beliebigen Tag (heute bis ein Jahr voraus), auch an einen "
-						+ "freien Tag. Workout aus list_workouts oder list_my_workouts. Eine offene Einheit an diesem Tag "
-						+ "weicht; sie bleibt dann stehen, auch wenn der Plan neu verteilt wird.",
+						+ "freien Tag. Workout aus list_workouts oder list_my_workouts. Eine offene oder selbst gewählte "
+						+ "Einheit an diesem Tag weicht (eine erledigte, gefahrene oder ausgefallene nicht); die neue bleibt "
+						+ "stehen, auch wenn der Plan neu verteilt wird.",
 						object(Map.of("date", prop("string", "Tag JJJJ-MM-TT"),
 								"workoutId", prop("integer", "Die id des Workouts"),
-								"durationMinutes", prop("integer", "Dauer in Minuten, nur bei Workouts mit variabler Dauer")),
+								"durationMinutes", prop("integer", "Dauer in Minuten (Vielfache von 15), nur bei Workouts mit variabler Dauer; Grundlage ab 30")),
 								"date", "workoutId"),
 						false),
 				tool("move_workout", "Schiebt eine offene Einheit auf einen anderen Tag (heute oder später). Der alte Tag "
@@ -210,9 +211,15 @@ public class McpWriteTools {
 								"date", prop("string", "Neuer Tag JJJJ-MM-TT")), "planId", "date"),
 						false),
 				tool("remove_workout", "Entfernt eine offene Einheit (freier Tag). Eine Neuberechnung des Plans (zum Beispiel "
-						+ "regenerate_plan) kann den Tag wieder füllen; für einen festen freien Tag die Zeit dieses Wochentags "
-						+ "im Profil auf 0 setzen.",
+						+ "regenerate_plan) kann den Tag wieder füllen; für einen festen freien Tag set_day_free "
+						+ "benutzen.",
 						object(Map.of("planId", prop("integer", "Die planId der Einheit")), "planId"), true),
+				tool("set_day_free", "Hält einen einzelnen Tag fest frei (free=true) oder plant ihn wieder wie im Profil "
+						+ "(free=false). Gilt für diesen Tag, bleibt bei jeder Neuberechnung bestehen und verteilt die Woche "
+						+ "neu. Eine selbst gewählte Einheit an dem Tag zuerst mit remove_workout entfernen.",
+						object(Map.of("date", prop("string", "Tag JJJJ-MM-TT (heute oder später)"),
+								"free", prop("boolean", "true = frei halten, false = wieder wie im Profil")), "date", "free"),
+						false),
 				tool("shuffle_workout", "Tauscht eine offene Einheit gegen ein zufälliges anderes Workout, das in die Zeit "
 						+ "des Tages passt und gleich hart ist.",
 						object(Map.of("planId", prop("integer", "Die planId der Einheit")), "planId"), false),
@@ -280,6 +287,17 @@ public class McpWriteTools {
 			case "add_workout" -> editResult("Einheit eingeplant.", () -> planEdit.add(userId, date(args, "date", true),
 					number(args, "workoutId", true), args.get("durationMinutes") == null ? null
 							: number(args, "durationMinutes", true).intValue()));
+			case "set_day_free" -> {
+				LocalDate day = date(args, "date", true);
+				if (!(args.get("free") instanceof Boolean free)) {
+					throw new McpTools.ToolException("'free' muss true oder false sein");
+				}
+				try {
+					yield planResult(userId, "Tag aktualisiert.", () -> planEdit.setDayFree(userId, day, free));
+				} catch (WorkoutCustomizationService.NotPossibleException e) {
+					throw new McpTools.ToolException("Der Tag muss heute oder später sein (höchstens ein Jahr voraus).");
+				}
+			}
 			case "move_workout" -> editResult("Einheit verschoben.", () -> planEdit.move(userId, planId(args),
 					date(args, "date", true)));
 			case "remove_workout" -> removeWorkout(userId, args);
@@ -379,8 +397,8 @@ public class McpWriteTools {
 			int seconds = (int) Math.round(minutes.doubleValue() * 60);
 			int start = percent(values, "powerStartPercent", null);
 			int end = percent(values, "powerEndPercent", start);
-			if (seconds < 10 || seconds > 4 * 3600) {
-				throw new McpTools.ToolException("Ein Abschnitt dauert 10 Sekunden bis 4 Stunden");
+			if (seconds < 10 || seconds > 12 * 3600) {
+				throw new McpTools.ToolException("Ein Abschnitt dauert 10 Sekunden bis 12 Stunden");
 			}
 			return new WorkoutStep(kind, seconds, start, end);
 		}).toList();

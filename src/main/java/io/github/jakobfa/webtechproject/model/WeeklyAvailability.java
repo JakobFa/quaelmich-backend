@@ -51,6 +51,37 @@ public class WeeklyAvailability {
 		};
 	}
 
+	/** Dieselben Stunden, nur an einem Wochentag anders */
+	public WeeklyAvailability with(DayOfWeek day, double hours) {
+		WeeklyAvailability copy = new WeeklyAvailability();
+		for (DayOfWeek each : DayOfWeek.values()) {
+			copy.set(each, each == day ? hours : hoursOn(each));
+		}
+		return copy;
+	}
+
+	/** Gleiche Stunden an allen Wochentagen */
+	public boolean sameHoursAs(WeeklyAvailability other) {
+		for (DayOfWeek day : DayOfWeek.values()) {
+			if (Double.compare(hoursOn(day), other.hoursOn(day)) != 0) {
+				return false;
+			}
+		}
+		return true;
+	}
+
+	private void set(DayOfWeek day, double hours) {
+		switch (day) {
+			case MONDAY -> monday = hours;
+			case TUESDAY -> tuesday = hours;
+			case WEDNESDAY -> wednesday = hours;
+			case THURSDAY -> thursday = hours;
+			case FRIDAY -> friday = hours;
+			case SATURDAY -> saturday = hours;
+			case SUNDAY -> sunday = hours;
+		}
+	}
+
 	public double totalHours() {
 		return monday + tuesday + wednesday + thursday + friday + saturday + sunday;
 	}

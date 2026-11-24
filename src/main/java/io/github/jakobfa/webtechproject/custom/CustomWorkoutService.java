@@ -19,8 +19,8 @@ import io.github.jakobfa.webtechproject.service.WorkoutLibrary;
 @Service
 public class CustomWorkoutService implements WorkoutCustomizationService.CustomWorkoutOwnership {
 
-	/** länger plant auch quaelmich nicht */
-	static final int MAX_SECONDS = 6 * 3600;
+	/** länger gibt es nicht (auch 300-km-Tage passen hinein) */
+	static final int MAX_SECONDS = 12 * 3600;
 
 	/** Wird geworfen, wenn das Workout nicht gültig ist (z. B. länger als 6 h) */
 	public static class InvalidWorkoutException extends RuntimeException {
@@ -108,7 +108,7 @@ public class CustomWorkoutService implements WorkoutCustomizationService.CustomW
 			throw new InvalidWorkoutException("Einen FTP-Test gibt es schon in der Bibliothek.");
 		}
 		if (steps.stream().mapToInt(WorkoutStep::durationSeconds).sum() > MAX_SECONDS) {
-			throw new InvalidWorkoutException("Höchstens 6 Stunden.");
+			throw new InvalidWorkoutException("Höchstens 12 Stunden.");
 		}
 	}
 
