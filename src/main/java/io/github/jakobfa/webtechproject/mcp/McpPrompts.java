@@ -28,6 +28,9 @@ public class McpPrompts {
 			- Erfinde nichts, was nicht in den Ergebnissen steht.""";
 
 	private static final List<Prompt> PROMPTS = List.of(
+			new Prompt("plan_erstellen", "Plan erstellen und täglich prüfen",
+					"Baut den optimalen Plan für mein Ziel aus meiner eingetragenen Zeit und richtet eine tägliche Prüfung "
+							+ "mit meinen Fahrten ein.", List.of()),
 			new Prompt("plan_pruefen", "Plan prüfen", "Schaut sich Profil und Plan an und sagt, ob beides zum Ziel passt.",
 					List.of()),
 			new Prompt("woche_umplanen", "Woche umplanen",
@@ -59,6 +62,18 @@ public class McpPrompts {
 	/** Der Text des Auftrags oder leer, wenn es den Prompt nicht gibt */
 	public Optional<Map<String, Object>> get(String name, Map<String, String> arguments) {
 		String text = switch (name) {
+			case "plan_erstellen" -> "Du bist mein Trainer. Erstelle in quaelmich den optimalen sportlichen Plan für mein "
+					+ "Ziel, auf Basis der Zeit, die ich dort pro Wochentag eingetragen habe. 1. Ruf get_overview auf: Ziel, "
+					+ "Event, Level, FTP und meine Zeit pro Wochentag. Fehlt etwas, frag mich, statt etwas zu erfinden. "
+					+ "2. Überlege, wie der Plan für dieses Ziel in dieser Zeit am besten aufgebaut ist (Umfang, Schwerpunkte, "
+					+ "Erholung). 3. Sag mir kurz, was du vorhast, und setze es nach meinem Ja um (regenerate_plan, "
+					+ "update_profile, add_workout, replace_workout, create_workout, set_week_availability). 4. Richte "
+					+ "danach eine tägliche Prüfung ein: Wenn deine App wiederkehrende Aufgaben oder Agenten kann, lege "
+					+ "eine tägliche Aufgabe an, die den Auftrag 'fahrten_abgleichen' ausführt. Sie holt meine gefahrenen "
+					+ "Fahrten aus meinem Strava-Konnektor, vergleicht sie mit dem Plan und steuert die Belastung: War "
+					+ "ich deutlich härter oder schwächer gefahren als geplant, oder gar nicht, entscheidest du als Trainer, "
+					+ "ob und wie du den Plan anpasst, und führst es mit den Werkzeugen aus. Kann deine App das nicht, "
+					+ "sag mir das und wie ich den Auftrag 'fahrten_abgleichen' regelmäßig selbst starte.";
 			case "plan_pruefen" -> "Prüfe meinen Trainingsplan in quaelmich. Ruf get_overview und get_plan auf, schau, ob "
 					+ "Ziel, Zeit pro Woche und die nächsten Wochen zusammenpassen, und sag mir in kurzen Sätzen, was "
 					+ "gut ist und was du ändern würdest. Ändere noch nichts, ohne dass ich es sage.";
@@ -80,8 +95,8 @@ public class McpPrompts {
 					+ "keine festen Regeln, du urteilst als Trainer. 4. Sag mir kurz, was du siehst und was du ändern "
 					+ "würdest, und führe es nach meinem Ja mit den Werkzeugen aus (adjust_workout, replace_workout, "
 					+ "add_workout, move_workout, remove_workout, create_workout, skip_workout, set_week_availability oder "
-					+ "regenerate_plan). Ändere nichts, wenn der "
-					+ "Plan schon passt.";
+					+ "regenerate_plan). Achte besonders auf deutlich härter oder "
+					+ "schwächer gefahren als geplant und auf ausgelassene Tage. Ändere nichts, wenn der Plan schon passt.";
 			case "einrichten" -> "Ich möchte quaelmich mit dir benutzen. Ruf get_overview auf, erkläre mir kurz, was du "
 					+ "dort lesen und ändern kannst (Plan, Profil, sportliches Ziel, Krankheit, Pause, eigene Workouts), und "
 					+ "frag mich, was ich als Erstes möchte.";
