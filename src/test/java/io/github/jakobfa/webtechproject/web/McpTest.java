@@ -421,6 +421,31 @@ class McpTest {
 	}
 
 	@Test
+	@SuppressWarnings("unchecked")
+	void theServerOffersPromptsThatExplainTheWorkflow() throws Exception {
+		String access = accessToken("plan:read");
+		String list = rpc(access, "{ \"jsonrpc\": \"2.0\", \"id\": 1, \"method\": \"prompts/list\" }")
+				.andReturn().getResponse().getContentAsString();
+		assertThat((List<String>) JsonPath.read(list, "$.result.prompts[*].name")).contains("plan_pruefen",
+				"woche_umplanen", "workout_bauen", "einrichten");
+
+		String prompt = rpc(access, """
+				{ "jsonrpc": "2.0", "id": 2, "method": "prompts/get",
+				  "params": { "name": "woche_umplanen", "arguments": { "wunsch": "Diese Woche nur 3 Stunden" } } }
+				""").andReturn().getResponse().getContentAsString();
+		assertThat((String) JsonPath.read(prompt, "$.result.messages[0].content.text"))
+				.contains("Diese Woche nur 3 Stunden").contains("get_plan").contains("keine gefahrenen Werte");
+
+		rpc(access, """
+				{ "jsonrpc": "2.0", "id": 3, "method": "prompts/get",
+				  "params": { "name": "woche_umplanen", "arguments": {} } }
+				""").andExpect(jsonPath("$.error.message").value(org.hamcrest.Matchers.containsString("wunsch")));
+		rpc(access, """
+				{ "jsonrpc": "2.0", "id": 4, "method": "prompts/get", "params": { "name": "gibtsnicht" } }
+				""").andExpect(jsonPath("$.error.code").value(-32602));
+	}
+
+	@Test
 	void theAiCanChangeTheSportingGoalAndRebuildThePlan() throws Exception {
 		String access = accessToken("plan:read plan:write");
 
