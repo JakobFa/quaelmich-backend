@@ -109,7 +109,7 @@ public class PlanEditService {
 			io.github.jakobfa.webtechproject.model.WeeklyAvailability changed = week.with(date.getDayOfWeek(),
 					free ? 0 : normal.hoursOn(date.getDayOfWeek()));
 			// wieder genau wie im Profil: keine Ausnahme mehr nötig
-			return plans.setWeekAvailability(athlete.getId(), monday, changed.sameHoursAs(normal) ? null : changed)
+			return plans.setDayAvailability(athlete.getId(), date, changed.sameHoursAs(normal) ? null : changed)
 					.orElseThrow();
 		}));
 	}
