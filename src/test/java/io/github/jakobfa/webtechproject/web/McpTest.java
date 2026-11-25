@@ -527,7 +527,13 @@ class McpTest {
 		// einen einzelnen Tag fest freihalten: die Einheit dort (selbst gewählt) erst entfernen, dann bleibt er frei
 		long chosen = ((Number) JsonPath.read(short45, "$.einheit.planId")).longValue();
 		callWrite(access, "remove_workout", "{ \"planId\": %d }".formatted(chosen));
+		// die ganze Woche (Montag bis Sonntag) vor dem Freihalten lesen: die anderen Tage dürfen sich nicht ändern
+		java.time.LocalDate date = java.time.LocalDate.parse(day);
+		java.time.LocalDate monday = date.with(java.time.temporal.TemporalAdjusters.previousOrSame(java.time.DayOfWeek.MONDAY));
+		String weekArgs = "{ \"from\": \"%s\", \"to\": \"%s\" }".formatted(monday, monday.plusDays(6));
+		Object weekBefore = JsonPath.read(call(access, "get_plan", weekArgs), "$.tage");
 		callWrite(access, "set_day_free", "{ \"date\": \"%s\", \"free\": true }".formatted(day));
+		assertThat((Object) JsonPath.read(call(access, "get_plan", weekArgs), "$.tage")).isEqualTo(weekBefore);
 		assertThat(call(access, "get_plan", "{ \"from\": \"%s\", \"to\": \"%s\" }".formatted(day, day)))
 				.doesNotContain("\"tag\":\"" + day + "\"");
 		callWrite(access, "regenerate_plan", "{}");

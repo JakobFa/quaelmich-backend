@@ -110,6 +110,29 @@ public class TrainingPlanService {
 		});
 	}
 
+	/**
+	 * Wie {@link #setWeekAvailability}, verteilt aber nur den einen Tag neu; die anderen Tage der Woche
+	 * bleiben unverändert. availability null = Wochen-Ausnahme entfernen. IllegalArgumentException, wenn der
+	 * Tag vor heute liegt.
+	 */
+	@Transactional
+	public Optional<TrainingPlan> setDayAvailability(Long athleteId, LocalDate date,
+			WeeklyAvailability availability) {
+		if (date.isBefore(LocalDate.now(clock))) {
+			throw new IllegalArgumentException("Tag liegt in der Vergangenheit");
+		}
+		LocalDate monday = date.with(java.time.temporal.TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY));
+		return planRepository.findByAthleteId(athleteId).map(plan -> {
+			if (availability == null) {
+				plan.getWeekAvailability().remove(monday);
+			} else {
+				plan.getWeekAvailability().put(monday, availability);
+			}
+			replan(plan, date, date);
+			return planRepository.save(plan);
+		});
+	}
+
 	/** Offene Workouts im Zeitraum neu verteilen; Erledigtes und Rückmeldungen ("nicht gemacht") bleiben */
 	private void replan(TrainingPlan plan, LocalDate from, LocalDate to) {
 		Set<LocalDate> keptDays = plan.getWorkouts().stream()
