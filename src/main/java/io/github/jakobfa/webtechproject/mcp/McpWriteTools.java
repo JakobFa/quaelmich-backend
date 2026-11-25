@@ -215,8 +215,8 @@ public class McpWriteTools {
 						+ "benutzen.",
 						object(Map.of("planId", prop("integer", "Die planId der Einheit")), "planId"), true),
 				tool("set_day_free", "Hält einen einzelnen Tag fest frei (free=true) oder plant ihn wieder wie im Profil "
-						+ "(free=false). Gilt für diesen Tag, bleibt bei jeder Neuberechnung bestehen und verteilt die Woche "
-						+ "neu. Eine selbst gewählte Einheit an dem Tag zuerst mit remove_workout entfernen.",
+						+ "(free=false). Gilt für diesen Tag, bleibt bei jeder Neuberechnung bestehen; die anderen Tage der "
+						+ "Woche bleiben unverändert. Eine selbst gewählte Einheit an dem Tag zuerst mit remove_workout entfernen.",
 						object(Map.of("date", prop("string", "Tag JJJJ-MM-TT (heute oder später)"),
 								"free", prop("boolean", "true = frei halten, false = wieder wie im Profil")), "date", "free"),
 						false),
