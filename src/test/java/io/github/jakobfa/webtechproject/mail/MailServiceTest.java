@@ -39,6 +39,23 @@ class MailServiceTest {
 	}
 
 	@Test
+	void replyToOnlyWhenGiven() {
+		RestClient.Builder builder = RestClient.builder();
+		MockRestServiceServer server = MockRestServiceServer.bindTo(builder).build();
+		server.expect(requestTo("https://api.resend.com/emails"))
+				.andExpect(jsonPath("$.reply_to").value("jakob@example.com"))
+				.andRespond(withSuccess("{\"id\":\"abc\"}", MediaType.APPLICATION_JSON));
+		server.expect(requestTo("https://api.resend.com/emails"))
+				.andExpect(jsonPath("$.reply_to").doesNotExist())
+				.andRespond(withSuccess("{\"id\":\"def\"}", MediaType.APPLICATION_JSON));
+
+		MailService service = new MailService(CONFIGURED, builder);
+		assertThat(service.send("lina@example.com", "Hallo", "Text", "<p>Text</p>", "jakob@example.com")).isTrue();
+		assertThat(service.send("lina@example.com", "Hallo", "Text", "<p>Text</p>")).isTrue();
+		server.verify();
+	}
+
+	@Test
 	void reportsFailureInsteadOfCrashing() {
 		RestClient.Builder builder = RestClient.builder();
 		MockRestServiceServer server = MockRestServiceServer.bindTo(builder).build();
