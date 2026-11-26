@@ -70,6 +70,14 @@ class NewsletterTest {
 	}
 
 	@Test
+	void logoForMailsIsPublic() throws Exception {
+		mockMvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get("/mail/logo.png"))
+				.andExpect(status().isOk())
+				.andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.content()
+						.contentType("image/png"));
+	}
+
+	@Test
 	void hiddenWithoutToken() throws Exception {
 		call(null, both()).andExpect(status().isNotFound());
 		call("falsch", both() + ", \"send\": true, \"expectedCount\": 2").andExpect(status().isNotFound());

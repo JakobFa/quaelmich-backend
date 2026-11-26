@@ -9,7 +9,8 @@
 # Wer keine Mails mehr will: Adresse in NEWSLETTER_EXCLUDE eintragen (mit Komma getrennt).
 #
 # Aufbau von mail.md: eine Zeile "**Betreff:** …", optional "**Vorschautext:** …", dann "---" und der Text
-# (Absätze, **fett**, Listen mit "- " oder "1. ").
+# (Absätze, **fett**, eine Zeile nur in **…** = Zwischenüberschrift, Listen mit "- " oder "1. ",
+# Knopf mit "[[Beschriftung|https://…]]"). Das Layout entspricht der Webseite.
 #
 # Das Geheimnis (ADMIN_TOKEN von Render) wird aus dem macOS-Schlüsselbund gelesen, wie bei scripts/invite.sh.
 set -euo pipefail
@@ -43,29 +44,82 @@ if not subject or not body.strip():
     sys.exit("In der Datei fehlt die Zeile '**Betreff:** …' oder der Text nach '---'.")
 preheader = re.search(r"\*\*Vorschautext:\*\*\s*(.+)", head)
 
+# Layout wie die Webseite (src/assets/main.css im Frontend): dunkel, Lila, Barlow Condensed, Space Mono
+INK, PANEL, RAISED, LILAC, TEXT, MUTED = "#141615", "#1f2422", "#2a312e", "#dcbaf7", "#f2edf6", "#98a29e"
+BODY_FONT = "'Barlow Condensed','Arial Narrow',Arial,Helvetica,sans-serif"
+HEAD_FONT = "'Saira Stencil One','Barlow Condensed','Arial Narrow',Arial,sans-serif"
+MONO_FONT = "'Space Mono',Menlo,Consolas,monospace"
+SITE = "https://quaelmich.com"
+LOGO = "https://api.quaelmich.com/mail/logo.png"
+P = f"margin:0 0 16px;font-family:{BODY_FONT};font-size:18px;font-weight:500;line-height:1.45;color:{TEXT}"
+
 def inline(text):
-    return re.sub(r"\*\*(.+?)\*\*", r"<strong>\1</strong>", html.escape(text))
+    out = re.sub(r"\*\*(.+?)\*\*", r'<strong style="color:#ffffff;font-weight:700">\1</strong>', html.escape(text))
+    return re.sub(r"(?<![\w/@.])(quaelmich\.com)\b", rf'<a href="{SITE}" style="color:{LILAC}">\1</a>', out)
 
 blocks = [b for b in re.split(r"\n\s*\n", body.strip()) if b.strip()]
 parts, plain = [], []
 for block in blocks:
     lines = [l.rstrip() for l in block.splitlines()]
+    button = re.fullmatch(r"\[\[(.+?)\|(https?://\S+)\]\]", lines[0].strip()) if len(lines) == 1 else None
+    heading = re.fullmatch(r"\*\*([^*]+)\*\*", lines[0].strip()) if len(lines) == 1 else None
+    if button:
+        label, url = button.group(1), button.group(2)
+        parts.append(f'<table role="presentation" cellpadding="0" cellspacing="0" style="margin:8px 0 24px"><tr>'
+                     f'<td style="background:{LILAC}"><a href="{html.escape(url)}" style="display:inline-block;'
+                     f'padding:12px 22px;font-family:{MONO_FONT};font-size:14px;font-weight:700;letter-spacing:0.08em;'
+                     f'text-transform:uppercase;color:{INK};text-decoration:none">{html.escape(label)}</a></td></tr></table>')
+        plain.append(f"{label}: {url}")
+        continue
+    if heading:
+        parts.append(f'<h2 style="margin:28px 0 10px;font-family:{HEAD_FONT};font-size:24px;font-weight:400;'
+                     f'line-height:1.2;letter-spacing:0.02em;text-transform:uppercase;color:{LILAC}">'
+                     f"{html.escape(heading.group(1))}</h2>")
+        plain.append(heading.group(1).upper())
+        continue
     if all(re.match(r"- ", l) for l in lines):
-        parts.append("<ul>" + "".join(f"<li>{inline(l[2:])}</li>" for l in lines) + "</ul>")
+        items = [l[2:] for l in lines]
+        tag = "ul"
     elif all(re.match(r"\d+\. ", l) for l in lines):
         items = [re.sub(r"^\d+\. ", "", l) for l in lines]
-        parts.append("<ol>" + "".join("<li>" + inline(i) + "</li>" for i in items) + "</ol>")
+        tag = "ol"
     else:
-        parts.append("<p>" + "<br>".join(inline(l) for l in lines) + "</p>")
+        items = None
+    if items is not None:
+        li = f"margin:0 0 8px;font-family:{BODY_FONT};font-size:18px;font-weight:500;line-height:1.45;color:{TEXT}"
+        parts.append(f'<{tag} style="margin:0 0 16px;padding-left:24px;color:{LILAC}">'
+                     + "".join(f'<li style="{li}">{inline(i)}</li>' for i in items) + f"</{tag}>")
+    else:
+        parts.append(f'<p style="{P}">' + "<br>".join(inline(l) for l in lines) + "</p>")
     plain.append("\n".join(re.sub(r"\*\*(.+?)\*\*", r"\1", l) for l in lines))
 
 hidden = ""
 if preheader:
-    hidden = ('<div style="display:none;max-height:0;overflow:hidden">'
+    hidden = (f'<div style="display:none;max-height:0;overflow:hidden;mso-hide:all">'
               + html.escape(preheader.group(1).strip()) + "</div>")
-page = ('<!DOCTYPE html><html lang="de"><body style="margin:0;padding:24px;background:#ffffff">' + hidden
-        + '<div style="max-width:600px;margin:0 auto;font-family:-apple-system,Segoe UI,Helvetica,Arial,sans-serif;'
-        + 'font-size:16px;line-height:1.5;color:#1a1a1a">' + "".join(parts) + "</div></body></html>")
+footer = (f'<p style="margin:0;font-family:{MONO_FONT};font-size:11px;line-height:1.6;letter-spacing:0.06em;'
+          f'text-transform:uppercase;color:{MUTED}">Du bekommst diese Mail, weil du bei '
+          f'<a href="{SITE}" style="color:{MUTED}">quaelmich</a> angemeldet bist.</p>')
+page = ('<!DOCTYPE html><html lang="de"><head><meta charset="utf-8">'
+        '<meta name="viewport" content="width=device-width,initial-scale=1">'
+        '<meta name="color-scheme" content="dark"><meta name="supported-color-schemes" content="dark">'
+        '<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;700'
+        '&family=Saira+Stencil+One&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">'
+        f'<title>{html.escape(subject.group(1).strip())}</title></head>'
+        f'<body style="margin:0;padding:0;background:{INK}">' + hidden
+        + f'<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:{INK}"><tr>'
+        '<td align="center" style="padding:28px 12px">'
+        '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:600px">'
+        f'<tr><td align="center" style="padding:0 0 22px"><a href="{SITE}">'
+        f'<img src="{LOGO}" width="300" alt="quaelmich" style="display:block;width:300px;max-width:80%;height:auto;'
+        'border:0"></a></td></tr>'
+        f'<tr><td style="height:4px;background:{LILAC};font-size:0;line-height:0">&nbsp;</td></tr>'
+        f'<tr><td style="background:{PANEL};padding:30px 28px 18px">'
+        f'<p style="margin:0 0 18px;font-family:{MONO_FONT};font-size:12px;font-weight:700;letter-spacing:0.12em;'
+        f'text-transform:uppercase;color:{LILAC}">Neu bei quaelmich</p>'
+        + "".join(parts) + "</td></tr>"
+        f'<tr><td style="background:{RAISED};padding:16px 28px">{footer}</td></tr>'
+        "</table></td></tr></table></body></html>")
 request = {"subject": subject.group(1).strip(), "text": "\n\n".join(plain) + "\n", "html": page,
            "replyTo": reply_to or None, "send": send == "true",
            "expectedCount": int(expected) if expected else None,

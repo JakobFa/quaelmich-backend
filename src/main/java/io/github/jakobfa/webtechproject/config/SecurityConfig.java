@@ -64,6 +64,8 @@ public class SecurityConfig {
 						.requestMatchers("/internal/invitations", "/internal/invitations/**").permitAll()
 						.requestMatchers("/internal/feedback", "/internal/feedback/**").permitAll()
 						.requestMatchers(HttpMethod.POST, "/internal/newsletter").permitAll()
+						// Bilder für Mails (Logo im Newsletter) – öffentlich, weil Mailprogramme sie ohne Login laden
+						.requestMatchers(HttpMethod.GET, "/mail/*.png").permitAll()
 						.requestMatchers(HttpMethod.GET, "/workouts", "/workouts/**", "/auth/registration").permitAll()
 						// Kalender-Abo: der geheime Token im Pfad ist die Zugangsberechtigung (Kalender-Apps können kein Login)
 						.requestMatchers(HttpMethod.GET, "/calendar/*").permitAll()
