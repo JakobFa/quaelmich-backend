@@ -167,7 +167,8 @@ PY
 count() { python3 -c 'import json,sys; print(json.loads(sys.argv[1])["count"])' "$response"; }
 
 only="${3:-}"
-build false "" "$only" | call
+# Nicht "build | call": in einer Pipe liefe call in einer Subshell und $response ginge verloren
+call <<< "$(build false "" "$only")"
 echo "Betreff: $(python3 -c 'import json,sys; print(json.load(sys.stdin)["subject"])' < <(build false "" "$only"))"
 show
 [[ "$mode" == vorschau ]] && exit 0
@@ -176,5 +177,5 @@ n="$(count)"
 [[ "$n" -gt 0 ]] || { echo "Keine Empfänger." >&2; exit 1; }
 read -rp "Jetzt an diese $n Adresse(n) schicken? Zum Bestätigen 'ja' tippen: " answer
 [[ "$answer" == ja ]] || { echo "Abgebrochen, nichts verschickt."; exit 0; }
-build true "$n" "$only" | call
+call <<< "$(build true "$n" "$only")"
 show
