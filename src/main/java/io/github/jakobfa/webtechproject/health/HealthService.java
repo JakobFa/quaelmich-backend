@@ -23,7 +23,8 @@ import org.springframework.transaction.annotation.Transactional;
 import io.github.jakobfa.webtechproject.repository.AppUserRepository;
 
 /**
- * Apple Health über einen iPhone-Kurzbefehl: Schlüssel erzeugen und zurückziehen, Tageswerte annehmen.
+ * Gesundheitsdaten je Tag. Dazu der (derzeit abgeschaltete) Weg über einen iPhone-Kurzbefehl: Schlüssel erzeugen
+ * und zurückziehen, Tageswerte annehmen.
  * Die Werte nimmt quaelmich großzügig an (Zahl oder Text, Komma oder Punkt), weil Kurzbefehle Zahlen je nach
  * Einstellung als Text schicken.
  */
@@ -52,15 +53,12 @@ public class HealthService {
 			Object restingHeartRate, Object hrv) {
 	}
 
-	public record Day(LocalDate date, Integer sleepMinutes, Integer steps, Integer activeEnergyKcal,
-			Integer restingHeartRate, Integer hrvMs) {
+	public record Day(LocalDate date, Integer sleepMinutes, Integer sleepScore, Integer steps,
+			Integer activeEnergyKcal, Integer restingHeartRate, Integer hrvMs, Integer hrvSdnnMs) {
 		static Day of(DailyHealth day) {
-			return new Day(day.getDate(), day.getSleepMinutes(), day.getSteps(), day.getActiveEnergyKcal(),
-					day.getRestingHeartRate(), day.getHrvMs());
+			return new Day(day.getDate(), day.getSleepMinutes(), day.getSleepScore(), day.getSteps(),
+					day.getActiveEnergyKcal(), day.getRestingHeartRate(), day.getHrvMs(), day.getHrvSdnnMs());
 		}
-	}
-
-	public record Status(boolean connected, String lastChars, Instant lastUploadAt, List<Day> days) {
 	}
 
 	private final HealthConnectionRepository connections;
@@ -76,14 +74,11 @@ public class HealthService {
 		this.clock = clock;
 	}
 
+	/** Die letzten zwei Wochen, neueste zuerst */
 	@Transactional(readOnly = true)
-	public Status status(Long userId) {
+	public List<Day> recent(Long userId) {
 		LocalDate from = LocalDate.now(clock).minusDays(RECENT_DAYS - 1);
-		List<Day> recent = days.findByOwnerIdAndDateGreaterThanEqualOrderByDateDesc(userId, from).stream()
-				.map(Day::of).toList();
-		return connections.findByOwnerId(userId)
-				.map(connection -> new Status(true, connection.getLastChars(), connection.getLastUploadAt(), recent))
-				.orElseGet(() -> new Status(false, null, null, recent));
+		return days.findByOwnerIdAndDateGreaterThanEqualOrderByDateDesc(userId, from).stream().map(Day::of).toList();
 	}
 
 	/** Neuen Schlüssel erzeugen (ein alter wird ungültig). Liefert den Schlüssel im Klartext – nur dieses eine Mal. */
@@ -148,7 +143,7 @@ public class HealthService {
 			day.setRestingHeartRate(restingHr);
 		}
 		if (hrv != null) {
-			day.setHrvMs(hrv);
+			day.setHrvSdnnMs(hrv); // Apple Watch misst SDNN
 		}
 		Instant now = clock.instant();
 		day.setUpdatedAt(now);

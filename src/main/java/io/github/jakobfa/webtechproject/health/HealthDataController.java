@@ -1,8 +1,11 @@
 package io.github.jakobfa.webtechproject.health;
 
 import java.time.Duration;
+import java.time.Instant;
+import java.util.List;
 import java.util.Map;
 
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
@@ -14,13 +17,16 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.client.RestClientException;
 
 import io.github.jakobfa.webtechproject.auth.CurrentUser;
 import io.github.jakobfa.webtechproject.auth.RateLimiter;
+import io.github.jakobfa.webtechproject.integration.intervals.IntervalsConnectionService;
 
 /**
- * Apple Health: Im Profil den Schlüssel einrichten; der Kurzbefehl auf dem iPhone schickt damit täglich Schlaf und
- * Bewegung an POST /health-data (ohne Login, der Schlüssel im Header X-Health-Key ist die Berechtigung).
+ * Schlaf und Erholung: im Profil die Übernahme von intervals.icu einschalten (mit Einwilligung) und die letzten Tage
+ * ansehen. Dazu der Upload per iPhone-Kurzbefehl (POST /health-data mit X-Health-Key) – derzeit abgeschaltet
+ * (app.health.shortcut-enabled), dann antworten Schlüssel und Upload mit 404.
  */
 @RestController
 public class HealthDataController {
@@ -28,46 +34,103 @@ public class HealthDataController {
 	/** Uploads je Schlüssel und Stunde – ein Kurzbefehl schickt einmal am Tag, Platz für Tests von Hand */
 	static final RateLimiter.Limit UPLOAD_LIMIT = new RateLimiter.Limit(30, Duration.ofHours(1));
 
-	public record ConnectRequest(Boolean consent) {
+	public record ConsentRequest(Boolean consent) {
 	}
 
 	public record ConnectResponse(String key) {
 	}
 
+	/** intervalsConnected: ohne intervals.icu-Verbindung lässt sich nichts übernehmen */
+	public record Status(boolean intervalsConnected, boolean importEnabled, Instant consentAt, Instant lastImportAt,
+			List<HealthService.Day> days) {
+	}
+
 	private final HealthService health;
+	private final WellnessImportService wellness;
+	private final IntervalsConnectionService intervals;
 	private final RateLimiter rateLimiter;
+	private final boolean shortcutEnabled;
 
-	public HealthDataController(HealthService health, RateLimiter rateLimiter) {
+	public HealthDataController(HealthService health, WellnessImportService wellness,
+			IntervalsConnectionService intervals, RateLimiter rateLimiter,
+			@Value("${app.health.shortcut-enabled:false}") boolean shortcutEnabled) {
 		this.health = health;
+		this.wellness = wellness;
+		this.intervals = intervals;
 		this.rateLimiter = rateLimiter;
+		this.shortcutEnabled = shortcutEnabled;
 	}
 
+	/** Status und die letzten zwei Wochen; holt vorher neu von intervals.icu, wenn der letzte Abruf älter ist */
 	@GetMapping("/me/health")
-	public HealthService.Status status(@AuthenticationPrincipal Jwt jwt) {
-		return health.status(CurrentUser.id(jwt));
+	public Status status(@AuthenticationPrincipal Jwt jwt) {
+		Long userId = CurrentUser.id(jwt);
+		wellness.importIfStale(userId);
+		return statusOf(userId);
 	}
 
-	/** Schlüssel erzeugen – nur mit ausdrücklicher Einwilligung (consent: true). Ein alter Schlüssel wird ungültig. */
-	@PostMapping("/me/health")
-	public ResponseEntity<ConnectResponse> connect(@AuthenticationPrincipal Jwt jwt,
-			@RequestBody(required = false) ConnectRequest request) {
+	/** Übernahme von intervals.icu einschalten – nur mit consent: true. 404 ohne intervals.icu-Verbindung. */
+	@PostMapping("/me/health/intervals")
+	public ResponseEntity<Status> enable(@AuthenticationPrincipal Jwt jwt,
+			@RequestBody(required = false) ConsentRequest request) {
+		if (request == null || !Boolean.TRUE.equals(request.consent())) {
+			return ResponseEntity.badRequest().build();
+		}
+		Long userId = CurrentUser.id(jwt);
+		try {
+			if (wellness.enable(userId).isEmpty()) {
+				return ResponseEntity.notFound().build();
+			}
+		} catch (RestClientException e) {
+			// eingeschaltet ist es trotzdem; der nächste Abruf holt die Daten
+			return ResponseEntity.status(HttpStatus.BAD_GATEWAY).body(statusOf(userId));
+		}
+		return ResponseEntity.ok(statusOf(userId));
+	}
+
+	/** Jetzt neu holen. 404, wenn die Übernahme aus ist. */
+	@PostMapping("/me/health/intervals/import")
+	public ResponseEntity<Status> importNow(@AuthenticationPrincipal Jwt jwt) {
+		Long userId = CurrentUser.id(jwt);
+		try {
+			if (wellness.importDays(userId, WellnessImportService.FIRST_IMPORT_DAYS).isEmpty()) {
+				return ResponseEntity.notFound().build();
+			}
+		} catch (RestClientException e) {
+			return ResponseEntity.status(HttpStatus.BAD_GATEWAY).build();
+		}
+		return ResponseEntity.ok(statusOf(userId));
+	}
+
+	/** Ausschalten: Einwilligung widerrufen, alle Gesundheitsdaten löschen */
+	@DeleteMapping("/me/health")
+	public ResponseEntity<Void> disable(@AuthenticationPrincipal Jwt jwt) {
+		Long userId = CurrentUser.id(jwt);
+		wellness.disable(userId);
+		health.disconnect(userId);
+		return ResponseEntity.noContent().build();
+	}
+
+	/** Kurzbefehl: Schlüssel erzeugen – nur mit consent: true. Ein alter Schlüssel wird ungültig. */
+	@PostMapping("/me/health/shortcut")
+	public ResponseEntity<ConnectResponse> connectShortcut(@AuthenticationPrincipal Jwt jwt,
+			@RequestBody(required = false) ConsentRequest request) {
+		if (!shortcutEnabled) {
+			return ResponseEntity.notFound().build();
+		}
 		if (request == null || !Boolean.TRUE.equals(request.consent())) {
 			return ResponseEntity.badRequest().build();
 		}
 		return ResponseEntity.ok(new ConnectResponse(health.connect(CurrentUser.id(jwt))));
 	}
 
-	/** Verbindung beenden; alle Gesundheitsdaten werden gelöscht */
-	@DeleteMapping("/me/health")
-	public ResponseEntity<Void> disconnect(@AuthenticationPrincipal Jwt jwt) {
-		health.disconnect(CurrentUser.id(jwt));
-		return ResponseEntity.noContent().build();
-	}
-
-	/** Upload vom Kurzbefehl. 404 bei unbekanntem Schlüssel, 400 mit Meldung bei unpassenden Werten. */
+	/** Upload vom Kurzbefehl. 404 bei unbekanntem Schlüssel oder abgeschaltet, 400 mit Meldung bei unpassenden Werten. */
 	@PostMapping("/health-data")
 	public ResponseEntity<?> upload(@RequestHeader(name = "X-Health-Key", required = false) String key,
 			@RequestBody(required = false) HealthService.Upload upload) {
+		if (!shortcutEnabled) {
+			return ResponseEntity.notFound().build();
+		}
 		var owner = health.ownerOf(key);
 		if (owner.isEmpty()) {
 			return ResponseEntity.notFound().build();
@@ -84,6 +147,13 @@ public class HealthDataController {
 	@ExceptionHandler(HealthService.InvalidValueException.class)
 	public ResponseEntity<Map<String, String>> invalid(HealthService.InvalidValueException e) {
 		return ResponseEntity.badRequest().body(Map.of("message", e.getMessage()));
+	}
+
+	private Status statusOf(Long userId) {
+		var settings = wellness.findByOwner(userId);
+		return new Status(intervals.findByOwner(userId).isPresent(), settings.isPresent(),
+				settings.map(WellnessImport::getConsentAt).orElse(null),
+				settings.map(WellnessImport::getLastImportAt).orElse(null), health.recent(userId));
 	}
 
 }

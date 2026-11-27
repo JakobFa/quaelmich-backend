@@ -60,8 +60,11 @@ public class IntervalsController {
 	private final IntervalsConnectionService connectionService;
 	private final IntervalsSyncService syncService;
 	private final AthleteService athleteService;
+	private final io.github.jakobfa.webtechproject.health.WellnessImportService wellness;
+
 	public IntervalsController(IntervalsConnectionService connectionService, IntervalsSyncService syncService,
-			AthleteService athleteService) {
+			AthleteService athleteService, io.github.jakobfa.webtechproject.health.WellnessImportService wellness) {
+		this.wellness = wellness;
 		this.connectionService = connectionService;
 		this.syncService = syncService;
 		this.athleteService = athleteService;
@@ -100,7 +103,9 @@ public class IntervalsController {
 
 	@DeleteMapping(path = "/me/intervals")
 	public ResponseEntity<Void> disconnect(@AuthenticationPrincipal Jwt jwt) {
-		connectionService.disconnect(CurrentUser.id(jwt));
+		Long userId = CurrentUser.id(jwt);
+		wellness.disable(userId); // ohne Verbindung keine Übernahme mehr – die Schlafdaten von dort werden gelöscht
+		connectionService.disconnect(userId);
 		return ResponseEntity.noContent().build();
 	}
 
