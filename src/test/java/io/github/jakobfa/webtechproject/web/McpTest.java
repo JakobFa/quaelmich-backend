@@ -686,6 +686,39 @@ class McpTest {
 	}
 
 	@Test
+	void theAiSetsTheKindOfAWeekAndIsToldAboutItUntilItDoes() throws Exception {
+		String access = accessToken("plan:read plan:write");
+		java.time.LocalDate nextMonday = java.time.LocalDate.now()
+				.with(java.time.temporal.TemporalAdjusters.next(java.time.DayOfWeek.MONDAY));
+
+		// neu: get_overview weist auf das Werkzeug hin und zeigt die Wochenarten
+		String overview = call(access, "get_overview", "{}");
+		assertThat(overview).contains("\"neu\"").contains("set_week_phase").contains("\"wochenarten\"")
+				.contains("\"montag\":\"" + nextMonday + "\"");
+
+		String result = callWrite(access, "set_week_phase",
+				"{ \"monday\": \"%s\", \"phase\": \"recovery\" }".formatted(nextMonday));
+		assertThat(result).contains("ist jetzt Erholung")
+				.contains("{\"montag\":\"%s\",\"art\":\"RECOVERY\",\"name\":\"Erholung\"}".formatted(nextMonday));
+		String week = call(access, "get_plan", "{ \"from\": \"%s\", \"to\": \"%s\" }".formatted(nextMonday,
+				nextMonday.plusDays(6)));
+		assertThat(week).contains("\"phase\":\"RECOVERY\"").doesNotContain("\"phase\":\"BASE\"")
+				.doesNotContain("\"phase\":\"BUILD\"");
+
+		// einmal benutzt: kein Hinweis mehr
+		assertThat(call(access, "get_overview", "{}")).doesNotContain("\"neu\"");
+
+		assertThat(callError(access, "set_week_phase",
+				"{ \"monday\": \"%s\", \"phase\": \"BUILD\" }".formatted(nextMonday.plusDays(1))))
+				.contains("Montag");
+		assertThat(callError(access, "set_week_phase",
+				"{ \"monday\": \"%s\", \"phase\": \"BUILD\" }".formatted(nextMonday.minusWeeks(3))))
+				.contains("Montag");
+		assertThat(callError(access, "set_week_phase",
+				"{ \"monday\": \"%s\", \"phase\": \"PARTY\" }".formatted(nextMonday))).contains("phase");
+	}
+
+	@Test
 	void assessmentIsAWriteTool() throws Exception {
 		String readOnly = accessToken("plan:read");
 		String list = rpc(readOnly, "{ \"jsonrpc\": \"2.0\", \"id\": 2, \"method\": \"tools/list\" }")

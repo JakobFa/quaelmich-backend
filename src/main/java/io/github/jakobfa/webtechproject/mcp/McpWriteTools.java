@@ -14,6 +14,7 @@ import io.github.jakobfa.webtechproject.custom.CustomWorkoutService;
 import io.github.jakobfa.webtechproject.integration.intervals.IntervalsAutoSyncService;
 import io.github.jakobfa.webtechproject.integration.intervals.IntervalsFtpSync;
 import io.github.jakobfa.webtechproject.model.Athlete;
+import io.github.jakobfa.webtechproject.model.Phase;
 import io.github.jakobfa.webtechproject.model.PlannedWorkout;
 import io.github.jakobfa.webtechproject.model.RaceEvent;
 import io.github.jakobfa.webtechproject.model.SkipReason;
@@ -261,6 +262,15 @@ public class McpWriteTools {
 										List.of("TOO_LITTLE", "ON_TRACK", "A_BIT_MUCH", "TOO_MUCH", "RESTING"))),
 								"note"),
 						false),
+				tool("set_week_phase", "Setzt die Art einer Woche, wie sie der Zeitstrahl oben im Plan zeigt: BASE "
+						+ "(Grundlage), BUILD (Aufbau), PEAK (Spitze), TAPER (Tapering vor dem Event) oder RECOVERY (Erholung). "
+						+ "Gilt für alle Einheiten der Woche; nur für die laufende oder eine kommende Woche mit Einheiten. "
+						+ "Ändert keine Einheit – plane die Woche passend dazu mit den anderen Werkzeugen. Nach regenerate_plan, "
+						+ "set_week_availability oder einer Event-Änderung rechnet quaelmich die Arten neu: dann wieder prüfen "
+						+ "(siehe 'wochenarten' in get_overview).",
+						object(Map.of("monday", prop("string", "Montag der Woche JJJJ-MM-TT"),
+								"phase", prop("string", "BASE, BUILD, PEAK, TAPER oder RECOVERY")), "monday", "phase"),
+						false),
 				tool("set_week_availability", "Andere Zeit nur für eine Woche (ab heute neu verteilt). Ohne hours wird die "
 						+ "Ausnahme entfernt und die normale Zeit gilt wieder.",
 						object(Map.of("monday", prop("string", "Montag der Woche JJJJ-MM-TT"),
@@ -333,6 +343,7 @@ public class McpWriteTools {
 			case "resume_plan" -> planResult(userId, "Pause beendet.", () -> absence.resume(userId));
 			case "set_assessment" -> setAssessment(userId, args);
 			case "set_week_availability" -> setWeekAvailability(userId, args);
+			case "set_week_phase" -> setWeekPhase(userId, args);
 			default -> throw new McpTools.ToolException("Unbekanntes Werkzeug: " + name);
 		};
 		decisions.markChanges(userId, before, true);
@@ -341,6 +352,23 @@ public class McpWriteTools {
 		}
 		autoSync.syncUserIfEnabled(userId); // wer die Anbindung an intervals.icu eingeschaltet hat, bekommt den neuen Plan
 		return result;
+	}
+
+	private Object setWeekPhase(Long userId, Map<String, Object> args) {
+		LocalDate monday = date(args, "monday", true);
+		Phase phase = enumOf(Phase.class, text(args, "phase"), "phase");
+		try {
+			List<Map<String, Object>> weeks = tx.execute(status -> read.weekPhases(planEdit
+					.setWeekPhase(userId, monday, phase)
+					.orElseThrow(() -> new McpTools.ToolException("Es gibt noch keinen Plan."))));
+			Map<String, Object> out = new LinkedHashMap<>();
+			out.put("erledigt", "Woche ab " + monday + " ist jetzt " + McpTools.PHASE_NAMES.get(phase) + ".");
+			out.put("wochenarten", weeks);
+			return out;
+		} catch (WorkoutCustomizationService.NotPossibleException e) {
+			throw new McpTools.ToolException("Das geht so nicht: 'monday' muss ein Montag sein, die Woche die laufende "
+					+ "oder eine kommende (höchstens ein Jahr voraus) und schon Einheiten haben.");
+		}
 	}
 
 	private Object setAssessment(Long userId, Map<String, Object> args) {

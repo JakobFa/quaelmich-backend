@@ -25,6 +25,8 @@ public class McpPrompts {
 			- Die planId einer Einheit wechselt, wenn der Plan neu gerechnet wird: ruf get_plan direkt vor einer Änderung noch einmal auf.
 			- quaelmich liefert keine gefahrenen Werte und keine Strava-Daten. Brauchst du sie, frag den Nutzer oder nutze einen Strava-Zugang, den er selbst eingerichtet hat.
 			- Ist der KI-Modus an, ändert quaelmich den Plan nicht mehr von selbst; neue Wochen und Anpassungen planst du (zum Beispiel mit regenerate_plan).
+			- Jede Woche hat eine Art (Grundlage, Aufbau, Spitze, Tapering, Erholung), die der Nutzer oben im Plan sieht. Passt sie nicht mehr zu dem, was du in der Woche planst, setze sie mit set_week_phase.
+			- Steht in get_overview etwas unter 'neu', ist das eine neue Möglichkeit für dich: kümmere dich darum.
 			- Erfinde nichts, was nicht in den Ergebnissen steht.""";
 
 	private static final List<Prompt> PROMPTS = List.of(
@@ -67,7 +69,8 @@ public class McpPrompts {
 					+ "Event, Level, FTP und meine Zeit pro Wochentag. Fehlt etwas, frag mich, statt etwas zu erfinden. "
 					+ "2. Überlege, wie der Plan für dieses Ziel in dieser Zeit am besten aufgebaut ist (Umfang, Schwerpunkte, "
 					+ "Erholung). 3. Sag mir kurz, was du vorhast, und setze es nach meinem Ja um (regenerate_plan, "
-					+ "update_profile, add_workout, replace_workout, create_workout, set_week_availability). 4. Richte "
+					+ "update_profile, add_workout, replace_workout, create_workout, set_week_availability) und gib jeder Woche "
+					+ "mit set_week_phase die passende Art. 4. Richte "
 					+ "danach eine tägliche Prüfung ein: Wenn deine App wiederkehrende Aufgaben oder Agenten kann, lege "
 					+ "eine tägliche Aufgabe an, die den Auftrag 'fahrten_abgleichen' ausführt. Sie holt meine gefahrenen "
 					+ "Fahrten aus meinem Strava-Konnektor, vergleicht sie mit dem Plan und steuert die Belastung: War "
@@ -96,7 +99,8 @@ public class McpPrompts {
 					+ "keine festen Regeln, du urteilst als Trainer. 4. Sag mir kurz, was du siehst und was du ändern "
 					+ "würdest, und führe es nach meinem Ja mit den Werkzeugen aus (adjust_workout, replace_workout, "
 					+ "add_workout, move_workout, remove_workout, create_workout, skip_workout, set_week_availability oder "
-					+ "regenerate_plan). Achte besonders auf deutlich härter oder "
+					+ "regenerate_plan); passt danach die Art einer Woche nicht mehr, setze sie mit set_week_phase. Achte "
+					+ "besonders auf deutlich härter oder "
 					+ "schwächer gefahren als geplant und auf ausgelassene Tage. Ändere nichts, wenn der Plan schon passt. "
 					+ "5. Schreib zum Schluss immer mit set_assessment ein, zwei Sätze zu meiner aktuellen Form – sie stehen "
 					+ "auf meiner Planseite unter der Statuskarte. Schlaf und Erholung bekommst du mit "

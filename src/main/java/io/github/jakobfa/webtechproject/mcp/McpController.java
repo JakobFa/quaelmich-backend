@@ -133,7 +133,9 @@ public class McpController {
 				+ "der Nutzer sie freigegeben hat (siehe get_overview). Die Daten gehören dem Nutzer; erfinde nichts, "
 				+ "was nicht in den Ergebnissen steht. Solange der KI-Modus an ist, ändert quaelmich den Plan nicht mehr von "
 				+ "selbst: keine Anpassung an gefahrene Werte, keine Neuberechnung pro Woche und bei einem Ziel ohne Event "
-				+ "keine Verlängerung. Änderungen und neue Wochen planst du selbst (zum Beispiel mit regenerate_plan).");
+				+ "keine Verlängerung. Änderungen und neue Wochen planst du selbst (zum Beispiel mit regenerate_plan), die Art "
+				+ "jeder Woche (Grundlage, Aufbau, Erholung …) setzt du mit set_week_phase. Neue Möglichkeiten nennt "
+				+ "get_overview unter 'neu'.");
 		return result;
 	}
 
