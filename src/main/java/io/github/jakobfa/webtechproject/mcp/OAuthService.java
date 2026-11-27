@@ -72,8 +72,12 @@ public class OAuthService {
 	private final AppUserRepository users;
 	private final Clock clock;
 
+	private final io.github.jakobfa.webtechproject.service.TrainingPlanService plans;
+
 	public OAuthService(OAuthClientRepository clients, OAuthCodeRepository codes, OAuthTokenRepository tokens,
-			AppUserRepository users, Clock clock) {
+			AppUserRepository users, Clock clock,
+			io.github.jakobfa.webtechproject.service.TrainingPlanService plans) {
+		this.plans = plans;
 		this.clients = clients;
 		this.codes = codes;
 		this.tokens = tokens;
@@ -96,6 +100,7 @@ public class OAuthService {
 		user.setAiModeEnabled(enabled);
 		users.save(user);
 		if (!enabled) {
+			plans.forgetAiWeekPhases(userId); // die Wocheneinteilung gehört wieder quaelmich
 			tokens.findByUserIdAndRevokedFalseOrderByCreatedAtDesc(userId).forEach(token -> {
 				token.setRevoked(true);
 				tokens.save(token);

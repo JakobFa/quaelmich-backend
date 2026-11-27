@@ -697,16 +697,26 @@ class McpTest {
 				.contains("\"montag\":\"" + nextMonday + "\"");
 
 		String result = callWrite(access, "set_week_phase",
-				"{ \"monday\": \"%s\", \"phase\": \"recovery\" }".formatted(nextMonday));
-		assertThat(result).contains("ist jetzt Erholung")
-				.contains("{\"montag\":\"%s\",\"art\":\"RECOVERY\",\"name\":\"Erholung\"}".formatted(nextMonday));
+				"{ \"monday\": \"%s\", \"phase\": \"peak\" }".formatted(nextMonday));
+		assertThat(result).contains("ist jetzt Spitze")
+				.contains("{\"montag\":\"%s\",\"art\":\"PEAK\",\"name\":\"Spitze\"}".formatted(nextMonday));
 		String week = call(access, "get_plan", "{ \"from\": \"%s\", \"to\": \"%s\" }".formatted(nextMonday,
 				nextMonday.plusDays(6)));
-		assertThat(week).contains("\"phase\":\"RECOVERY\"").doesNotContain("\"phase\":\"BASE\"")
-				.doesNotContain("\"phase\":\"BUILD\"");
+		assertThat(week).contains("\"phase\":\"PEAK\"").doesNotContain("\"phase\":\"BASE\"")
+				.doesNotContain("\"phase\":\"BUILD\"").doesNotContain("\"phase\":\"RECOVERY\"");
 
 		// einmal benutzt: kein Hinweis mehr
 		assertThat(call(access, "get_overview", "{}")).doesNotContain("\"neu\"");
+
+		// im KI-Modus bleibt die Wochenart der KI, auch wenn quaelmich neu rechnet
+		callWrite(access, "regenerate_plan", "{}");
+		callWrite(access, "set_week_availability", """
+				{ "monday": "%s", "hours": { "tuesday": 1, "thursday": 1, "saturday": 2 } }
+				""".formatted(nextMonday));
+		String rebuilt = call(access, "get_plan", "{ \"from\": \"%s\", \"to\": \"%s\" }".formatted(nextMonday,
+				nextMonday.plusDays(6)));
+		assertThat(rebuilt).contains("\"phase\":\"PEAK\"").doesNotContain("\"phase\":\"BASE\"")
+				.doesNotContain("\"phase\":\"BUILD\"").doesNotContain("\"phase\":\"RECOVERY\"");
 
 		assertThat(callError(access, "set_week_phase",
 				"{ \"monday\": \"%s\", \"phase\": \"BUILD\" }".formatted(nextMonday.plusDays(1))))
@@ -716,6 +726,11 @@ class McpTest {
 				.contains("Montag");
 		assertThat(callError(access, "set_week_phase",
 				"{ \"monday\": \"%s\", \"phase\": \"PARTY\" }".formatted(nextMonday))).contains("phase");
+
+		// KI-Modus aus: die Wocheneinteilung gehört wieder quaelmich
+		assertThat(plansForTest.findAll()).anyMatch(plan -> !plan.getAiWeekPhases().isEmpty());
+		setAiMode(auth, false);
+		assertThat(plansForTest.findAll()).allMatch(plan -> plan.getAiWeekPhases().isEmpty());
 	}
 
 	@Test
@@ -761,6 +776,9 @@ class McpTest {
 
 	@Autowired
 	private io.github.jakobfa.webtechproject.repository.AppUserRepository appUsers;
+
+	@Autowired
+	private io.github.jakobfa.webtechproject.repository.TrainingPlanRepository plansForTest;
 
 	@Test
 	void sleepAndRecoveryOnlyWhenTheUserSharesThem() throws Exception {
