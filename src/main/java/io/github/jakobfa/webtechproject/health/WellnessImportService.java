@@ -117,6 +117,20 @@ public class WellnessImportService {
 		}
 	}
 
+	/** Freigabe für die KI setzen oder zurücknehmen. Leer, wenn die Übernahme aus ist. */
+	@Transactional
+	public Optional<WellnessImport> shareWithAi(Long userId, boolean share) {
+		return imports.findByOwnerId(userId).map(settings -> {
+			settings.setSharedWithAiAt(share ? clock.instant() : null);
+			return imports.save(settings);
+		});
+	}
+
+	@Transactional(readOnly = true)
+	public boolean isSharedWithAi(Long userId) {
+		return imports.findByOwnerId(userId).map(settings -> settings.getSharedWithAiAt() != null).orElse(false);
+	}
+
 	/** Alle Nutzer mit eingeschaltetem Import (nächtlicher Lauf) */
 	public List<Long> enabledUsers() {
 		return imports.findAll().stream().map(settings -> settings.getOwner().getId()).toList();

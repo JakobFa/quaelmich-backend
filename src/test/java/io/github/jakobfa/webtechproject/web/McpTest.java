@@ -284,7 +284,8 @@ class McpTest {
 		String list = rpc(access, "{ \"jsonrpc\": \"2.0\", \"id\": 2, \"method\": \"tools/list\" }")
 				.andReturn().getResponse().getContentAsString();
 		List<String> names = JsonPath.read(list, "$.result.tools[*].name");
-		assertThat(names).containsExactlyInAnyOrder("get_overview", "get_plan", "list_workouts", "list_my_workouts", "list_events");
+		assertThat(names).containsExactlyInAnyOrder("get_overview", "get_plan", "list_workouts", "list_my_workouts", "list_events",
+				"get_wellness");
 		assertThat(Map.of("scope", "plan:read")).isNotEmpty();
 	}
 
@@ -717,6 +718,53 @@ class McpTest {
 		callWrite(access, "reset_adjustment", "{ \"planId\": %d }".formatted(regenerated));
 		mockMvc.perform(get("/planned-workouts/" + regenerated).header("Authorization", auth))
 				.andExpect(jsonPath("$.aiDecided").value(true));
+	}
+
+
+	@Autowired
+	private io.github.jakobfa.webtechproject.health.WellnessImportRepository wellnessImports;
+
+	@Autowired
+	private io.github.jakobfa.webtechproject.health.DailyHealthRepository healthDays;
+
+	@Autowired
+	private io.github.jakobfa.webtechproject.repository.AppUserRepository appUsers;
+
+	@Test
+	void sleepAndRecoveryOnlyWhenTheUserSharesThem() throws Exception {
+		String access = accessToken("plan:read");
+		assertThat(call(access, "get_overview", "{}")).contains("nicht freigegeben");
+		assertThat(callError(access, "get_wellness", "{}")).contains("nicht für dich freigegeben");
+
+		// Übernahme von intervals.icu ist an (hier direkt angelegt), aber noch nicht für die KI freigegeben
+		String email = emailOf(auth);
+		var user = appUsers.findByEmail(email).orElseThrow();
+		var settings = new io.github.jakobfa.webtechproject.health.WellnessImport();
+		settings.setOwner(user);
+		settings.setConsentAt(java.time.Instant.now());
+		wellnessImports.save(settings);
+		var day = new io.github.jakobfa.webtechproject.health.DailyHealth(user, java.time.LocalDate.now().minusDays(1));
+		day.setSleepMinutes(452);
+		day.setHrvSdnnMs(48);
+		healthDays.save(day);
+		assertThat(callError(access, "get_wellness", "{}")).contains("nicht für dich freigegeben");
+
+		mockMvc.perform(put("/me/health/ai").header("Authorization", auth).contentType(MediaType.APPLICATION_JSON)
+				.content("{ \"share\": true }")).andExpect(status().isOk())
+				.andExpect(jsonPath("$.sharedWithAi").value(true));
+		assertThat(call(access, "get_overview", "{}")).contains("get_wellness");
+		String days = call(access, "get_wellness", "{}");
+		assertThat(days).contains("\"schlafMinuten\":452").contains("\"hrvSdnnMs\":48");
+
+		mockMvc.perform(put("/me/health/ai").header("Authorization", auth).contentType(MediaType.APPLICATION_JSON)
+				.content("{ \"share\": false }")).andExpect(jsonPath("$.sharedWithAi").value(false));
+		assertThat(callError(access, "get_wellness", "{}")).contains("nicht für dich freigegeben");
+	}
+
+	private String emailOf(String token) throws Exception {
+		String body = mockMvc.perform(get("/me/account/export").header("Authorization", token)).andReturn()
+				.getResponse().getContentAsString();
+		return com.jayway.jsonpath.JsonPath.read(body, "$.konto.email");
 	}
 
 }
