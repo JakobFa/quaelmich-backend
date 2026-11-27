@@ -88,6 +88,7 @@ public class PlanEditService {
 				throw new NotPossibleException();
 			}
 			week.forEach(planned -> planned.setPhase(phase));
+			plan.getAiWeekPhases().put(monday, phase); // bleibt bei jeder Neuberechnung (KI-Modus)
 			plan.setWeekPhasesSetAt(Instant.now(clock));
 			return plan;
 		});
@@ -181,6 +182,9 @@ public class PlanEditService {
 	/** Phase der Woche: die der anderen Einheiten dieser Woche, sonst die nächstliegende */
 	private static io.github.jakobfa.webtechproject.model.Phase phaseAround(TrainingPlan plan, LocalDate date) {
 		LocalDate monday = date.with(TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY));
+		if (plan.getAiWeekPhases().containsKey(monday)) {
+			return plan.getAiWeekPhases().get(monday);
+		}
 		return plan.getWorkouts().stream().filter(other -> other.getPhase() != null)
 				.min(Comparator.comparingLong((PlannedWorkout other) -> Math.abs(
 						other.getDate().with(TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY)).toEpochDay()

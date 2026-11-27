@@ -265,9 +265,9 @@ public class McpWriteTools {
 				tool("set_week_phase", "Setzt die Art einer Woche, wie sie der Zeitstrahl oben im Plan zeigt: BASE "
 						+ "(Grundlage), BUILD (Aufbau), PEAK (Spitze), TAPER (Tapering vor dem Event) oder RECOVERY (Erholung). "
 						+ "Gilt für alle Einheiten der Woche; nur für die laufende oder eine kommende Woche mit Einheiten. "
-						+ "Ändert keine Einheit – plane die Woche passend dazu mit den anderen Werkzeugen. Nach regenerate_plan, "
-						+ "set_week_availability oder einer Event-Änderung rechnet quaelmich die Arten neu: dann wieder prüfen "
-						+ "(siehe 'wochenarten' in get_overview).",
+						+ "Ändert keine Einheit – plane die Woche passend dazu mit den anderen Werkzeugen. Die Art bleibt, bis "
+						+ "du sie wieder änderst, auch bei regenerate_plan, set_week_availability oder Event-Änderungen. Neue "
+						+ "Wochen bekommen die Art, die quaelmich rechnet, bis du sie setzt (siehe 'wochenarten' in get_overview).",
 						object(Map.of("monday", prop("string", "Montag der Woche JJJJ-MM-TT"),
 								"phase", prop("string", "BASE, BUILD, PEAK, TAPER oder RECOVERY")), "monday", "phase"),
 						false),
