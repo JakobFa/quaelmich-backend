@@ -63,4 +63,15 @@ class FormServiceTest {
 		assertThat(curve.today().date()).isEqualTo(TODAY);
 	}
 
+	@Test
+	void aRideWithoutTssCountsWithAnEstimateFromItsDuration() {
+		PlannedWorkout ridden = sweetSpot(TODAY.minusDays(1));
+		ridden.setActivityId("strava-1");
+		ridden.setActualDurationMinutes(60);
+
+		var curve = service.curve(List.of(ridden), List.of(), TODAY, TODAY);
+
+		assertThat(curve.days().get(0).tss()).isEqualTo(ProgressService.estimate(60)).isPositive();
+	}
+
 }

@@ -215,13 +215,12 @@ public class McpTools {
 	private Map<String, Object> assessment(Long userId) {
 		Map<String, Object> out = new LinkedHashMap<>();
 		var current = aiAssessments.current(userId);
-		out.put("status", current.map(view -> view.status().name()).orElse(null));
 		out.put("notiz", current.map(view -> view.note()).orElse(null));
 		out.put("stand", current.map(view -> view.updatedAt().toString()).orElse(null));
 		if (aiAssessments.needsRenewal(userId)) {
-			out.put("hinweis", "Die Einschätzung auf der Planseite ist alt oder fehlt. Schau dir die letzten 7 Tage an "
-					+ "(gefahrene Fahrten aus dem Strava- oder Garmin-Konnektor, Schlaf und Erholung, falls du sie hast) "
-					+ "und setze sie mit set_assessment neu.");
+			out.put("hinweis", "Deine Einschätzung zur Form auf der Planseite ist alt oder fehlt. Schau dir die "
+					+ "letzten 7 Tage an (gefahrene Fahrten aus dem Strava- oder Garmin-Konnektor, Schlaf und Erholung mit "
+					+ "get_wellness, falls freigegeben) und schreib mit set_assessment ein, zwei Sätze dazu.");
 		}
 		return out;
 	}

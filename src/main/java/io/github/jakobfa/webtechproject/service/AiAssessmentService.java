@@ -43,7 +43,10 @@ public class AiAssessmentService {
 	@Transactional
 	public View set(Long userId, LoadStatus status, String note) {
 		String trimmed = note == null || note.isBlank() ? null : note.strip();
-		if (trimmed != null && trimmed.length() > MAX_NOTE) {
+		if (trimmed == null) {
+			throw new IllegalArgumentException("Bitte eine kurze Einschätzung als note mitschicken.");
+		}
+		if (trimmed.length() > MAX_NOTE) {
 			throw new IllegalArgumentException("Die Notiz darf höchstens " + MAX_NOTE + " Zeichen haben.");
 		}
 		AiAssessment assessment = repository.findByOwnerId(userId).orElseGet(() -> {

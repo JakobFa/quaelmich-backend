@@ -174,7 +174,8 @@ public class ProgressService {
 		return ride.getDurationMinutes() == null ? 0 : estimate(ride.getDurationMinutes());
 	}
 
-	private static int estimate(int minutes) {
+	/** Belastung einer Fahrt ohne TSS, aus der Dauer geschätzt (auch für die Formkurve) */
+	static int estimate(int minutes) {
 		return (int) Math.round(minutes * XP_PER_MINUTE_WITHOUT_TSS);
 	}
 

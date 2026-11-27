@@ -251,16 +251,15 @@ public class McpWriteTools {
 								"until", prop("string", "Letzter Pausentag JJJJ-MM-TT")), "from", "until"),
 						false),
 				tool("resume_plan", "Beendet die Pause: ab heute gilt der Plan wieder.", object(Map.of()), false),
-				tool("set_assessment", "Setzt deine Einschätzung der letzten 7 Tage, die der Nutzer oben auf seiner "
-						+ "Planseite sieht (statt der Rechnung von quaelmich). Ruf das nach jedem Abgleich mit den Fahrten auf, "
-						+ "mindestens einmal am Tag. status: TOO_LITTLE (etwas wenig), ON_TRACK (auf Kurs), A_BIT_MUCH (etwas "
-						+ "viel), TOO_MUCH (zu viel, Erholung nötig) oder RESTING (Ruhephase). note: ein, zwei kurze Sätze für den "
-						+ "Nutzer, was jetzt wichtig ist – keine Rohdaten aus anderen Diensten (keine Fahrtdaten, Zahlen aus "
-						+ "Strava oder Garmin abschreiben).",
-						object(Map.of("status", Map.of("type", "string", "enum",
-								List.of("TOO_LITTLE", "ON_TRACK", "A_BIT_MUCH", "TOO_MUCH", "RESTING")),
-								"note", prop("string", "Höchstens 300 Zeichen, auf Deutsch, direkt an den Nutzer")),
-								"status"),
+				tool("set_assessment", "Schreibt deine kurze Einschätzung zur aktuellen Form des Nutzers: ein, zwei "
+						+ "Sätze, was jetzt wichtig ist. Sie steht auf der Planseite unter der Statuskarte (Form, FTP, Schlaf, "
+						+ "Erholung, Belastung – die rechnet quaelmich selbst). Ruf das nach jedem Abgleich mit den Fahrten auf, "
+						+ "mindestens einmal am Tag. Keine Rohdaten aus anderen Diensten abschreiben (keine Fahrtdaten, Zahlen "
+						+ "aus Strava oder Garmin).",
+						object(Map.of("note", prop("string", "Höchstens 300 Zeichen, auf Deutsch, direkt an den Nutzer"),
+								"status", Map.of("type", "string", "description", "veraltet, wird ignoriert", "enum",
+										List.of("TOO_LITTLE", "ON_TRACK", "A_BIT_MUCH", "TOO_MUCH", "RESTING"))),
+								"note"),
 						false),
 				tool("set_week_availability", "Andere Zeit nur für eine Woche (ab heute neu verteilt). Ohne hours wird die "
 						+ "Ausnahme entfernt und die normale Zeit gilt wieder.",
@@ -345,21 +344,11 @@ public class McpWriteTools {
 	}
 
 	private Object setAssessment(Long userId, Map<String, Object> args) {
-		Object rawStatus = args.get("status");
-		io.github.jakobfa.webtechproject.service.ProgressService.LoadStatus status;
-		try {
-			status = io.github.jakobfa.webtechproject.service.ProgressService.LoadStatus
-					.valueOf(String.valueOf(rawStatus).trim().toUpperCase());
-		} catch (IllegalArgumentException e) {
-			throw new McpTools.ToolException("Unbekannter status: " + rawStatus
-					+ " (erlaubt: TOO_LITTLE, ON_TRACK, A_BIT_MUCH, TOO_MUCH, RESTING)");
-		}
 		Object note = args.get("note");
 		try {
-			var view = aiAssessments.set(userId, status, note == null ? null : note.toString());
+			var view = aiAssessments.set(userId, null, note == null ? null : note.toString());
 			Map<String, Object> out = new LinkedHashMap<>();
-			out.put("ergebnis", "Einschätzung gesetzt, sie steht jetzt oben auf der Planseite.");
-			out.put("status", view.status().name());
+			out.put("ergebnis", "Einschätzung gesetzt, sie steht jetzt auf der Planseite unter der Statuskarte.");
 			out.put("notiz", view.note());
 			out.put("stand", view.updatedAt().toString());
 			return out;

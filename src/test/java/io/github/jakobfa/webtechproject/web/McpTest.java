@@ -665,18 +665,17 @@ class McpTest {
 		assertThat(call(access, "get_overview", "{}")).contains("set_assessment");
 
 		String result = callWrite(access, "set_assessment",
-				"{ \"status\": \"a_bit_much\", \"note\": \"Zwei harte Tage, morgen locker.\" }");
-		assertThat(result).contains("A_BIT_MUCH");
+				"{ \"note\": \"Zwei harte Tage, morgen locker.\" }");
+		assertThat(result).contains("Zwei harte Tage");
 
 		mockMvc.perform(get("/me/ai-assessment").header("Authorization", auth)).andExpect(status().isOk())
-				.andExpect(jsonPath("$.status").value("A_BIT_MUCH"))
 				.andExpect(jsonPath("$.note").value("Zwei harte Tage, morgen locker."))
 				.andExpect(jsonPath("$.fresh").value(true));
 		// frisch gesetzt: get_overview erinnert nicht mehr
 		String overview = call(access, "get_overview", "{}");
 		assertThat(overview).contains("Zwei harte Tage").doesNotContain("hinweis");
 
-		assertThat(callError(access, "set_assessment", "{ \"status\": \"GREAT\" }")).contains("Unbekannter status");
+		assertThat(callError(access, "set_assessment", "{ \"status\": \"ON_TRACK\" }")).contains("note");
 		assertThat(callError(access, "set_assessment",
 				"{ \"status\": \"ON_TRACK\", \"note\": \"%s\" }".formatted("x".repeat(301))))
 				.contains("300 Zeichen");
