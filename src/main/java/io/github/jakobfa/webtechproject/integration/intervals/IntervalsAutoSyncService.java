@@ -35,10 +35,12 @@ public class IntervalsAutoSyncService {
 	private final ActivityImportService activityImport;
 	private final StravaService stravaService;
 	private final ErrorReporter errorReporter;
+	private final io.github.jakobfa.webtechproject.health.WellnessImportService wellness;
 
 	public IntervalsAutoSyncService(IntervalsConnectionService connectionService, IntervalsSyncService syncService,
 			AthleteService athleteService, ActivityImportService activityImport, StravaService stravaService,
-			ErrorReporter errorReporter) {
+			ErrorReporter errorReporter, io.github.jakobfa.webtechproject.health.WellnessImportService wellness) {
+		this.wellness = wellness;
 		this.errorReporter = errorReporter;
 		this.connectionService = connectionService;
 		this.syncService = syncService;
@@ -74,7 +76,7 @@ public class IntervalsAutoSyncService {
 
 	/**
 	 * Nächtlicher Lauf: erst gefahrene Einheiten abholen (intervals.icu mit Auto-Sync und alle Strava-Nutzer),
-	 * dann die nächsten Tage an intervals.icu senden.
+	 * dann die nächsten Tage an intervals.icu senden, zuletzt Schlaf und Erholung von dort übernehmen.
 	 */
 	public SyncAllResult syncAll() {
 		int users = 0;
@@ -96,6 +98,14 @@ public class IntervalsAutoSyncService {
 				failed++;
 				log.warn("Nächtlicher intervals.icu-Sync für Nutzer {} fehlgeschlagen: {}", userId, e.getMessage());
 				errorReporter.report("Nächtlicher Sync", e);
+			}
+		}
+		for (Long userId : wellness.enabledUsers()) {
+			try {
+				wellness.importDays(userId, io.github.jakobfa.webtechproject.health.WellnessImportService.NIGHTLY_DAYS);
+			} catch (RuntimeException e) {
+				failed++;
+				log.warn("Nächtliche Wellness-Übernahme für Nutzer {} fehlgeschlagen: {}", userId, e.getMessage());
 			}
 		}
 		log.info("intervals.icu-Sync: {} Nutzer, {} Workouts gesendet, {} Fahrten zugeordnet, {} fehlgeschlagen",

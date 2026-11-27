@@ -117,6 +117,18 @@ public class IntervalsIcuClient {
 		return activities == null ? List.of() : activities;
 	}
 
+	/** Wellness-Tage im Zeitraum (beide Tage eingeschlossen) */
+	public List<IntervalsWellness> listWellness(IntervalsCredentials credentials, LocalDate oldest, LocalDate newest) {
+		List<IntervalsWellness> days = restClient.get()
+				.uri("/api/v1/athlete/{athleteId}/wellness?oldest={oldest}&newest={newest}", credentials.athleteId(),
+						oldest, newest)
+				.header(HttpHeaders.AUTHORIZATION, basicAuth(credentials))
+				.retrieve()
+				.body(new ParameterizedTypeReference<List<IntervalsWellness>>() {
+				});
+		return days == null ? List.of() : days;
+	}
+
 	private static String basicAuth(IntervalsCredentials credentials) {
 		String userAndPassword = "API_KEY:" + credentials.apiKey();
 		return "Basic " + Base64.getEncoder().encodeToString(userAndPassword.getBytes(StandardCharsets.UTF_8));

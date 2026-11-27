@@ -50,6 +50,7 @@ public class AccountService {
 	private final io.github.jakobfa.webtechproject.repository.RaceEventRepository raceEvents;
 	private final io.github.jakobfa.webtechproject.mail.DeletionNotice deletionNotice;
 	private final io.github.jakobfa.webtechproject.health.HealthService health;
+	private final io.github.jakobfa.webtechproject.health.WellnessImportService wellness;
 
 	public AccountService(AppUserRepository users, PasswordEncoder passwordEncoder, AthleteRepository athletes,
 			TrainingPlanRepository plans, ExtraRideRepository extraRides, CustomWorkoutRepository customWorkouts,
@@ -59,8 +60,10 @@ public class AccountService {
 			io.github.jakobfa.webtechproject.service.TrainingPlanService planService,
 			io.github.jakobfa.webtechproject.mcp.OAuthService aiConnections,
 			io.github.jakobfa.webtechproject.mail.DeletionNotice deletionNotice,
-			io.github.jakobfa.webtechproject.health.HealthService health) {
+			io.github.jakobfa.webtechproject.health.HealthService health,
+			io.github.jakobfa.webtechproject.health.WellnessImportService wellness) {
 		this.health = health;
+		this.wellness = wellness;
 		this.deletionNotice = deletionNotice;
 		this.aiConnections = aiConnections;
 		this.planService = planService;
@@ -93,7 +96,8 @@ public class AccountService {
 		strava.disconnect(userId, false);
 		intervals.disconnect(userId);
 		aiConnections.deleteAllOf(userId); // Zugänge von KI-Apps enden mit dem Konto
-		health.disconnect(userId); // Apple-Health-Schlüssel und alle Gesundheitsdaten
+		wellness.disable(userId); // Übernahme von intervals.icu
+		health.disconnect(userId); // Kurzbefehl-Schlüssel und alle Gesundheitsdaten
 		athletes.findByOwnerId(userId).ifPresent(athlete -> {
 			plans.findByAthleteId(athlete.getId()).ifPresent(plans::delete);
 			raceEvents.deleteAll(raceEvents.findByAthleteIdOrderByDate(athlete.getId()));

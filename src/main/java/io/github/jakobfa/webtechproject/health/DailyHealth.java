@@ -15,7 +15,7 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 
-/** Schlaf und Bewegung eines Tages aus Apple Health. Fehlende Werte bleiben leer. */
+/** Schlaf und Erholung eines Tages (aus intervals.icu oder dem Apple-Health-Kurzbefehl). Fehlende Werte bleiben leer. */
 @Entity
 @Table(uniqueConstraints = @UniqueConstraint(columnNames = { "owner_id", "date" }))
 @Getter
@@ -42,8 +42,14 @@ public class DailyHealth {
 
 	private Integer restingHeartRate;
 
-	/** Herzfrequenzvariabilität (SDNN) in Millisekunden */
+	/** Schlafbewertung 0–100, so wie die Quelle sie liefert (z. B. Garmin, Oura) */
+	private Integer sleepScore;
+
+	/** Herzfrequenzvariabilität als rMSSD in Millisekunden (Garmin, Oura, Whoop …) */
 	private Integer hrvMs;
+
+	/** Herzfrequenzvariabilität als SDNN in Millisekunden (Apple Watch) */
+	private Integer hrvSdnnMs;
 
 	private Instant updatedAt;
 

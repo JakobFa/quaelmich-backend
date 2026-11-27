@@ -22,8 +22,8 @@ import org.springframework.test.web.servlet.ResultActions;
 
 import com.jayway.jsonpath.JsonPath;
 
-/** Apple Health über einen Kurzbefehl: Schlüssel, Upload, großzügiges Lesen der Werte, Widerruf */
-@SpringBootTest
+/** Apple Health über einen Kurzbefehl (eingeschaltet per Einstellung): Schlüssel, Upload, großzügiges Lesen, Widerruf */
+@SpringBootTest(properties = "app.health.shortcut-enabled=true")
 @AutoConfigureMockMvc
 class AppleHealthTest {
 
@@ -38,7 +38,7 @@ class AppleHealthTest {
 	}
 
 	private String connect() throws Exception {
-		String body = mockMvc.perform(post("/me/health").header("Authorization", auth)
+		String body = mockMvc.perform(post("/me/health/shortcut").header("Authorization", auth)
 				.contentType(MediaType.APPLICATION_JSON).content("{\"consent\":true}"))
 				.andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
 		return JsonPath.read(body, "$.key");
@@ -51,10 +51,8 @@ class AppleHealthTest {
 
 	@Test
 	void withoutConsentNoKey() throws Exception {
-		mockMvc.perform(post("/me/health").header("Authorization", auth).contentType(MediaType.APPLICATION_JSON)
-				.content("{}")).andExpect(status().isBadRequest());
-		mockMvc.perform(get("/me/health").header("Authorization", auth))
-				.andExpect(status().isOk()).andExpect(jsonPath("$.connected").value(false));
+		mockMvc.perform(post("/me/health/shortcut").header("Authorization", auth)
+				.contentType(MediaType.APPLICATION_JSON).content("{}")).andExpect(status().isBadRequest());
 	}
 
 	@Test
@@ -67,14 +65,11 @@ class AppleHealthTest {
 				.andExpect(jsonPath("$.sleepMinutes").value(450));
 
 		mockMvc.perform(get("/me/health").header("Authorization", auth))
-				.andExpect(jsonPath("$.connected").value(true))
-				.andExpect(jsonPath("$.lastChars").value(key.substring(key.length() - 4)))
-				.andExpect(jsonPath("$.lastUploadAt").exists())
 				.andExpect(jsonPath("$.days[0].sleepMinutes").value(450))
 				.andExpect(jsonPath("$.days[0].steps").value(8432))
 				.andExpect(jsonPath("$.days[0].activeEnergyKcal").value(512))
 				.andExpect(jsonPath("$.days[0].restingHeartRate").value(52))
-				.andExpect(jsonPath("$.days[0].hrvMs").value(62));
+				.andExpect(jsonPath("$.days[0].hrvSdnnMs").value(62));
 	}
 
 	@Test
@@ -119,7 +114,7 @@ class AppleHealthTest {
 
 		upload(key, "{ \"steps\": 5 }").andExpect(status().isNotFound());
 		mockMvc.perform(get("/me/health").header("Authorization", auth))
-				.andExpect(jsonPath("$.connected").value(false)).andExpect(jsonPath("$.days").isEmpty());
+				.andExpect(jsonPath("$.days").isEmpty());
 	}
 
 	@Test
