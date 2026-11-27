@@ -1,6 +1,7 @@
 package io.github.jakobfa.webtechproject.health;
 
 import java.time.Instant;
+import java.time.LocalDate;
 
 import io.github.jakobfa.webtechproject.model.AppUser;
 import jakarta.persistence.Column;
@@ -33,6 +34,9 @@ public class WellnessImport {
 	private Instant consentAt;
 
 	private Instant lastImportAt;
+
+	/** Bis zu diesem Tag ist der Verlauf lückenlos von intervals.icu geholt; null = noch nicht zurückgeladen */
+	private LocalDate historyFrom;
 
 	/** Auch der KI im KI-Modus zeigen (get_wellness) – eigene, ausdrückliche Einwilligung; null = nicht freigegeben */
 	private Instant sharedWithAiAt;

@@ -96,7 +96,7 @@ public class HealthDataController {
 	public ResponseEntity<Status> importNow(@AuthenticationPrincipal Jwt jwt) {
 		Long userId = CurrentUser.id(jwt);
 		try {
-			if (wellness.importDays(userId, WellnessImportService.FIRST_IMPORT_DAYS).isEmpty()) {
+			if (wellness.importHistory(userId).isEmpty()) {
 				return ResponseEntity.notFound().build();
 			}
 		} catch (RestClientException e) {

@@ -102,7 +102,7 @@ public class IntervalsAutoSyncService {
 		}
 		for (Long userId : wellness.enabledUsers()) {
 			try {
-				wellness.importDays(userId, io.github.jakobfa.webtechproject.health.WellnessImportService.NIGHTLY_DAYS);
+				wellness.syncRecent(userId);
 			} catch (RuntimeException e) {
 				failed++;
 				log.warn("Nächtliche Wellness-Übernahme für Nutzer {} fehlgeschlagen: {}", userId, e.getMessage());

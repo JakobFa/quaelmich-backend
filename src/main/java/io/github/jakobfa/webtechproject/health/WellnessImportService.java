@@ -4,6 +4,7 @@ import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDate;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 
@@ -11,8 +12,10 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.client.RestClientException;
 
 import io.github.jakobfa.webtechproject.integration.intervals.IntervalsConnectionService;
+import io.github.jakobfa.webtechproject.integration.intervals.IntervalsCredentials;
 import io.github.jakobfa.webtechproject.integration.intervals.IntervalsIcuClient;
 import io.github.jakobfa.webtechproject.integration.intervals.IntervalsWellness;
 import io.github.jakobfa.webtechproject.repository.AppUserRepository;
@@ -24,11 +27,14 @@ import io.github.jakobfa.webtechproject.repository.AppUserRepository;
 @Service
 public class WellnessImportService {
 
-	/** Beim Einschalten so weit zurück, danach reichen die letzten Tage */
-	public static final int FIRST_IMPORT_DAYS = 28;
-	static final int RECENT_DAYS = 7;
-	/** Nachts etwas weiter zurück, falls Werte nachträglich bei intervals.icu ankommen */
-	public static final int NIGHTLY_DAYS = 7;
+	/** So weit reicht der Verlauf zurück, den quaelmich beim Einschalten und bei „Jetzt abrufen“ auffüllt */
+	public static final int WELLNESS_BACKFILL_DAYS = 365;
+	/** Höchstens so viele Tage pro Anfrage an intervals.icu */
+	static final int BLOCK_DAYS = 90;
+	/** „Jetzt abrufen“ holt diese letzten Tage immer neu, auch wenn der Verlauf schon vollständig ist */
+	static final int REFRESH_DAYS = 28;
+	/** Regelmäßiger Abruf (nachts und beim Öffnen): nur die letzten Tage, fängt nachträgliche Korrekturen der Uhr ab */
+	public static final int SYNC_DAYS = 7;
 	/** Beim Öffnen des Profils neu holen, wenn der letzte Abruf älter ist */
 	static final Duration STALE_AFTER = Duration.ofHours(1);
 
@@ -51,11 +57,30 @@ public class WellnessImportService {
 		this.clock = clock;
 	}
 
+	/** Ein Zeitraum für eine Anfrage, beide Tage eingeschlossen */
+	record Block(LocalDate oldest, LocalDate newest) {
+	}
+
+	/** Teilt [oldest, newest] in Blöcke von höchstens size Tagen, der neueste zuerst – lückenlos und ohne Überlappung */
+	static List<Block> blocks(LocalDate oldest, LocalDate newest, int size) {
+		List<Block> out = new ArrayList<>();
+		LocalDate end = newest;
+		while (!end.isBefore(oldest)) {
+			LocalDate start = end.minusDays(size - 1L);
+			if (start.isBefore(oldest)) {
+				start = oldest;
+			}
+			out.add(new Block(start, end));
+			end = start.minusDays(1);
+		}
+		return out;
+	}
+
 	public Optional<WellnessImport> findByOwner(Long userId) {
 		return imports.findByOwnerId(userId);
 	}
 
-	/** Einschalten (mit Einwilligung) und gleich die letzten Wochen holen. Leer ohne intervals.icu-Verbindung. */
+	/** Einschalten (mit Einwilligung) und gleich den Verlauf holen. Leer ohne intervals.icu-Verbindung. */
 	@Transactional
 	public Optional<Integer> enable(Long userId) {
 		if (intervals.credentialsOf(userId).isEmpty()) {
@@ -68,7 +93,7 @@ public class WellnessImportService {
 		});
 		settings.setConsentAt(clock.instant());
 		imports.save(settings);
-		return importDays(userId, FIRST_IMPORT_DAYS);
+		return importHistory(userId);
 	}
 
 	/** Ausschalten: Einwilligung widerrufen, alle Tageswerte löschen */
@@ -78,26 +103,82 @@ public class WellnessImportService {
 		days.deleteAll(days.findByOwnerIdOrderByDate(userId));
 	}
 
-	/** Holt die Tage neu, wenn eingeschaltet; liefert die Zahl der übernommenen Tage. Leer, wenn aus. */
+	/** Regelmäßiger Abruf: nur die letzten SYNC_DAYS Tage. Leer, wenn aus. */
 	@Transactional
-	public Optional<Integer> importDays(Long userId, int count) {
+	public Optional<Integer> syncRecent(Long userId) {
 		var settings = imports.findByOwnerId(userId);
 		var credentials = intervals.credentialsOf(userId);
 		if (settings.isEmpty() || credentials.isEmpty()) {
 			return Optional.empty();
 		}
 		LocalDate today = LocalDate.now(clock);
-		List<IntervalsWellness> wellness = client.listWellness(credentials.get(), today.minusDays(count - 1), today);
-		int imported = 0;
 		Instant now = clock.instant();
-		for (IntervalsWellness entry : wellness) {
+		int imported = fetch(userId, credentials.get(), new Block(today.minusDays(SYNC_DAYS - 1L), today), now);
+		settings.get().setLastImportAt(now);
+		imports.save(settings.get());
+		return Optional.of(imported);
+	}
+
+	/**
+	 * Einschalten und „Jetzt abrufen“: holt die letzten REFRESH_DAYS Tage neu und füllt den Verlauf bis
+	 * WELLNESS_BACKFILL_DAYS zurück auf, wo er noch fehlt – in Blöcken, der neueste zuerst. Scheitert ein älterer Block
+	 * (etwa 429 oder 5xx), bricht der Rückimport ohne Wiederholung ab; der nächste Abruf macht dort weiter. Scheitert
+	 * schon der erste, wirft er wie bisher. Liefert die Zahl der übernommenen Tage, leer, wenn aus.
+	 */
+	@Transactional
+	public Optional<Integer> importHistory(Long userId) {
+		var found = imports.findByOwnerId(userId);
+		var credentials = intervals.credentialsOf(userId);
+		if (found.isEmpty() || credentials.isEmpty()) {
+			return Optional.empty();
+		}
+		WellnessImport settings = found.get();
+		LocalDate today = LocalDate.now(clock);
+		LocalDate target = today.minusDays(WELLNESS_BACKFILL_DAYS - 1L);
+		LocalDate from = settings.getHistoryFrom();
+		List<Block> todo = new ArrayList<>();
+		if (from == null) {
+			todo.addAll(blocks(target, today, BLOCK_DAYS));
+		} else {
+			LocalDate recent = today.minusDays(REFRESH_DAYS - 1L);
+			todo.add(new Block(recent, today));
+			LocalDate gapEnd = (from.isBefore(recent) ? from : recent).minusDays(1);
+			todo.addAll(blocks(target, gapEnd, BLOCK_DAYS));
+		}
+		Instant now = clock.instant();
+		int imported = 0;
+		for (int i = 0; i < todo.size(); i++) {
+			Block block = todo.get(i);
+			try {
+				imported += fetch(userId, credentials.get(), block, now);
+			} catch (RestClientException e) {
+				if (i == 0) {
+					throw e;
+				}
+				log.warn("Rückimport Wellness für Nutzer {} bei {} bis {} abgebrochen, der nächste Abruf macht weiter: {}",
+						userId, block.oldest(), block.newest(), e.getMessage());
+				break;
+			}
+			LocalDate covered = settings.getHistoryFrom();
+			boolean contiguous = covered == null ? block.newest().equals(today)
+					: !block.newest().isBefore(covered.minusDays(1));
+			if (contiguous && (covered == null || block.oldest().isBefore(covered))) {
+				settings.setHistoryFrom(block.oldest());
+			}
+		}
+		settings.setLastImportAt(now);
+		imports.save(settings);
+		return Optional.of(imported);
+	}
+
+	private int fetch(Long userId, IntervalsCredentials credentials, Block block, Instant now) {
+		int imported = 0;
+		for (IntervalsWellness entry : client.listWellness(credentials, block.oldest(), block.newest())) {
 			if (store(userId, entry, now)) {
 				imported++;
 			}
 		}
-		settings.get().setLastImportAt(now);
-		imports.save(settings.get());
-		return Optional.of(imported);
+		return imported;
 	}
 
 	/** Beim Öffnen des Profils: neu holen, wenn der letzte Abruf älter als eine Stunde ist. Fehler nur protokollieren. */
@@ -111,7 +192,7 @@ public class WellnessImportService {
 			return;
 		}
 		try {
-			importDays(userId, RECENT_DAYS);
+			syncRecent(userId);
 		} catch (RuntimeException e) {
 			log.warn("Wellness von intervals.icu für Nutzer {} nicht abrufbar: {}", userId, e.getMessage());
 		}

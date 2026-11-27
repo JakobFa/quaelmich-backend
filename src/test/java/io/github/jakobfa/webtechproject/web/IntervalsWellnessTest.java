@@ -106,12 +106,14 @@ class IntervalsWellnessTest {
 	void openingTheProfileDoesNotRefetchWithinAnHour() throws Exception {
 		connectIntervals();
 		enable("{\"consent\":true}").andExpect(status().isOk());
+		// Einschalten holt das Jahr in fünf Blöcken
+		verify(client, times(5)).listWellness(any(), any(), any());
 		mockMvc.perform(get("/me/health").header("Authorization", auth)).andExpect(status().isOk());
-		verify(client, times(1)).listWellness(any(), any(), any());
+		verify(client, times(5)).listWellness(any(), any(), any());
 
 		mockMvc.perform(post("/me/health/intervals/import").header("Authorization", auth))
 				.andExpect(status().isOk());
-		verify(client, times(2)).listWellness(any(), any(), any());
+		verify(client, times(6)).listWellness(any(), any(), any());
 	}
 
 	@Test
