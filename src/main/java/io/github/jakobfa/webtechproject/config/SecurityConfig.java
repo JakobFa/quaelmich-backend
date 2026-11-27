@@ -69,6 +69,8 @@ public class SecurityConfig {
 						.requestMatchers(HttpMethod.GET, "/workouts", "/workouts/**", "/auth/registration").permitAll()
 						// Kalender-Abo: der geheime Token im Pfad ist die Zugangsberechtigung (Kalender-Apps können kein Login)
 						.requestMatchers(HttpMethod.GET, "/calendar/*").permitAll()
+						// Apple Health: der Kurzbefehl schickt seinen Schlüssel im Header X-Health-Key, siehe HealthDataController
+						.requestMatchers(HttpMethod.POST, "/health-data").permitAll()
 						// KI-Anbindung (MCP): Entdeckung, Registrierung und Token sind öffentlich; /mcp prüft sein Zugriffstoken selbst
 						.requestMatchers(HttpMethod.GET, "/.well-known/**", "/oauth/client").permitAll()
 						.requestMatchers(HttpMethod.POST, "/oauth/register", "/oauth/token").permitAll()
