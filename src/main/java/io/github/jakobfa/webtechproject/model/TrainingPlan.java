@@ -1,5 +1,6 @@
 package io.github.jakobfa.webtechproject.model;
 
+import java.time.Instant;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -65,6 +66,12 @@ public class TrainingPlan {
 	 * fehlt die Spalte und jede Abfrage des Plans schlägt fehl. Null zählt wie 0.
 	 */
 	private Integer reentryWeeks;
+
+	/**
+	 * Wann die KI zuletzt eine Wochenart gesetzt hat (set_week_phase); null = noch nie. Solange null, weist
+	 * get_overview die KI auf das Werkzeug hin.
+	 */
+	private Instant weekPhasesSetAt;
 
 	public int getReentryWeeks() {
 		return reentryWeeks == null ? 0 : reentryWeeks;

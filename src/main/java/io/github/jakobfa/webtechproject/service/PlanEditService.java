@@ -2,14 +2,17 @@ package io.github.jakobfa.webtechproject.service;
 
 import java.time.Clock;
 import java.time.DayOfWeek;
+import java.time.Instant;
 import java.time.LocalDate;
 import java.time.temporal.TemporalAdjusters;
 import java.util.Comparator;
+import java.util.List;
 import java.util.Optional;
 
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import io.github.jakobfa.webtechproject.model.Phase;
 import io.github.jakobfa.webtechproject.model.PlannedWorkout;
 import io.github.jakobfa.webtechproject.model.TrainingPlan;
 import io.github.jakobfa.webtechproject.model.Workout;
@@ -61,6 +64,32 @@ public class PlanEditService {
 			plan.addWorkout(created);
 			plan.sortByDate();
 			return repository.saveAndFlush(created); // die Id gibt es erst nach dem Speichern
+		});
+	}
+
+	/**
+	 * Wochenart (Grundlage, Aufbau, Spitze, Tapering, Erholung) für eine ganze Woche setzen: alle Einheiten der Woche
+	 * bekommen sie, auch schon vergangene Tage dieser Woche – eine Woche hat eine Art. Nur für die laufende oder eine
+	 * kommende Woche, die schon Einheiten hat. Leer ohne Plan; NotPossibleException, wenn das nicht geht.
+	 */
+	@Transactional
+	public Optional<TrainingPlan> setWeekPhase(Long userId, LocalDate monday, Phase phase) {
+		return planOf(userId).map(plan -> {
+			LocalDate today = LocalDate.now(clock);
+			if (monday == null || phase == null || monday.getDayOfWeek() != DayOfWeek.MONDAY
+					|| monday.plusDays(6).isBefore(today) || monday.isAfter(today.plusDays(MAX_DAYS_AHEAD))) {
+				throw new NotPossibleException();
+			}
+			List<PlannedWorkout> week = plan.getWorkouts().stream()
+					.filter(planned -> !planned.getDate().isBefore(monday)
+							&& planned.getDate().isBefore(monday.plusDays(7)))
+					.toList();
+			if (week.isEmpty()) {
+				throw new NotPossibleException();
+			}
+			week.forEach(planned -> planned.setPhase(phase));
+			plan.setWeekPhasesSetAt(Instant.now(clock));
+			return plan;
 		});
 	}
 

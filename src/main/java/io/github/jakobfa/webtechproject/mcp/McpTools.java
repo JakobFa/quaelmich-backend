@@ -1,18 +1,22 @@
 package io.github.jakobfa.webtechproject.mcp;
 
 import java.time.Clock;
+import java.time.DayOfWeek;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.support.TransactionTemplate;
 
 import io.github.jakobfa.webtechproject.custom.CustomWorkoutService;
 import io.github.jakobfa.webtechproject.model.Athlete;
+import io.github.jakobfa.webtechproject.model.Phase;
 import io.github.jakobfa.webtechproject.model.PlannedWorkout;
 import io.github.jakobfa.webtechproject.model.TrainingPlan;
 import io.github.jakobfa.webtechproject.model.Workout;
@@ -97,7 +101,8 @@ public class McpTools {
 	public List<Tool> tools() {
 		return List.of(
 				new Tool("get_overview", "Überblick über den Athleten: Profil, Ziel/Event, Verfügbarkeit, deine letzte Einschätzung, Stand des Plans "
-						+ "(Woche, Phase, krank gemeldet) und die nächsten 7 Tage. Guter Startpunkt.",
+						+ "(krank gemeldet, Wochenarten der kommenden Wochen), die nächsten 7 Tage und unter 'neu' Hinweise "
+						+ "auf neue Möglichkeiten, die du noch nicht genutzt hast. Guter Startpunkt.",
 						schema(Map.of()), OAuthService.SCOPE_READ),
 				new Tool("get_plan", "Der Trainingsplan für einen Zeitraum (Standard: heute bis in 14 Tagen, höchstens "
 						+ "92 Tage): je Tag die Einheit mit Art, Dauer, Belastung (TSS), Phase, Status und Anpassung.",
@@ -177,6 +182,7 @@ public class McpTools {
 				out.put("planStart", valueOrNull(plan.get().getStartDate()));
 				out.put("krankSeit", plan.get().getSickSince() == null ? null : plan.get().getSickSince().toString());
 				out.put("naechste7Tage", days(plan.get(), today, today.plusDays(6)));
+				out.put("wochenarten", weekPhases(plan.get()));
 			} else {
 				out.put("plan", "Es gibt noch keinen Plan.");
 			}
@@ -184,6 +190,10 @@ public class McpTools {
 			out.put("schlafUndErholung", wellness.isSharedWithAi(userId)
 					? "freigegeben – hol die Tage mit get_wellness"
 					: "nicht freigegeben (der Nutzer kann es in quaelmich unter Einstellungen → Schlaf & Erholung einschalten)");
+			List<String> news = news(plan.orElse(null));
+			if (!news.isEmpty()) {
+				out.put("neu", news);
+			}
 			return out;
 		});
 	}
@@ -328,6 +338,56 @@ public class McpTools {
 
 	private Athlete athleteOf(Long userId) {
 		return athletes.findByOwner(userId).orElseThrow(() -> new ToolException("Es gibt noch kein Profil."));
+	}
+
+	/** So viele Wochen ab der laufenden zeigen die Wochenarten */
+	static final int PHASE_WEEKS = 16;
+
+	static final Map<Phase, String> PHASE_NAMES = Map.of(Phase.BASE, "Grundlage", Phase.BUILD, "Aufbau", Phase.PEAK,
+			"Spitze", Phase.TAPER, "Tapering", Phase.RECOVERY, "Erholung");
+
+	/**
+	 * Die Art der laufenden und der kommenden Wochen, wie sie der Zeitstrahl oben im Plan zeigt (eine Woche hat die
+	 * Art, die die meisten ihrer Einheiten tragen). Wochen ohne Einheit fehlen.
+	 */
+	public List<Map<String, Object>> weekPhases(TrainingPlan plan) {
+		LocalDate monday = today().with(java.time.temporal.TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY));
+		LocalDate end = monday.plusWeeks(PHASE_WEEKS);
+		Map<LocalDate, Map<Phase, Long>> byWeek = plan.getWorkouts().stream()
+				.filter(planned -> planned.getPhase() != null && !planned.getDate().isBefore(monday)
+						&& planned.getDate().isBefore(end))
+				.collect(Collectors.groupingBy(
+						planned -> planned.getDate()
+								.with(java.time.temporal.TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY)),
+						java.util.TreeMap::new,
+						Collectors.groupingBy(PlannedWorkout::getPhase, Collectors.counting())));
+		List<Map<String, Object>> weeks = new ArrayList<>();
+		byWeek.forEach((weekMonday, counts) -> {
+			Phase phase = counts.entrySet().stream().max(Map.Entry.comparingByValue()).map(Map.Entry::getKey)
+					.orElseThrow();
+			Map<String, Object> row = new LinkedHashMap<>();
+			row.put("montag", weekMonday.toString());
+			row.put("art", phase.name());
+			row.put("name", PHASE_NAMES.get(phase));
+			weeks.add(row);
+		});
+		return weeks;
+	}
+
+	/**
+	 * Hinweise auf neue Möglichkeiten für die KI: KI-Apps lesen neue Werkzeuge nicht von selbst als Auftrag, aber jeder
+	 * Lauf beginnt mit get_overview. Ein Hinweis verschwindet, sobald die KI das Neue einmal benutzt hat.
+	 */
+	List<String> news(TrainingPlan plan) {
+		List<String> news = new ArrayList<>();
+		if (plan != null && plan.getWeekPhasesSetAt() == null) {
+			news.add("Neu: Mit set_week_phase gibst du jeder Woche ihre Art (BASE = Grundlage, BUILD = Aufbau, PEAK = "
+					+ "Spitze, TAPER = Tapering, RECOVERY = Erholung). Der Zeitstrahl oben im Plan des Nutzers zeigt sie. "
+					+ "Prüf die 'wochenarten' der kommenden Wochen gegen deine Planung und setze sie, wo sie nicht passen "
+					+ "(zum Beispiel eine Woche, die du ruhiger geplant hast, als Erholung). Sag dem Nutzer kurz, was du "
+					+ "änderst.");
+		}
+		return news;
 	}
 
 	private LocalDate today() {
