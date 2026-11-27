@@ -387,22 +387,23 @@ public class WorkoutLibrary {
 	public static final long STRENGTH_MAINTENANCE = 42L;
 
 	/**
-	 * Krafteinheiten für zu Hause ohne Geräte, gemischt mit Mobility (vorher lockern, nachher dehnen).
+	 * Krafteinheiten für zu Hause – ohne Geräte, mit Kurzhanteln oder mit Kettlebell (die Übungen je Ausrüstung
+	 * kennt die App) – gemischt mit Mobility (vorher lockern, nachher dehnen).
 	 * Nicht in {@link #findAll()} – man kann sie nicht statt einer Radeinheit wählen.
 	 * Die Last ist grob geschätzt (ein gleichmäßiger Abschnitt bei 55 %), damit sie in Wochen-TSS und
 	 * Belastungs-Check mitzählt.
 	 */
 	private final List<Workout> strengthWorkouts = List.of(
 			new Workout(STRENGTH_BASE_A, "Kraft & Mobility A: Grundkraft", WorkoutType.STRENGTH,
-					"Zu Hause, ohne Geräte: Katze-Kuh, dann Kniebeuge, einbeiniges Kreuzheben, Hüftheben, "
-							+ "Unterarmstütz – zum Schluss die Hüftbeuger dehnen.",
+					"Zu Hause ohne Geräte, mit Kurzhanteln oder Kettlebell: Katze-Kuh, dann Kniebeuge, Kreuzheben "
+							+ "oder Swing, Hüftheben oder Rudern, Unterarmstütz – zum Schluss die Hüftbeuger dehnen.",
 					List.of(WorkoutStep.steady(STEADY, min(30), 55))),
 			new Workout(STRENGTH_BASE_B, "Kraft & Mobility B: Beine einzeln und Rumpf", WorkoutType.STRENGTH,
-					"Zu Hause, ohne Geräte: Kindhaltung, dann Ausfallschritt, Wadenheben, Dead Bug, Seitstütz – "
-							+ "zum Schluss die Beinrückseite dehnen.",
+					"Zu Hause ohne Geräte, mit Kurzhanteln oder Kettlebell: Kindhaltung, dann Beine einzeln, "
+							+ "Rumpf und mit Gewicht auch der Oberkörper – zum Schluss die Beinrückseite dehnen.",
 					List.of(WorkoutStep.steady(STEADY, min(30), 55))),
 			new Workout(STRENGTH_MAINTENANCE, "Kraft & Mobility: Erhalten", WorkoutType.STRENGTH,
-					"Kurz und ohne Geräte: weniger Sätze, dafür langsam – hält die Kraft, ohne die Beine fürs Rad "
+					"Kurz, ohne Geräte oder mit Gewicht: weniger Sätze – hält die Kraft, ohne die Beine fürs Rad "
 							+ "zu ermüden.",
 					List.of(WorkoutStep.steady(STEADY, min(20), 55))));
 
