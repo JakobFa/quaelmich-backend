@@ -1,5 +1,6 @@
 package io.github.jakobfa.webtechproject.model;
 
+import java.time.Instant;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -12,6 +13,8 @@ import jakarta.persistence.CollectionTable;
 import jakarta.persistence.ElementCollection;
 import jakarta.persistence.MapKeyColumn;
 import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
 import jakarta.persistence.FetchType;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.Id;
@@ -66,6 +69,12 @@ public class TrainingPlan {
 	 */
 	private Integer reentryWeeks;
 
+	/**
+	 * Wann die KI zuletzt eine Wochenart gesetzt hat (set_week_phase); null = noch nie. Solange null, weist
+	 * get_overview die KI auf das Werkzeug hin.
+	 */
+	private Instant weekPhasesSetAt;
+
 	public int getReentryWeeks() {
 		return reentryWeeks == null ? 0 : reentryWeeks;
 	}
@@ -78,6 +87,17 @@ public class TrainingPlan {
 	@CollectionTable(name = "plan_week_availability")
 	@MapKeyColumn(name = "week_start")
 	private Map<LocalDate, WeeklyAvailability> weekAvailability = new HashMap<>();
+
+	/**
+	 * Im KI-Modus von der KI gesetzte Wochenarten (Schlüssel: Montag der Woche, set_week_phase). Sie gelten vor der
+	 * Rechnung von quaelmich und bleiben bei jeder Neuberechnung; beim Ausschalten des KI-Modus werden sie vergessen.
+	 */
+	@ElementCollection(fetch = FetchType.EAGER)
+	@CollectionTable(name = "plan_ai_week_phase")
+	@MapKeyColumn(name = "week_start")
+	@Enumerated(EnumType.STRING)
+	@Column(name = "phase")
+	private Map<LocalDate, Phase> aiWeekPhases = new HashMap<>();
 
 	@OneToMany(mappedBy = "plan", cascade = CascadeType.ALL, orphanRemoval = true)
 	@OrderBy("date")

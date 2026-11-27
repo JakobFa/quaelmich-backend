@@ -26,7 +26,7 @@ public class DeletionNotice {
 				Verbindung samt Zugangsdaten. Der Zugriff von quaelmich auf Strava ist beendet.
 
 				Was du selbst bei quaelmich eingetragen hast (Profil, Plan, Bewertungen), bleibt bestehen. Das Konto
-				kannst du jederzeit im Profil unter "Konto & Daten" löschen.
+				kannst du jederzeit in den Einstellungen unter "Konto & Daten" löschen.
 
 				Quäl dich!
 				quaelmich

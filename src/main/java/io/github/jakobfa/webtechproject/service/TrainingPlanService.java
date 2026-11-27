@@ -81,6 +81,7 @@ public class TrainingPlanService {
 			// vergangene Wochen-Ausnahmen braucht es nicht mehr
 			LocalDate thisMonday = today.with(TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY));
 			plan.getWeekAvailability().keySet().removeIf(monday -> monday.isBefore(thisMonday));
+			plan.getAiWeekPhases().keySet().removeIf(monday -> monday.isBefore(thisMonday));
 			replan(plan, today, LocalDate.MAX);
 			return planRepository.save(plan);
 		});
@@ -153,8 +154,33 @@ public class TrainingPlanService {
 			fresh.forEach(plan::addWorkout);
 		}
 		alignPhasePerWeek(plan, fresh);
+		keepAiWeekPhases(plan);
 		holdWhileSick(plan);
 		plan.sortByDate();
+	}
+
+	/**
+	 * Im KI-Modus hat die KI die volle Kontrolle über die Wocheneinteilung: Wochen, deren Art sie gesetzt hat
+	 * (set_week_phase), behalten sie bei jeder Neuberechnung (regenerate_plan, andere Zeit für eine Woche, Events).
+	 */
+	private void keepAiWeekPhases(TrainingPlan plan) {
+		if (plan.getAiWeekPhases().isEmpty() || !aiMode.automaticChangesBlocked(plan.getAthlete())) {
+			return;
+		}
+		plan.getWorkouts().forEach(planned -> {
+			Phase phase = plan.getAiWeekPhases()
+					.get(planned.getDate().with(TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY)));
+			if (phase != null) {
+				planned.setPhase(phase);
+			}
+		});
+	}
+
+	/** KI-Modus aus: die Wochenarten der KI gelten nicht mehr, quaelmich rechnet sie wieder selbst */
+	@Transactional
+	public void forgetAiWeekPhases(Long userId) {
+		athleteRepository.findByOwnerId(userId).flatMap(athlete -> planRepository.findByAthleteId(athlete.getId()))
+				.ifPresent(plan -> plan.getAiWeekPhases().clear());
 	}
 
 	/**

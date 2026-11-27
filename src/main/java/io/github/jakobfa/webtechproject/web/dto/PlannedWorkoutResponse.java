@@ -12,7 +12,9 @@ import io.github.jakobfa.webtechproject.model.Workout;
  * Ein eingeplantes Workout, wie es ans Frontend geht: mit vollständigen Workout-Daten aus der Bibliothek.
  */
 public record PlannedWorkoutResponse(Long id, LocalDate date, Phase phase, boolean completed, Integer rating,
-		SkipReason skipReason, Workout workout, Actual actual, Adjustment adjustment, WorkoutCustomizationService.Options options) {
+		SkipReason skipReason, Workout workout, Actual actual, Adjustment adjustment, WorkoutCustomizationService.Options options,
+		/** von der KI geplant oder geändert (KI-Modus) */
+		boolean aiDecided) {
 
 	/**
 	 * Tatsächlich gefahrene Werte, null solange keine Fahrt verknüpft ist.

@@ -1,18 +1,22 @@
 package io.github.jakobfa.webtechproject.mcp;
 
 import java.time.Clock;
+import java.time.DayOfWeek;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.support.TransactionTemplate;
 
 import io.github.jakobfa.webtechproject.custom.CustomWorkoutService;
 import io.github.jakobfa.webtechproject.model.Athlete;
+import io.github.jakobfa.webtechproject.model.Phase;
 import io.github.jakobfa.webtechproject.model.PlannedWorkout;
 import io.github.jakobfa.webtechproject.model.TrainingPlan;
 import io.github.jakobfa.webtechproject.model.Workout;
@@ -60,9 +64,18 @@ public class McpTools {
 	private final RaceEventService events;
 	private final TransactionTemplate tx;
 	private final Clock clock;
+	private final io.github.jakobfa.webtechproject.service.AiAssessmentService aiAssessments;
+	private final io.github.jakobfa.webtechproject.health.WellnessImportService wellness;
+	private final io.github.jakobfa.webtechproject.health.HealthService health;
 
 	public McpTools(AthleteService athletes, TrainingPlanService plans,
-			WorkoutLibrary library, CustomWorkoutService customWorkouts, RaceEventService events, TransactionTemplate tx, Clock clock) {
+			WorkoutLibrary library, CustomWorkoutService customWorkouts, RaceEventService events, TransactionTemplate tx, Clock clock,
+			io.github.jakobfa.webtechproject.service.AiAssessmentService aiAssessments,
+			io.github.jakobfa.webtechproject.health.WellnessImportService wellness,
+			io.github.jakobfa.webtechproject.health.HealthService health) {
+		this.aiAssessments = aiAssessments;
+		this.wellness = wellness;
+		this.health = health;
 		this.athletes = athletes;
 		this.plans = plans;
 		this.library = library;
@@ -87,8 +100,9 @@ public class McpTools {
 	/** Alle Werkzeuge (die Aufrufer filtern nach ihrem Zugriffsbereich) */
 	public List<Tool> tools() {
 		return List.of(
-				new Tool("get_overview", "Überblick über den Athleten: Profil, Ziel/Event, Verfügbarkeit, Stand des Plans "
-						+ "(Woche, Phase, krank gemeldet) und die nächsten 7 Tage. Guter Startpunkt.",
+				new Tool("get_overview", "Überblick über den Athleten: Profil, Ziel/Event, Verfügbarkeit, deine letzte Einschätzung, Stand des Plans "
+						+ "(krank gemeldet, Wochenarten der kommenden Wochen), die nächsten 7 Tage und unter 'neu' Hinweise "
+						+ "auf neue Möglichkeiten, die du noch nicht genutzt hast. Guter Startpunkt.",
 						schema(Map.of()), OAuthService.SCOPE_READ),
 				new Tool("get_plan", "Der Trainingsplan für einen Zeitraum (Standard: heute bis in 14 Tagen, höchstens "
 						+ "92 Tage): je Tag die Einheit mit Art, Dauer, Belastung (TSS), Phase, Status und Anpassung.",
@@ -102,6 +116,12 @@ public class McpTools {
 						OAuthService.SCOPE_READ),
 				new Tool("list_events", "Die weiteren Events des Nutzers (zusätzlich zum ersten im Profil, das get_overview "
 						+ "zeigt) mit id. Die id geht in update_event und delete_event.", schema(Map.of()),
+						OAuthService.SCOPE_READ),
+				new Tool("get_wellness", "Schlaf und Erholung je Tag (Standard: die letzten 14 Tage, höchstens 92): "
+						+ "Schlafdauer in Minuten, Schlafbewertung, Ruhepuls, HRV (rMSSD; bei Apple Watch SDNN in hrvSdnnMs) "
+						+ "und Schritte – aus intervals.icu, egal aus welcher Quelle. Nur wenn der Nutzer es in quaelmich "
+						+ "freigegeben hat. Fehlende Werte sind null.",
+						schema(Map.of("from", text("Erster Tag, JJJJ-MM-TT"), "to", text("Letzter Tag, JJJJ-MM-TT"))),
 						OAuthService.SCOPE_READ));
 	}
 
@@ -113,6 +133,8 @@ public class McpTools {
 			case "list_workouts" -> workouts(arguments == null ? null : (String) arguments.get("type"));
 			case "list_events" -> eventRows(userId);
 			case "list_my_workouts" -> workoutRows(customWorkouts.listOwn(userId), true);
+			case "get_wellness" -> wellnessDays(userId, date(arguments, "from", today().minusDays(13)),
+					date(arguments, "to", today()));
 			default -> throw new ToolException("Unbekanntes Werkzeug: " + name);
 		};
 	}
@@ -160,11 +182,57 @@ public class McpTools {
 				out.put("planStart", valueOrNull(plan.get().getStartDate()));
 				out.put("krankSeit", plan.get().getSickSince() == null ? null : plan.get().getSickSince().toString());
 				out.put("naechste7Tage", days(plan.get(), today, today.plusDays(6)));
+				out.put("wochenarten", weekPhases(plan.get()));
 			} else {
 				out.put("plan", "Es gibt noch keinen Plan.");
 			}
+			out.put("einschaetzung", assessment(userId));
+			out.put("schlafUndErholung", wellness.isSharedWithAi(userId)
+					? "freigegeben – hol die Tage mit get_wellness"
+					: "nicht freigegeben (der Nutzer kann es in quaelmich unter Einstellungen → Schlaf & Erholung einschalten)");
+			List<String> news = news(plan.orElse(null));
+			if (!news.isEmpty()) {
+				out.put("neu", news);
+			}
 			return out;
 		});
+	}
+
+	private Object wellnessDays(Long userId, LocalDate from, LocalDate to) {
+		checkRange(from, to);
+		if (!wellness.isSharedWithAi(userId)) {
+			throw new ToolException("Der Nutzer hat Schlaf und Erholung nicht für dich freigegeben. Er kann das in "
+					+ "quaelmich unter Einstellungen → Schlaf & Erholung einschalten.");
+		}
+		Map<String, Object> out = new LinkedHashMap<>();
+		out.put("von", from.toString());
+		out.put("bis", to.toString());
+		out.put("tage", health.between(userId, from, to).stream().map(day -> {
+			Map<String, Object> row = new LinkedHashMap<>();
+			row.put("datum", day.date().toString());
+			row.put("schlafMinuten", day.sleepMinutes());
+			row.put("schlafBewertung", day.sleepScore());
+			row.put("ruhepuls", day.restingHeartRate());
+			row.put("hrvMs", day.hrvMs());
+			row.put("hrvSdnnMs", day.hrvSdnnMs());
+			row.put("schritte", day.steps());
+			return row;
+		}).toList());
+		return out;
+	}
+
+	/** Deine letzte Einschätzung (set_assessment) und ob eine neue fällig ist */
+	private Map<String, Object> assessment(Long userId) {
+		Map<String, Object> out = new LinkedHashMap<>();
+		var current = aiAssessments.current(userId);
+		out.put("notiz", current.map(view -> view.note()).orElse(null));
+		out.put("stand", current.map(view -> view.updatedAt().toString()).orElse(null));
+		if (aiAssessments.needsRenewal(userId)) {
+			out.put("hinweis", "Deine Einschätzung zur Form auf der Planseite ist alt oder fehlt. Schau dir die "
+					+ "letzten 7 Tage an (gefahrene Fahrten aus dem Strava- oder Garmin-Konnektor, Schlaf und Erholung mit "
+					+ "get_wellness, falls freigegeben) und schreib mit set_assessment ein, zwei Sätze dazu.");
+		}
+		return out;
 	}
 
 	private Object plan(Long userId, LocalDate from, LocalDate to) {
@@ -270,6 +338,56 @@ public class McpTools {
 
 	private Athlete athleteOf(Long userId) {
 		return athletes.findByOwner(userId).orElseThrow(() -> new ToolException("Es gibt noch kein Profil."));
+	}
+
+	/** So viele Wochen ab der laufenden zeigen die Wochenarten */
+	static final int PHASE_WEEKS = 16;
+
+	static final Map<Phase, String> PHASE_NAMES = Map.of(Phase.BASE, "Grundlage", Phase.BUILD, "Aufbau", Phase.PEAK,
+			"Spitze", Phase.TAPER, "Tapering", Phase.RECOVERY, "Erholung");
+
+	/**
+	 * Die Art der laufenden und der kommenden Wochen, wie sie der Zeitstrahl oben im Plan zeigt (eine Woche hat die
+	 * Art, die die meisten ihrer Einheiten tragen). Wochen ohne Einheit fehlen.
+	 */
+	public List<Map<String, Object>> weekPhases(TrainingPlan plan) {
+		LocalDate monday = today().with(java.time.temporal.TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY));
+		LocalDate end = monday.plusWeeks(PHASE_WEEKS);
+		Map<LocalDate, Map<Phase, Long>> byWeek = plan.getWorkouts().stream()
+				.filter(planned -> planned.getPhase() != null && !planned.getDate().isBefore(monday)
+						&& planned.getDate().isBefore(end))
+				.collect(Collectors.groupingBy(
+						planned -> planned.getDate()
+								.with(java.time.temporal.TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY)),
+						java.util.TreeMap::new,
+						Collectors.groupingBy(PlannedWorkout::getPhase, Collectors.counting())));
+		List<Map<String, Object>> weeks = new ArrayList<>();
+		byWeek.forEach((weekMonday, counts) -> {
+			Phase phase = counts.entrySet().stream().max(Map.Entry.comparingByValue()).map(Map.Entry::getKey)
+					.orElseThrow();
+			Map<String, Object> row = new LinkedHashMap<>();
+			row.put("montag", weekMonday.toString());
+			row.put("art", phase.name());
+			row.put("name", PHASE_NAMES.get(phase));
+			weeks.add(row);
+		});
+		return weeks;
+	}
+
+	/**
+	 * Hinweise auf neue Möglichkeiten für die KI: KI-Apps lesen neue Werkzeuge nicht von selbst als Auftrag, aber jeder
+	 * Lauf beginnt mit get_overview. Ein Hinweis verschwindet, sobald die KI das Neue einmal benutzt hat.
+	 */
+	List<String> news(TrainingPlan plan) {
+		List<String> news = new ArrayList<>();
+		if (plan != null && plan.getWeekPhasesSetAt() == null) {
+			news.add("Neu: Mit set_week_phase gibst du jeder Woche ihre Art (BASE = Grundlage, BUILD = Aufbau, PEAK = "
+					+ "Spitze, TAPER = Tapering, RECOVERY = Erholung). Der Zeitstrahl oben im Plan des Nutzers zeigt sie. "
+					+ "Prüf die 'wochenarten' der kommenden Wochen gegen deine Planung und setze sie, wo sie nicht passen "
+					+ "(zum Beispiel eine Woche, die du ruhiger geplant hast, als Erholung). Sag dem Nutzer kurz, was du "
+					+ "änderst.");
+		}
+		return news;
 	}
 
 	private LocalDate today() {

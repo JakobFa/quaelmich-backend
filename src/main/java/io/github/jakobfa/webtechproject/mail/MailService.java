@@ -36,6 +36,11 @@ public class MailService {
 
 	/** @return true, wenn die Mail an Resend übergeben wurde (oder lokal geloggt) */
 	public boolean send(String to, String subject, String text, String html) {
+		return send(to, subject, text, html, null);
+	}
+
+	/** replyTo: Antworten gehen an diese Adresse statt an den Absender (null = Absender) */
+	public boolean send(String to, String subject, String text, String html, String replyTo) {
 		if (!properties.isConfigured()) {
 			log.info("MAIL_API_KEY fehlt – Mail an {} nur geloggt:\n{}\n{}", to, subject, text);
 			return true;
@@ -45,8 +50,7 @@ public class MailService {
 					.uri("/emails")
 					.header(HttpHeaders.AUTHORIZATION, "Bearer " + properties.apiKey())
 					.contentType(MediaType.APPLICATION_JSON)
-					.body(Map.of("from", properties.from(), "to", List.of(to), "subject", subject, "text", text,
-							"html", html))
+					.body(body(to, subject, text, html, replyTo))
 					.retrieve()
 					.toBodilessEntity();
 			return true;
@@ -54,6 +58,15 @@ public class MailService {
 			log.warn("Mail an {} konnte nicht verschickt werden: {}", to, e.getMessage());
 			return false;
 		}
+	}
+
+	private Map<String, Object> body(String to, String subject, String text, String html, String replyTo) {
+		Map<String, Object> body = new java.util.LinkedHashMap<>(Map.of("from", properties.from(), "to", List.of(to),
+				"subject", subject, "text", text, "html", html));
+		if (replyTo != null && !replyTo.isBlank()) {
+			body.put("reply_to", replyTo);
+		}
+		return body;
 	}
 
 	public String frontendUrl(String path) {

@@ -284,7 +284,8 @@ class McpTest {
 		String list = rpc(access, "{ \"jsonrpc\": \"2.0\", \"id\": 2, \"method\": \"tools/list\" }")
 				.andReturn().getResponse().getContentAsString();
 		List<String> names = JsonPath.read(list, "$.result.tools[*].name");
-		assertThat(names).containsExactlyInAnyOrder("get_overview", "get_plan", "list_workouts", "list_my_workouts", "list_events");
+		assertThat(names).containsExactlyInAnyOrder("get_overview", "get_plan", "list_workouts", "list_my_workouts", "list_events",
+				"get_wellness");
 		assertThat(Map.of("scope", "plan:read")).isNotEmpty();
 	}
 
@@ -656,4 +657,164 @@ class McpTest {
 				.contains("Strava-Zugang").contains("erfinde nichts").doesNotContain("Diagnose")
 				.contains("ändert quaelmich den Plan nicht mehr von selbst");
 	}
+
+	@Test
+	void theAiSetsTheAssessmentShownOnThePlanPage() throws Exception {
+		String access = accessToken("plan:read plan:write");
+		mockMvc.perform(get("/me/ai-assessment").header("Authorization", auth)).andExpect(status().isNoContent());
+		assertThat(call(access, "get_overview", "{}")).contains("set_assessment");
+
+		String result = callWrite(access, "set_assessment",
+				"{ \"note\": \"Zwei harte Tage, morgen locker.\" }");
+		assertThat(result).contains("Zwei harte Tage");
+
+		mockMvc.perform(get("/me/ai-assessment").header("Authorization", auth)).andExpect(status().isOk())
+				.andExpect(jsonPath("$.note").value("Zwei harte Tage, morgen locker."))
+				.andExpect(jsonPath("$.fresh").value(true));
+		// frisch gesetzt: get_overview erinnert nicht mehr
+		String overview = call(access, "get_overview", "{}");
+		assertThat(overview).contains("Zwei harte Tage").doesNotContain("hinweis");
+
+		assertThat(callError(access, "set_assessment", "{ \"status\": \"ON_TRACK\" }")).contains("note");
+		assertThat(callError(access, "set_assessment",
+				"{ \"status\": \"ON_TRACK\", \"note\": \"%s\" }".formatted("x".repeat(301))))
+				.contains("300 Zeichen");
+
+		// ohne KI-Modus zeigt die Planseite wieder die eigene Rechnung
+		setAiMode(auth, false);
+		mockMvc.perform(get("/me/ai-assessment").header("Authorization", auth)).andExpect(status().isNoContent());
+	}
+
+	@Test
+	void theAiSetsTheKindOfAWeekAndIsToldAboutItUntilItDoes() throws Exception {
+		String access = accessToken("plan:read plan:write");
+		java.time.LocalDate nextMonday = java.time.LocalDate.now()
+				.with(java.time.temporal.TemporalAdjusters.next(java.time.DayOfWeek.MONDAY));
+
+		// neu: get_overview weist auf das Werkzeug hin und zeigt die Wochenarten
+		String overview = call(access, "get_overview", "{}");
+		assertThat(overview).contains("\"neu\"").contains("set_week_phase").contains("\"wochenarten\"")
+				.contains("\"montag\":\"" + nextMonday + "\"");
+
+		String result = callWrite(access, "set_week_phase",
+				"{ \"monday\": \"%s\", \"phase\": \"peak\" }".formatted(nextMonday));
+		assertThat(result).contains("ist jetzt Spitze")
+				.contains("{\"montag\":\"%s\",\"art\":\"PEAK\",\"name\":\"Spitze\"}".formatted(nextMonday));
+		String week = call(access, "get_plan", "{ \"from\": \"%s\", \"to\": \"%s\" }".formatted(nextMonday,
+				nextMonday.plusDays(6)));
+		assertThat(week).contains("\"phase\":\"PEAK\"").doesNotContain("\"phase\":\"BASE\"")
+				.doesNotContain("\"phase\":\"BUILD\"").doesNotContain("\"phase\":\"RECOVERY\"");
+
+		// einmal benutzt: kein Hinweis mehr
+		assertThat(call(access, "get_overview", "{}")).doesNotContain("\"neu\"");
+
+		// im KI-Modus bleibt die Wochenart der KI, auch wenn quaelmich neu rechnet
+		callWrite(access, "regenerate_plan", "{}");
+		callWrite(access, "set_week_availability", """
+				{ "monday": "%s", "hours": { "tuesday": 1, "thursday": 1, "saturday": 2 } }
+				""".formatted(nextMonday));
+		String rebuilt = call(access, "get_plan", "{ \"from\": \"%s\", \"to\": \"%s\" }".formatted(nextMonday,
+				nextMonday.plusDays(6)));
+		assertThat(rebuilt).contains("\"phase\":\"PEAK\"").doesNotContain("\"phase\":\"BASE\"")
+				.doesNotContain("\"phase\":\"BUILD\"").doesNotContain("\"phase\":\"RECOVERY\"");
+
+		assertThat(callError(access, "set_week_phase",
+				"{ \"monday\": \"%s\", \"phase\": \"BUILD\" }".formatted(nextMonday.plusDays(1))))
+				.contains("Montag");
+		assertThat(callError(access, "set_week_phase",
+				"{ \"monday\": \"%s\", \"phase\": \"BUILD\" }".formatted(nextMonday.minusWeeks(3))))
+				.contains("Montag");
+		assertThat(callError(access, "set_week_phase",
+				"{ \"monday\": \"%s\", \"phase\": \"PARTY\" }".formatted(nextMonday))).contains("phase");
+
+		// KI-Modus aus: die Wocheneinteilung gehört wieder quaelmich
+		assertThat(plansForTest.findAll()).anyMatch(plan -> !plan.getAiWeekPhases().isEmpty());
+		setAiMode(auth, false);
+		assertThat(plansForTest.findAll()).allMatch(plan -> plan.getAiWeekPhases().isEmpty());
+	}
+
+	@Test
+	void assessmentIsAWriteTool() throws Exception {
+		String readOnly = accessToken("plan:read");
+		String list = rpc(readOnly, "{ \"jsonrpc\": \"2.0\", \"id\": 2, \"method\": \"tools/list\" }")
+				.andReturn().getResponse().getContentAsString();
+		assertThat((List<String>) JsonPath.read(list, "$.result.tools[*].name")).doesNotContain("set_assessment");
+	}
+
+
+	@Test
+	void whatTheAiPlansCarriesTheAiMarkUntilTheUserChangesIt() throws Exception {
+		String access = accessToken("plan:read plan:write");
+		long id = upcomingPlanId(access);
+		mockMvc.perform(get("/planned-workouts/" + id).header("Authorization", auth))
+				.andExpect(jsonPath("$.aiDecided").value(false));
+
+		callWrite(access, "regenerate_plan", "{}");
+		long regenerated = upcomingPlanId(access);
+		mockMvc.perform(get("/planned-workouts/" + regenerated).header("Authorization", auth))
+				.andExpect(jsonPath("$.aiDecided").value(true));
+
+		// selbst in der App geändert: die Entscheidung des Nutzers
+		mockMvc.perform(put("/planned-workouts/" + regenerated + "/adjustment").header("Authorization", auth)
+				.contentType(MediaType.APPLICATION_JSON).content("{ \"direction\": \"SHORTER\" }"))
+				.andExpect(status().isOk()).andExpect(jsonPath("$.aiDecided").value(false));
+		mockMvc.perform(get("/planned-workouts/" + regenerated).header("Authorization", auth))
+				.andExpect(jsonPath("$.aiDecided").value(false));
+
+		// wieder die KI: ihre Änderung bekommt das Zeichen zurück
+		callWrite(access, "reset_adjustment", "{ \"planId\": %d }".formatted(regenerated));
+		mockMvc.perform(get("/planned-workouts/" + regenerated).header("Authorization", auth))
+				.andExpect(jsonPath("$.aiDecided").value(true));
+	}
+
+
+	@Autowired
+	private io.github.jakobfa.webtechproject.health.WellnessImportRepository wellnessImports;
+
+	@Autowired
+	private io.github.jakobfa.webtechproject.health.DailyHealthRepository healthDays;
+
+	@Autowired
+	private io.github.jakobfa.webtechproject.repository.AppUserRepository appUsers;
+
+	@Autowired
+	private io.github.jakobfa.webtechproject.repository.TrainingPlanRepository plansForTest;
+
+	@Test
+	void sleepAndRecoveryOnlyWhenTheUserSharesThem() throws Exception {
+		String access = accessToken("plan:read");
+		assertThat(call(access, "get_overview", "{}")).contains("nicht freigegeben");
+		assertThat(callError(access, "get_wellness", "{}")).contains("nicht für dich freigegeben");
+
+		// Übernahme von intervals.icu ist an (hier direkt angelegt), aber noch nicht für die KI freigegeben
+		String email = emailOf(auth);
+		var user = appUsers.findByEmail(email).orElseThrow();
+		var settings = new io.github.jakobfa.webtechproject.health.WellnessImport();
+		settings.setOwner(user);
+		settings.setConsentAt(java.time.Instant.now());
+		wellnessImports.save(settings);
+		var day = new io.github.jakobfa.webtechproject.health.DailyHealth(user, java.time.LocalDate.now().minusDays(1));
+		day.setSleepMinutes(452);
+		day.setHrvSdnnMs(48);
+		healthDays.save(day);
+		assertThat(callError(access, "get_wellness", "{}")).contains("nicht für dich freigegeben");
+
+		mockMvc.perform(put("/me/health/ai").header("Authorization", auth).contentType(MediaType.APPLICATION_JSON)
+				.content("{ \"share\": true }")).andExpect(status().isOk())
+				.andExpect(jsonPath("$.sharedWithAi").value(true));
+		assertThat(call(access, "get_overview", "{}")).contains("get_wellness");
+		String days = call(access, "get_wellness", "{}");
+		assertThat(days).contains("\"schlafMinuten\":452").contains("\"hrvSdnnMs\":48");
+
+		mockMvc.perform(put("/me/health/ai").header("Authorization", auth).contentType(MediaType.APPLICATION_JSON)
+				.content("{ \"share\": false }")).andExpect(jsonPath("$.sharedWithAi").value(false));
+		assertThat(callError(access, "get_wellness", "{}")).contains("nicht für dich freigegeben");
+	}
+
+	private String emailOf(String token) throws Exception {
+		String body = mockMvc.perform(get("/me/account/export").header("Authorization", token)).andReturn()
+				.getResponse().getContentAsString();
+		return com.jayway.jsonpath.JsonPath.read(body, "$.konto.email");
+	}
+
 }
