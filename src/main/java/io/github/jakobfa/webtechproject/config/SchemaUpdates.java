@@ -30,6 +30,8 @@ public class SchemaUpdates implements ApplicationRunner {
 		execute("ALTER TABLE invitation ALTER COLUMN created_by_id DROP NOT NULL");
 		// Ziele ohne Event (FTP, Ausdauer …): dann hat das Profil kein Event
 		execute("ALTER TABLE athlete ALTER COLUMN event_id DROP NOT NULL");
+		// Die KI schreibt nur noch einen kurzen Text zur Form; die Werte rechnet quaelmich selbst
+		execute("ALTER TABLE ai_assessment ALTER COLUMN status DROP NOT NULL");
 	}
 
 	private void execute(String sql) {

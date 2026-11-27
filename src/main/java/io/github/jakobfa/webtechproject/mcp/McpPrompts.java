@@ -72,8 +72,8 @@ public class McpPrompts {
 					+ "eine tägliche Aufgabe an, die den Auftrag 'fahrten_abgleichen' ausführt. Sie holt meine gefahrenen "
 					+ "Fahrten aus meinem Strava-Konnektor, vergleicht sie mit dem Plan und steuert die Belastung: War "
 					+ "ich deutlich härter oder schwächer gefahren als geplant, oder gar nicht, entscheidest du als Trainer, "
-					+ "ob und wie du den Plan anpasst, und führst es mit den Werkzeugen aus. Danach setzt sie mit "
-					+ "set_assessment deine Einschätzung der letzten 7 Tage für meine Planseite. Kann deine App das nicht, "
+					+ "ob und wie du den Plan anpasst, und führst es mit den Werkzeugen aus. Danach schreibt sie mit "
+					+ "set_assessment ein, zwei Sätze zu meiner aktuellen Form für meine Planseite. Kann deine App das nicht, "
 					+ "sag mir das und wie ich den Auftrag 'fahrten_abgleichen' regelmäßig selbst starte.";
 			case "plan_pruefen" -> "Prüfe meinen Trainingsplan in quaelmich. Ruf get_overview und get_plan auf, schau, ob "
 					+ "Ziel, Zeit pro Woche und die nächsten Wochen zusammenpassen, und sag mir in kurzen Sätzen, was "
@@ -98,8 +98,8 @@ public class McpPrompts {
 					+ "add_workout, move_workout, remove_workout, create_workout, skip_workout, set_week_availability oder "
 					+ "regenerate_plan). Achte besonders auf deutlich härter oder "
 					+ "schwächer gefahren als geplant und auf ausgelassene Tage. Ändere nichts, wenn der Plan schon passt. "
-					+ "5. Setze zum Schluss immer deine Einschätzung der letzten 7 Tage mit set_assessment (status und ein, "
-					+ "zwei Sätze für mich) – sie steht oben auf meiner Planseite. Schlaf und Erholung bekommst du mit "
+					+ "5. Schreib zum Schluss immer mit set_assessment ein, zwei Sätze zu meiner aktuellen Form – sie stehen "
+					+ "auf meiner Planseite unter der Statuskarte. Schlaf und Erholung bekommst du mit "
 					+ "get_wellness, wenn ich sie freigegeben habe – bezieh sie mit ein.";
 			case "einrichten" -> "Ich möchte quaelmich mit dir benutzen. Ruf get_overview auf, erkläre mir kurz, was du "
 					+ "dort lesen und ändern kannst (Plan, Profil, sportliches Ziel, Krankheit, Pause, eigene Workouts), und "

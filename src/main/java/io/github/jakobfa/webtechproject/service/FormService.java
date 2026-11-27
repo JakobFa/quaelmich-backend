@@ -69,6 +69,10 @@ public class FormService {
 					.map(w -> w.getTss()).orElse(0);
 			if (workout.getActualTss() != null) {
 				actual.merge(workout.getDate(), workout.getActualTss(), Integer::sum);
+			} else if (workout.getActivityId() != null && workout.getActualDurationMinutes() != null) {
+				// gefahren, aber ohne TSS (z. B. ohne Watt und Puls): wie bei den Erfahrungspunkten aus der Dauer schätzen
+				actual.merge(workout.getDate(), ProgressService.estimate(workout.getActualDurationMinutes()),
+						Integer::sum);
 			} else if (workout.isCompleted()) {
 				actual.merge(workout.getDate(), plannedTss, Integer::sum);
 			} else if (!workout.getDate().isBefore(today) && workout.getSkipReason() == null) {
