@@ -693,4 +693,30 @@ class McpTest {
 		assertThat((List<String>) JsonPath.read(list, "$.result.tools[*].name")).doesNotContain("set_assessment");
 	}
 
+
+	@Test
+	void whatTheAiPlansCarriesTheAiMarkUntilTheUserChangesIt() throws Exception {
+		String access = accessToken("plan:read plan:write");
+		long id = upcomingPlanId(access);
+		mockMvc.perform(get("/planned-workouts/" + id).header("Authorization", auth))
+				.andExpect(jsonPath("$.aiDecided").value(false));
+
+		callWrite(access, "regenerate_plan", "{}");
+		long regenerated = upcomingPlanId(access);
+		mockMvc.perform(get("/planned-workouts/" + regenerated).header("Authorization", auth))
+				.andExpect(jsonPath("$.aiDecided").value(true));
+
+		// selbst in der App geändert: die Entscheidung des Nutzers
+		mockMvc.perform(put("/planned-workouts/" + regenerated + "/adjustment").header("Authorization", auth)
+				.contentType(MediaType.APPLICATION_JSON).content("{ \"direction\": \"SHORTER\" }"))
+				.andExpect(status().isOk()).andExpect(jsonPath("$.aiDecided").value(false));
+		mockMvc.perform(get("/planned-workouts/" + regenerated).header("Authorization", auth))
+				.andExpect(jsonPath("$.aiDecided").value(false));
+
+		// wieder die KI: ihre Änderung bekommt das Zeichen zurück
+		callWrite(access, "reset_adjustment", "{ \"planId\": %d }".formatted(regenerated));
+		mockMvc.perform(get("/planned-workouts/" + regenerated).header("Authorization", auth))
+				.andExpect(jsonPath("$.aiDecided").value(true));
+	}
+
 }

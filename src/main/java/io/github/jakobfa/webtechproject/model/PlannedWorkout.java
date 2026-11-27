@@ -89,6 +89,14 @@ public class PlannedWorkout {
 	@ColumnDefault("false")
 	private boolean adaptationApplied;
 
+	/**
+	 * Im KI-Modus von der KI geplant oder geändert (über ein Werkzeug). Ändert der Nutzer die Einheit danach selbst in
+	 * der App, ist es wieder seine Entscheidung.
+	 */
+	@Column(nullable = false)
+	@ColumnDefault("false")
+	private boolean aiDecided;
+
 	// ---------- Anpassung (wenn quaelmich dieses Workout nachträglich ersetzt hat) ----------
 
 	/** Begründung, z. B. "Angepasst: Am Di, 20.10. bist du 140 TSS statt 64 gefahren." */
