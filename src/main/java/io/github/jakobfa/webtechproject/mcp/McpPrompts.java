@@ -99,8 +99,8 @@ public class McpPrompts {
 					+ "regenerate_plan). Achte besonders auf deutlich härter oder "
 					+ "schwächer gefahren als geplant und auf ausgelassene Tage. Ändere nichts, wenn der Plan schon passt. "
 					+ "5. Setze zum Schluss immer deine Einschätzung der letzten 7 Tage mit set_assessment (status und ein, "
-					+ "zwei Sätze für mich) – sie steht oben auf meiner Planseite. Hast du Schlaf- und Erholungsdaten (zum "
-					+ "Beispiel über einen Garmin- oder Apple-Health-Zugang), bezieh sie mit ein.";
+					+ "zwei Sätze für mich) – sie steht oben auf meiner Planseite. Schlaf und Erholung bekommst du mit "
+					+ "get_wellness, wenn ich sie freigegeben habe – bezieh sie mit ein.";
 			case "einrichten" -> "Ich möchte quaelmich mit dir benutzen. Ruf get_overview auf, erkläre mir kurz, was du "
 					+ "dort lesen und ändern kannst (Plan, Profil, sportliches Ziel, Krankheit, Pause, eigene Workouts), und "
 					+ "frag mich, was ich als Erstes möchte.";

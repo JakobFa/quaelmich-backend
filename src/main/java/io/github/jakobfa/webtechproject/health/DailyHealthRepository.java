@@ -14,4 +14,6 @@ public interface DailyHealthRepository extends JpaRepository<DailyHealth, Long> 
 
 	List<DailyHealth> findByOwnerIdOrderByDate(Long ownerId);
 
+	List<DailyHealth> findByOwnerIdAndDateBetweenOrderByDate(Long ownerId, LocalDate from, LocalDate to);
+
 }

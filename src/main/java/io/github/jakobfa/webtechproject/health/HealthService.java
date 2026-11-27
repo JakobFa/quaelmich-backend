@@ -152,6 +152,12 @@ public class HealthService {
 		return Day.of(day);
 	}
 
+	/** Tage im Zeitraum, älteste zuerst (für die KI) */
+	@Transactional(readOnly = true)
+	public List<Day> between(Long userId, LocalDate from, LocalDate to) {
+		return days.findByOwnerIdAndDateBetweenOrderByDate(userId, from, to).stream().map(Day::of).toList();
+	}
+
 	/** Für den Datenexport */
 	@Transactional(readOnly = true)
 	public List<Day> allOf(Long userId) {

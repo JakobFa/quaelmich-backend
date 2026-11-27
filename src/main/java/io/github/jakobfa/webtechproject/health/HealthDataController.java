@@ -42,7 +42,10 @@ public class HealthDataController {
 
 	/** intervalsConnected: ohne intervals.icu-Verbindung lässt sich nichts übernehmen */
 	public record Status(boolean intervalsConnected, boolean importEnabled, Instant consentAt, Instant lastImportAt,
-			List<HealthService.Day> days) {
+			boolean sharedWithAi, List<HealthService.Day> days) {
+	}
+
+	public record ShareRequest(Boolean share) {
 	}
 
 	private final HealthService health;
@@ -102,6 +105,21 @@ public class HealthDataController {
 		return ResponseEntity.ok(statusOf(userId));
 	}
 
+	/**
+	 * Schlaf & Erholung auch der KI zeigen (KI-Modus, Werkzeug get_wellness) – nur mit share: true als ausdrückliche
+	 * Einwilligung; share: false nimmt sie zurück. 404, wenn die Übernahme aus ist.
+	 */
+	@org.springframework.web.bind.annotation.PutMapping("/me/health/ai")
+	public ResponseEntity<Status> shareWithAi(@AuthenticationPrincipal Jwt jwt,
+			@RequestBody(required = false) ShareRequest request) {
+		if (request == null || request.share() == null) {
+			return ResponseEntity.badRequest().build();
+		}
+		Long userId = CurrentUser.id(jwt);
+		return wellness.shareWithAi(userId, request.share()).map(settings -> ResponseEntity.ok(statusOf(userId)))
+				.orElse(ResponseEntity.notFound().build());
+	}
+
 	/** Ausschalten: Einwilligung widerrufen, alle Gesundheitsdaten löschen */
 	@DeleteMapping("/me/health")
 	public ResponseEntity<Void> disable(@AuthenticationPrincipal Jwt jwt) {
@@ -153,7 +171,8 @@ public class HealthDataController {
 		var settings = wellness.findByOwner(userId);
 		return new Status(intervals.findByOwner(userId).isPresent(), settings.isPresent(),
 				settings.map(WellnessImport::getConsentAt).orElse(null),
-				settings.map(WellnessImport::getLastImportAt).orElse(null), health.recent(userId));
+				settings.map(WellnessImport::getLastImportAt).orElse(null),
+				settings.map(s -> s.getSharedWithAiAt() != null).orElse(false), health.recent(userId));
 	}
 
 }

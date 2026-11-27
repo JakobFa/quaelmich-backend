@@ -61,11 +61,17 @@ public class McpTools {
 	private final TransactionTemplate tx;
 	private final Clock clock;
 	private final io.github.jakobfa.webtechproject.service.AiAssessmentService aiAssessments;
+	private final io.github.jakobfa.webtechproject.health.WellnessImportService wellness;
+	private final io.github.jakobfa.webtechproject.health.HealthService health;
 
 	public McpTools(AthleteService athletes, TrainingPlanService plans,
 			WorkoutLibrary library, CustomWorkoutService customWorkouts, RaceEventService events, TransactionTemplate tx, Clock clock,
-			io.github.jakobfa.webtechproject.service.AiAssessmentService aiAssessments) {
+			io.github.jakobfa.webtechproject.service.AiAssessmentService aiAssessments,
+			io.github.jakobfa.webtechproject.health.WellnessImportService wellness,
+			io.github.jakobfa.webtechproject.health.HealthService health) {
 		this.aiAssessments = aiAssessments;
+		this.wellness = wellness;
+		this.health = health;
 		this.athletes = athletes;
 		this.plans = plans;
 		this.library = library;
@@ -105,6 +111,12 @@ public class McpTools {
 						OAuthService.SCOPE_READ),
 				new Tool("list_events", "Die weiteren Events des Nutzers (zusätzlich zum ersten im Profil, das get_overview "
 						+ "zeigt) mit id. Die id geht in update_event und delete_event.", schema(Map.of()),
+						OAuthService.SCOPE_READ),
+				new Tool("get_wellness", "Schlaf und Erholung je Tag (Standard: die letzten 14 Tage, höchstens 92): "
+						+ "Schlafdauer in Minuten, Schlafbewertung, Ruhepuls, HRV (rMSSD; bei Apple Watch SDNN in hrvSdnnMs) "
+						+ "und Schritte – aus intervals.icu, egal aus welcher Quelle. Nur wenn der Nutzer es in quaelmich "
+						+ "freigegeben hat. Fehlende Werte sind null.",
+						schema(Map.of("from", text("Erster Tag, JJJJ-MM-TT"), "to", text("Letzter Tag, JJJJ-MM-TT"))),
 						OAuthService.SCOPE_READ));
 	}
 
@@ -116,6 +128,8 @@ public class McpTools {
 			case "list_workouts" -> workouts(arguments == null ? null : (String) arguments.get("type"));
 			case "list_events" -> eventRows(userId);
 			case "list_my_workouts" -> workoutRows(customWorkouts.listOwn(userId), true);
+			case "get_wellness" -> wellnessDays(userId, date(arguments, "from", today().minusDays(13)),
+					date(arguments, "to", today()));
 			default -> throw new ToolException("Unbekanntes Werkzeug: " + name);
 		};
 	}
@@ -167,8 +181,34 @@ public class McpTools {
 				out.put("plan", "Es gibt noch keinen Plan.");
 			}
 			out.put("einschaetzung", assessment(userId));
+			out.put("schlafUndErholung", wellness.isSharedWithAi(userId)
+					? "freigegeben – hol die Tage mit get_wellness"
+					: "nicht freigegeben (der Nutzer kann es in quaelmich unter Einstellungen → Schlaf & Erholung einschalten)");
 			return out;
 		});
+	}
+
+	private Object wellnessDays(Long userId, LocalDate from, LocalDate to) {
+		checkRange(from, to);
+		if (!wellness.isSharedWithAi(userId)) {
+			throw new ToolException("Der Nutzer hat Schlaf und Erholung nicht für dich freigegeben. Er kann das in "
+					+ "quaelmich unter Einstellungen → Schlaf & Erholung einschalten.");
+		}
+		Map<String, Object> out = new LinkedHashMap<>();
+		out.put("von", from.toString());
+		out.put("bis", to.toString());
+		out.put("tage", health.between(userId, from, to).stream().map(day -> {
+			Map<String, Object> row = new LinkedHashMap<>();
+			row.put("datum", day.date().toString());
+			row.put("schlafMinuten", day.sleepMinutes());
+			row.put("schlafBewertung", day.sleepScore());
+			row.put("ruhepuls", day.restingHeartRate());
+			row.put("hrvMs", day.hrvMs());
+			row.put("hrvSdnnMs", day.hrvSdnnMs());
+			row.put("schritte", day.steps());
+			return row;
+		}).toList());
+		return out;
 	}
 
 	/** Deine letzte Einschätzung (set_assessment) und ob eine neue fällig ist */

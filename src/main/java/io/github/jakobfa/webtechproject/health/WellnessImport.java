@@ -34,4 +34,7 @@ public class WellnessImport {
 
 	private Instant lastImportAt;
 
+	/** Auch der KI im KI-Modus zeigen (get_wellness) – eigene, ausdrückliche Einwilligung; null = nicht freigegeben */
+	private Instant sharedWithAiAt;
+
 }
