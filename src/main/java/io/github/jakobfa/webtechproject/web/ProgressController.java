@@ -16,10 +16,31 @@ public class ProgressController {
 
 	private final ProgressService progressService;
 	private final FormService formService;
+	private final io.github.jakobfa.webtechproject.service.AiAssessmentService aiAssessments;
+	private final io.github.jakobfa.webtechproject.repository.AppUserRepository users;
 
-	public ProgressController(ProgressService progressService, FormService formService) {
+	public ProgressController(ProgressService progressService, FormService formService,
+			io.github.jakobfa.webtechproject.service.AiAssessmentService aiAssessments,
+			io.github.jakobfa.webtechproject.repository.AppUserRepository users) {
 		this.progressService = progressService;
 		this.formService = formService;
+		this.aiAssessments = aiAssessments;
+		this.users = users;
+	}
+
+	/**
+	 * Einschätzung der KI für die Planseite – nur im KI-Modus. 204, wenn es (noch) keine gibt oder der KI-Modus aus
+	 * ist; fresh = false heißt: zu alt, die Planseite zeigt dann die eigene Rechnung.
+	 */
+	@GetMapping(path = "/me/ai-assessment")
+	public ResponseEntity<io.github.jakobfa.webtechproject.service.AiAssessmentService.View> aiAssessment(
+			@AuthenticationPrincipal Jwt jwt) {
+		Long userId = CurrentUser.id(jwt);
+		boolean aiMode = users.findById(userId).map(user -> user.isAiModeEnabled()).orElse(false);
+		if (!aiMode) {
+			return ResponseEntity.noContent().build();
+		}
+		return aiAssessments.current(userId).map(ResponseEntity::ok).orElse(ResponseEntity.noContent().build());
 	}
 
 	/** Fitness, Ermüdung und Form – bis heute gefahren, danach geplant. 404 ohne Plan. */

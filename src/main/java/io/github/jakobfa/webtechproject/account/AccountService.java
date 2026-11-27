@@ -51,6 +51,7 @@ public class AccountService {
 	private final io.github.jakobfa.webtechproject.mail.DeletionNotice deletionNotice;
 	private final io.github.jakobfa.webtechproject.health.HealthService health;
 	private final io.github.jakobfa.webtechproject.health.WellnessImportService wellness;
+	private final io.github.jakobfa.webtechproject.service.AiAssessmentService aiAssessments;
 
 	public AccountService(AppUserRepository users, PasswordEncoder passwordEncoder, AthleteRepository athletes,
 			TrainingPlanRepository plans, ExtraRideRepository extraRides, CustomWorkoutRepository customWorkouts,
@@ -61,7 +62,9 @@ public class AccountService {
 			io.github.jakobfa.webtechproject.mcp.OAuthService aiConnections,
 			io.github.jakobfa.webtechproject.mail.DeletionNotice deletionNotice,
 			io.github.jakobfa.webtechproject.health.HealthService health,
-			io.github.jakobfa.webtechproject.health.WellnessImportService wellness) {
+			io.github.jakobfa.webtechproject.health.WellnessImportService wellness,
+			io.github.jakobfa.webtechproject.service.AiAssessmentService aiAssessments) {
+		this.aiAssessments = aiAssessments;
 		this.health = health;
 		this.wellness = wellness;
 		this.deletionNotice = deletionNotice;
@@ -97,6 +100,7 @@ public class AccountService {
 		intervals.disconnect(userId);
 		aiConnections.deleteAllOf(userId); // Zugänge von KI-Apps enden mit dem Konto
 		wellness.disable(userId); // Übernahme von intervals.icu
+		aiAssessments.delete(userId);
 		health.disconnect(userId); // Kurzbefehl-Schlüssel und alle Gesundheitsdaten
 		athletes.findByOwnerId(userId).ifPresent(athlete -> {
 			plans.findByAthleteId(athlete.getId()).ifPresent(plans::delete);
@@ -133,6 +137,7 @@ public class AccountService {
 			data.put("eigeneWorkouts", customWorkouts.findByOwnerId(userId).stream()
 					.filter(workout -> !workout.isDeleted()).map(workout -> workout.toWorkout()).toList());
 			data.put("gesundheit", health.allOf(userId));
+			aiAssessments.current(userId).ifPresent(assessment -> data.put("einschaetzungDerKi", assessment));
 			data.put("feedback", feedback.findByAuthorId(userId).stream()
 					.map(entry -> Map.of("zeitpunkt", String.valueOf(entry.getCreatedAt()), "seite",
 							String.valueOf(entry.getPage()), "text", entry.getMessage()))

@@ -60,9 +60,12 @@ public class McpTools {
 	private final RaceEventService events;
 	private final TransactionTemplate tx;
 	private final Clock clock;
+	private final io.github.jakobfa.webtechproject.service.AiAssessmentService aiAssessments;
 
 	public McpTools(AthleteService athletes, TrainingPlanService plans,
-			WorkoutLibrary library, CustomWorkoutService customWorkouts, RaceEventService events, TransactionTemplate tx, Clock clock) {
+			WorkoutLibrary library, CustomWorkoutService customWorkouts, RaceEventService events, TransactionTemplate tx, Clock clock,
+			io.github.jakobfa.webtechproject.service.AiAssessmentService aiAssessments) {
+		this.aiAssessments = aiAssessments;
 		this.athletes = athletes;
 		this.plans = plans;
 		this.library = library;
@@ -87,7 +90,7 @@ public class McpTools {
 	/** Alle Werkzeuge (die Aufrufer filtern nach ihrem Zugriffsbereich) */
 	public List<Tool> tools() {
 		return List.of(
-				new Tool("get_overview", "Überblick über den Athleten: Profil, Ziel/Event, Verfügbarkeit, Stand des Plans "
+				new Tool("get_overview", "Überblick über den Athleten: Profil, Ziel/Event, Verfügbarkeit, deine letzte Einschätzung, Stand des Plans "
 						+ "(Woche, Phase, krank gemeldet) und die nächsten 7 Tage. Guter Startpunkt.",
 						schema(Map.of()), OAuthService.SCOPE_READ),
 				new Tool("get_plan", "Der Trainingsplan für einen Zeitraum (Standard: heute bis in 14 Tagen, höchstens "
@@ -163,8 +166,24 @@ public class McpTools {
 			} else {
 				out.put("plan", "Es gibt noch keinen Plan.");
 			}
+			out.put("einschaetzung", assessment(userId));
 			return out;
 		});
+	}
+
+	/** Deine letzte Einschätzung (set_assessment) und ob eine neue fällig ist */
+	private Map<String, Object> assessment(Long userId) {
+		Map<String, Object> out = new LinkedHashMap<>();
+		var current = aiAssessments.current(userId);
+		out.put("status", current.map(view -> view.status().name()).orElse(null));
+		out.put("notiz", current.map(view -> view.note()).orElse(null));
+		out.put("stand", current.map(view -> view.updatedAt().toString()).orElse(null));
+		if (aiAssessments.needsRenewal(userId)) {
+			out.put("hinweis", "Die Einschätzung auf der Planseite ist alt oder fehlt. Schau dir die letzten 7 Tage an "
+					+ "(gefahrene Fahrten aus dem Strava- oder Garmin-Konnektor, Schlaf und Erholung, falls du sie hast) "
+					+ "und setze sie mit set_assessment neu.");
+		}
+		return out;
 	}
 
 	private Object plan(Long userId, LocalDate from, LocalDate to) {
