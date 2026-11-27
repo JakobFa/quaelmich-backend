@@ -79,7 +79,7 @@ public class PlanResponseMapper {
 				: new PlannedWorkoutResponse.Adjustment(planned.getAdjustmentNote(), planned.getOriginalTitle());
 		return new PlannedWorkoutResponse(planned.getId(), planned.getDate(), planned.getPhase(),
 				planned.isCompleted(), planned.getRating(), planned.getSkipReason(), workout, actual, adjustment,
-				customization.optionsFor(planned));
+				customization.optionsFor(planned), planned.isAiDecided());
 	}
 
 	private java.util.List<io.github.jakobfa.webtechproject.model.Event> moreEventsOf(TrainingPlan plan) {

@@ -60,13 +60,16 @@ public class McpWriteTools {
 	private final Validator validator;
 	private final TransactionTemplate tx;
 	private final io.github.jakobfa.webtechproject.service.AiAssessmentService aiAssessments;
+	private final io.github.jakobfa.webtechproject.service.AiDecisionTracker decisions;
 
 	public McpWriteTools(McpTools read, AthleteService athletes, TrainingPlanService plans, AbsenceService absence,
 			WorkoutCustomizationService customization, IntervalsAutoSyncService autoSync, IntervalsFtpSync ftpSync,
 			CustomWorkoutService customWorkouts, PlanEditService planEdit, RaceEventService raceEvents,
 			ObjectMapper mapper, Validator validator, TransactionTemplate tx,
-			io.github.jakobfa.webtechproject.service.AiAssessmentService aiAssessments) {
+			io.github.jakobfa.webtechproject.service.AiAssessmentService aiAssessments,
+			io.github.jakobfa.webtechproject.service.AiDecisionTracker decisions) {
 		this.aiAssessments = aiAssessments;
+		this.decisions = decisions;
 		this.read = read;
 		this.athletes = athletes;
 		this.plans = plans;
@@ -275,6 +278,7 @@ public class McpWriteTools {
 	/** Führt ein Schreibwerkzeug für einen Nutzer aus; Ergebnis ist eine JSON-fähige Struktur */
 	public Object call(Long userId, String name, Map<String, Object> arguments) {
 		Map<String, Object> args = arguments == null ? Map.of() : arguments;
+		var before = decisions.snapshot(userId); // was die KI danach neu plant oder ändert, bekommt das KI-Zeichen
 		Object result = switch (name) {
 			case "update_profile" -> updateProfile(userId, args);
 			case "regenerate_plan" -> regeneratePlan(userId);
@@ -332,6 +336,10 @@ public class McpWriteTools {
 			case "set_week_availability" -> setWeekAvailability(userId, args);
 			default -> throw new McpTools.ToolException("Unbekanntes Werkzeug: " + name);
 		};
+		decisions.markChanges(userId, before, true);
+		if ("regenerate_plan".equals(name)) {
+			decisions.markAllFromToday(userId);
+		}
 		autoSync.syncUserIfEnabled(userId); // wer die Anbindung an intervals.icu eingeschaltet hat, bekommt den neuen Plan
 		return result;
 	}

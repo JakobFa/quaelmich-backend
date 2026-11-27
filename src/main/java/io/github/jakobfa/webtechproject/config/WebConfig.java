@@ -13,9 +13,18 @@ import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
 public class WebConfig implements WebMvcConfigurer {
 
 	private final String[] allowedOrigins;
+	private final UserDecisionInterceptor userDecisions;
 
-	public WebConfig(@Value("${app.cors.allowed-origins}") String[] allowedOrigins) {
+	public WebConfig(@Value("${app.cors.allowed-origins}") String[] allowedOrigins,
+			UserDecisionInterceptor userDecisions) {
 		this.allowedOrigins = allowedOrigins;
+		this.userDecisions = userDecisions;
+	}
+
+	/** Änderungen des Nutzers am Plan nehmen den Einheiten das KI-Zeichen */
+	@Override
+	public void addInterceptors(org.springframework.web.servlet.config.annotation.InterceptorRegistry registry) {
+		registry.addInterceptor(userDecisions).addPathPatterns("/**").excludePathPatterns("/mcp", "/oauth/**", "/auth/**", "/internal/**");
 	}
 
 	@Override
