@@ -204,6 +204,8 @@ public class McpTools {
 			throw new ToolException("Der Nutzer hat Schlaf und Erholung nicht für dich freigegeben. Er kann das in "
 					+ "quaelmich unter Einstellungen → Schlaf & Erholung einschalten.");
 		}
+		// die KI liest oft morgens, bevor jemand die App öffnet: vorher frisch von intervals.icu holen
+		wellness.importIfStale(userId);
 		Map<String, Object> out = new LinkedHashMap<>();
 		out.put("von", from.toString());
 		out.put("bis", to.toString());

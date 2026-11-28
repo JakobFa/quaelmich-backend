@@ -221,6 +221,24 @@ class WellnessBackfillTest {
 	}
 
 	@Test
+	void readingRefetchesWhenTheLastImportIsOlderThanFifteenMinutes() throws Exception {
+		enable();
+		clearInvocations(client);
+		var settings = imports.findByOwnerId(userId).orElseThrow();
+
+		settings.setLastImportAt(clock.instant().minusSeconds(5 * 60));
+		imports.save(settings);
+		wellness.importIfStale(userId);
+		verify(client, times(0)).listWellness(any(), any(), any());
+
+		settings = imports.findByOwnerId(userId).orElseThrow();
+		settings.setLastImportAt(clock.instant().minusSeconds(16 * 60));
+		imports.save(settings);
+		wellness.importIfStale(userId);
+		verify(client).listWellness(any(), eq(today.minusDays(6)), eq(today));
+	}
+
+	@Test
 	void endingTheImportDeletesTheWholeHistory() throws Exception {
 		enable();
 		assertThat(days.findByOwnerIdOrderByDate(userId)).hasSizeGreaterThan(5);
