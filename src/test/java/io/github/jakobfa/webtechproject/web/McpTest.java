@@ -755,9 +755,19 @@ class McpTest {
 				.andExpect(jsonPath("$.aiDecided").value(true));
 
 		// selbst in der App geändert: die Entscheidung des Nutzers
-		mockMvc.perform(put("/planned-workouts/" + regenerated + "/adjustment").header("Authorization", auth)
-				.contentType(MediaType.APPLICATION_JSON).content("{ \"direction\": \"SHORTER\" }"))
-				.andExpect(status().isOk()).andExpect(jsonPath("$.aiDecided").value(false));
+		// je nach Wochentag lässt sich die Einheit nicht in jede Richtung ändern: die erste mögliche nehmen
+		int adjusted = 409;
+		for (String direction : List.of("SHORTER", "LONGER", "EASIER", "HARDER")) {
+			var result = mockMvc.perform(put("/planned-workouts/" + regenerated + "/adjustment")
+					.header("Authorization", auth).contentType(MediaType.APPLICATION_JSON)
+					.content("{ \"direction\": \"%s\" }".formatted(direction))).andReturn().getResponse();
+			adjusted = result.getStatus();
+			if (adjusted == 200) {
+				assertThat(JsonPath.<Boolean>read(result.getContentAsString(), "$.aiDecided")).isFalse();
+				break;
+			}
+		}
+		assertThat(adjusted).isEqualTo(200);
 		mockMvc.perform(get("/planned-workouts/" + regenerated).header("Authorization", auth))
 				.andExpect(jsonPath("$.aiDecided").value(false));
 

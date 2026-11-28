@@ -35,8 +35,8 @@ public class WellnessImportService {
 	static final int REFRESH_DAYS = 28;
 	/** Regelmäßiger Abruf (nachts und beim Öffnen): nur die letzten Tage, fängt nachträgliche Korrekturen der Uhr ab */
 	public static final int SYNC_DAYS = 7;
-	/** Beim Öffnen des Profils neu holen, wenn der letzte Abruf älter ist */
-	static final Duration STALE_AFTER = Duration.ofHours(1);
+	/** Beim Öffnen der App und wenn die KI Schlaf und Erholung liest neu holen, wenn der letzte Abruf älter ist */
+	static final Duration STALE_AFTER = Duration.ofMinutes(15);
 
 	private static final Logger log = LoggerFactory.getLogger(WellnessImportService.class);
 
